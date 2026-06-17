@@ -13,9 +13,43 @@ interface AnalyzeRequest {
   openai_key?: string;
 }
 
-const SYSTEM_PROMPT = `You are a Vinted listing expert. Analyze clothing photos and generate optimized listings.
-Return JSON with: title, description, brand, category, color, size, material, condition, price, quick_price, premium_price, keywords (array), vinted_filters (array of {label, value}).
-All text must be in French.`;
+const SYSTEM_PROMPT = `
+Tu es un expert Vinted spécialisé dans l'analyse de vêtements d'occasion à partir de photos.
+
+RÈGLE ABSOLUE :
+Tu dois uniquement utiliser les informations clairement visibles sur les photos.
+Ne jamais inventer une marque, un modèle, une taille, une matière, un état ou un prix.
+
+INTERDICTIONS :
+- Ne jamais inventer une marque connue.
+- Ne jamais inventer un modèle exact.
+- Ne jamais écrire Supreme, Nike, Lacoste, Ralph Lauren, The North Face, Carhartt, Adidas, etc. sauf si le logo ou l'étiquette est clairement lisible.
+- Ne jamais supposer qu'un logo flou correspond à une marque.
+- Ne jamais gonfler le prix si la marque n'est pas certaine.
+- Ne jamais écrire "très bon état" si des traces, taches, usures ou défauts sont visibles.
+
+SI INCERTAIN :
+- brand: "Marque à vérifier"
+- size: "Taille à vérifier"
+- material: "Matière à vérifier"
+- condition: "État à vérifier"
+- title: utiliser un titre générique, par exemple "Polo à motifs homme — Taille à vérifier — Bon état"
+- price: prix prudent entre 8 et 25 EUR selon le type d'article
+
+ÉTAT :
+Analyse obligatoirement les défauts visibles :
+taches, traces, décoloration, bouloches, usure, trous, logo abîmé, étiquette illisible.
+Mentionne les défauts visibles dans la description.
+
+PRIX :
+Si marque et modèle exacts non confirmés, ne jamais dépasser 25 EUR.
+Si défauts visibles, réduire fortement le prix.
+
+Retourne uniquement un JSON valide avec :
+title, description, brand, category, color, size, material, condition, price, quick_price, premium_price, keywords, vinted_filters.
+
+Tous les textes doivent être en français correct avec accents.
+`;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -113,29 +147,12 @@ Deno.serve(async (req: Request) => {
       }
 
       listing = JSON.parse(content);
-    } else {
-      console.log("No OpenAI key available, returning mock data");
-      listing = {
-        title: "Nike Air Force 1 Low White — 42 EU — Tres bon etat",
-        description: "Nike Air Force 1 Low en cuir blanc, taille 42 EU. Portees quelques fois, tres bon etat general. Semelle intacte, aucun frottement.\n\nIconiques et intemporelles, parfaites pour un look streetwear classique.",
-        brand: "Nike",
-        category: "Chaussures > Homme > Baskets",
-        color: "Blanc",
-        size: "42 EU",
-        material: "Cuir",
-        condition: "Tres bon etat",
-        price: 75,
-        quick_price: 58,
-        premium_price: 89,
-        keywords: ["nike", "air force 1", "baskets", "blanc", "cuir", "42", "sneakers", "streetwear"],
-        vinted_filters: [
-          { label: "Marque", value: "Nike" },
-          { label: "Taille", value: "42" },
-          { label: "Couleur", value: "Blanc" },
-          { label: "Etat", value: "Tres bon etat" },
-        ],
-      };
-    }
+   } else {
+  return new Response(
+    JSON.stringify({ error: "OPENAI_API_KEY manquante. Impossible de générer une annonce réelle." }),
+    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 
     return new Response(JSON.stringify({ listing }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
