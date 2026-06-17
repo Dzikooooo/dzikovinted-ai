@@ -75,9 +75,9 @@ export async function analyzeWithAI(
       if (openaiKey) {
         throw err;
       }
-      return mockAnalyze(imageUrls);
+     throw new Error("Analyse IA indisponible : la fonction Supabase a échoué.");
     }
   }
 
-  return mockAnalyze(imageUrls);
+  throw new Error("Analyse IA indisponible : la fonction Supabase a échoué.");
 }
