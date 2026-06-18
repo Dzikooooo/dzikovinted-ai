@@ -31,7 +31,7 @@ export async function analyzeWithAI(
   if (session) {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/analyze-clothing`, {
+      const response = await fetch`${supabaseUrl}/functions/v1/analyze-clothing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
