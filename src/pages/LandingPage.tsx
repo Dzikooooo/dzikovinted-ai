@@ -14,7 +14,7 @@ const features = [
   },
   {
     icon: TrendingUp,
-    title: 'Pricing Engine',
+    title:'Estimation IA',
     desc: 'Estimation intelligente du meilleur prix selon le marché et la demande.'
   },
   {
