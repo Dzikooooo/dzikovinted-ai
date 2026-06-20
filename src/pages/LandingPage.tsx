@@ -120,7 +120,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center">
           <div className="inline-flex items-center gap-2 bg-[#39FF14]/10 border border-[#39FF14]/20 rounded-full px-4 py-1.5 mb-8">
             <Sparkles className="w-4 h-4 text-[#39FF14]" />
-            <span className="text-sm font-medium text-[#39FF14]">Dziko Resell OS • Assistant IA de revente</span>
+            <span className="text-sm font-medium text-[#39FF14]">Annonce IA • Stock • Ventes • Analytics</span>
           </div>
         <h1 className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight mb-8">
   Le système complet
