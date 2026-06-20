@@ -273,7 +273,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               Comment ça fonctionne
             </p>
             <h2 className="text-3xl sm:text-4xl font-black">
-              Photographiez. Analysez. Vendez.
+              Photographiez. Analysez. publiez.
             </h2>
           </div>
 
