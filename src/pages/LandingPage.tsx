@@ -273,7 +273,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         <div className="absolute inset-0 bg-[#39FF14]/5" />
         <div className="relative z-10 max-w-3xl mx-auto px-4 text-center">
           <h2 className="text-3xl sm:text-4xl font-black mb-4">Prêt à développer votre activité ?</h2>
-          <p className="text-gray-400 mb-8">Rejoins 2 400+ revendeurs qui génèrent leurs annonces en 10 secondes.</p>
+          <p className="text-gray-400 mb-8">Rejoins les revendeurs qui automatisent leurs annonces, suivent leurs ventes et pilotent leur activité depuis une seule plateforme.</p>
           <button
             onClick={() => onNavigate('auth')}
             className="bg-[#39FF14] text-black font-bold text-lg px-10 py-4 rounded-xl hover:bg-[#50ff30] transition-all duration-300 hover:shadow-[0_0_40px_rgba(57,255,20,0.4)] inline-flex items-center gap-3"
