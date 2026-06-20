@@ -275,6 +275,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <h2 className="text-3xl sm:text-4xl font-black">
               Photographiez. Analysez. Publiez.
             </h2>
+            
+  <p className="text-gray-400 max-w-3xl mx-auto">
+    Prenez une photo. Dziko Resell OS génère automatiquement
+    votre annonce optimisée, estime le meilleur prix et met à jour votre stock.
+  </p>
           </div>
 
           <div className="bg-[#181818] border border-white/10 rounded-[32px] p-6">
