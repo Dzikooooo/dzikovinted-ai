@@ -186,7 +186,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-black mb-4">Les modules de Dziko Resell OS</h2>
-            <p className="text-gray-400 max-w-xl mx-auto">Plus besoin de perdre du temps à rédiger. L'IA s'occupe de tout, tu te concentres sur la vente.</p>
+            <p className="text-gray-400 max-w-xl mx-auto">Annonce IA, gestion de stock, suivi des ventes et analyse financière dans une seule plateforme.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map(({ icon: Icon, title, desc }) => (
