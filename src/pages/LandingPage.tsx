@@ -169,7 +169,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           <div className="mt-16 grid grid-cols-3 max-w-sm mx-auto gap-6">
             {[
   ['+2 400', 'annonces créées'],
-  ['+15 000€', 'CA suivi'],
+  ['+15k€', 'CA suivi'],
   ['+320h', 'temps économisé']
 ].map(([v, l]) => (
               <div key={l} className="text-center">
