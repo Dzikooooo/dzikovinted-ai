@@ -78,7 +78,7 @@ const plans = [
     price: '9,99',
     period: '/mois',
     desc: 'Pour les revendeurs actifs',
-    features: ['Analyses illimitées', '10 photos par annonce', 'Tout le plan Free', '3 niveaux de prix', 'Filtres Vinted complets', 'Mots-clés SEO', 'Historique illimité', 'Export CSV'],
+    features: ['Analyses illimitées', '10 photos par annonce', 'Tout le plan Free', 'Estimation IA des prix', 'Filtres marketplace avancés', 'Mots-clés SEO', 'Historique illimité', 'Export CSV'],
     cta: 'Démarrer le Pro',
     highlighted: true,
   },
