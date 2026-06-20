@@ -268,7 +268,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <section className="py-24">
         <div className="max-w-6xl mx-auto px-4">
 
-          <div className="text-center mb-20">
+          <div className="text-center mb-16">
             <p className="text-[#39FF14] font-semibold mb-2">
               Comment ça fonctionne
             </p>
