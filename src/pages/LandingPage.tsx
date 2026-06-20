@@ -30,7 +30,7 @@ const features = [
   {
     icon: Users,
     title: 'Multi-marketplace',
-    desc: 'Préparez vos annonces pour Vinted, Leboncoin, eBay et d’autres plateformes.'
+    desc: 'Publiez vos annonces sur plusieurs marketplaces depuis une seule interface.'
   },
   {
     icon: Sparkles,
