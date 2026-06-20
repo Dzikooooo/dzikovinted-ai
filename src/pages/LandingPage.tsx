@@ -167,8 +167,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <p className="text-sm text-gray-500">Sans carte bancaire · 10 analyses offertes</p>
           </div>
           <div className="mt-16 grid grid-cols-3 max-w-sm mx-auto gap-6">
-            {[
-  ['+2 400', 'annonces créées'],
+        {[
+  ['+2 400', 'annonces générées'],
   ['+15k€', 'CA suivi'],
   ['+320h', 'temps économisé']
 ].map(([v, l]) => (
