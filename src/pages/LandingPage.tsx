@@ -273,7 +273,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               Comment ça fonctionne
             </p>
             <h2 className="text-3xl sm:text-4xl font-black">
-              Une annonce prête en moins de 10 secondes
+              Photographiez. Analysez. Vendez.
             </h2>
           </div>
 
@@ -285,10 +285,9 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   📸 Photo importée
                 </p>
 
-                <div className="aspect-square rounded-2xl bg-[#021d02] border border-[#39FF14]/20 flex items-center justify-center">
-                  <Camera className="w-16 h-16 text-[#39FF14]" />
-                </div>
-
+               <div className="h-56 rounded-2xl bg-[#021d02] border border-[#39FF14]/20 flex items-center justify-center">
+  <Camera className="w-16 h-16 text-[#39FF14]" />
+</div>
                 <p className="text-center text-gray-400 mt-4">
                   Nike Hoodie • Taille M
                 </p>
@@ -348,7 +347,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   </div>
 
                   <div className="flex justify-between">
-                    <span>CA du mois</span>
+                    <span>Bénéfices du mois</span>
                     <span className="font-bold">
                       1 240€
                     </span>
