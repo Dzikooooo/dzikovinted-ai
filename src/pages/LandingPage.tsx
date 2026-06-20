@@ -183,6 +183,84 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               </div>
             ))}
           </div>
+          <div className="mt-16 max-w-5xl mx-auto bg-[#181818] border border-white/10 rounded-3xl p-6 shadow-[0_0_80px_rgba(57,255,20,0.08)]">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+    <div className="bg-black/60 rounded-2xl p-5 border border-white/10">
+      <p className="text-xs text-gray-500 mb-3">📸 Photo importée</p>
+
+      <div className="aspect-square rounded-xl bg-[#39FF14]/10 border border-[#39FF14]/20 flex items-center justify-center">
+        <Camera className="w-10 h-10 text-[#39FF14]" />
+      </div>
+
+      <p className="text-sm text-gray-400 mt-4">
+        Nike Hoodie • Taille M
+      </p>
+    </div>
+
+    <div className="bg-black/60 rounded-2xl p-5 border border-white/10">
+      <p className="text-xs text-gray-500 mb-3">
+        ⚡ Annonce générée
+      </p>
+
+      <h3 className="font-bold text-white mb-2">
+        Sweat Nike noir oversize
+      </h3>
+
+      <p className="text-sm text-gray-400 leading-relaxed">
+        Sweat Nike noir en très bon état, coupe oversize,
+        idéal streetwear. Parfait pour un look casual.
+      </p>
+
+      <div className="mt-4 flex gap-2">
+        <span className="text-xs bg-[#39FF14]/10 text-[#39FF14] px-3 py-1 rounded-full">
+          SEO
+        </span>
+
+        <span className="text-xs bg-[#39FF14]/10 text-[#39FF14] px-3 py-1 rounded-full">
+          Auto
+        </span>
+      </div>
+    </div>
+
+    <div className="bg-black/60 rounded-2xl p-5 border border-white/10">
+      <p className="text-xs text-gray-500 mb-3">
+        📊 Dashboard
+      </p>
+
+      <div className="space-y-3">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Prix conseillé</span>
+          <span className="text-[#39FF14] font-bold">
+            34,90€
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-gray-400">Marge estimée</span>
+          <span className="font-bold text-white">
+            +18€
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-gray-400">Stock actif</span>
+          <span className="font-bold text-white">
+            42 articles
+          </span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-gray-400">CA du mois</span>
+          <span className="font-bold text-white">
+            1 240€
+          </span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
         </div>
       </section>
 
