@@ -122,16 +122,16 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <Sparkles className="w-4 h-4 text-[#39FF14]" />
             <span className="text-sm font-medium text-[#39FF14]">Dziko Resell OS • Assistant IA de revente</span>
           </div>
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight mb-8">
-            Transforme une photo en{' '}
-            <span className="text-[#39FF14]" style={{ textShadow: '0 0 40px rgba(57,255,20,0.3)' }}>
-              annonce Vinted
-            </span>{' '}
-            optimisée en quelques secondes.
-          </h1>
+        <h1 className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight mb-8">
+  Le système complet
+  <span className="block text-[#39FF14]" style={{ textShadow: '0 0 40px rgba(57,255,20,0.3)' }}>
+    du revendeur.
+  </span>
+</h1>
           <p className="text-lg sm:text-xl text-gray-400 max-w-3xl mx-auto mb-10 leading-relaxed">
-            IA spécialisée revente Vinted, Leboncoin et eBay. Titre SEO, description, prix intelligent, filtres — tout généré automatiquement.
-          </p>
+  Photographiez un article. Dziko Resell OS génère votre annonce, estime le meilleur prix,
+  gère votre stock, suit vos ventes et analyse vos bénéfices depuis un tableau de bord intelligent.
+</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => onNavigate('auth')}
