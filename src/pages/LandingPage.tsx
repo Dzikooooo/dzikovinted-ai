@@ -152,9 +152,9 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     du revendeur.
   </span>
 </h1>
-          <p className="text-lg sm:text-xl text-gray-400 max-w-3xl mx-auto mb-10 leading-relaxed">
-  Photographiez un article. Dziko Resell OS génère votre annonce, estime le meilleur prix,
-  gère votre stock, suit vos ventes et analyse vos bénéfices depuis un tableau de bord intelligent.
+       <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-12">
+  Prenez une photo de votre article. Dziko Resell OS génère automatiquement
+  une annonce optimisée, estime le meilleur prix et met à jour votre stock en quelques secondes.
 </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
