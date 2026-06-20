@@ -78,7 +78,9 @@ function Navbar({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
           <div className="w-8 h-8 bg-[#39FF14] rounded-lg flex items-center justify-center">
             <Zap className="w-5 h-5 text-black" />
           </div>
-          <span className="text-xl font-black tracking-tight">Dziko<span className="text-[#39FF14]">Vinted</span></span>
+         <span className="text-xl font-black tracking-tight">
+  Dziko <span className="text-[#39FF14]">Resell OS</span>
+</span>
         </button>
         <div className="hidden sm:flex items-center gap-6">
           <a href="#features" className="text-sm text-gray-400 hover:text-white transition-colors">Fonctionnalités</a>
@@ -118,7 +120,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center">
           <div className="inline-flex items-center gap-2 bg-[#39FF14]/10 border border-[#39FF14]/20 rounded-full px-4 py-1.5 mb-8">
             <Sparkles className="w-4 h-4 text-[#39FF14]" />
-            <span className="text-sm font-medium text-[#39FF14]">IA spécialisée revente Vinted</span>
+            <span className="text-sm font-medium text-[#39FF14]">Dziko Resell OS • Assistant IA de revente</span>
           </div>
           <h1 className="text-4xl sm:text-6xl md:text-7xl font-black leading-[1.05] tracking-tight mb-8">
             Transforme une photo en{' '}
@@ -260,7 +262,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-7 h-7 bg-[#39FF14] rounded-lg flex items-center justify-center"><Zap className="w-4 h-4 text-black" /></div>
-                <span className="font-black">Dziko<span className="text-[#39FF14]">Vinted</span></span>
+                <span className="font-black">Dziko<span className="text-[#39FF14]">Resell OS</span></span>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">IA spécialisée pour générer vos annonces Vinted en quelques secondes.</p>
             </div>
