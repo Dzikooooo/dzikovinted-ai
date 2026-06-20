@@ -173,7 +173,12 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   ['+320h', 'temps économisé']
 ].map(([v, l]) => (
               <div key={l} className="text-center">
-                <p className="text-2xl font-black text-[#39FF14]" style={{ textShadow: '0 0 20px rgba(57,255,20,0.4)' }}>{v}</p>
+                <p
+  className="text-2xl font-black text-[#39FF14] whitespace-nowrap"
+  style={{ textShadow: '0 0 20px rgba(57,255,20,0.4)' }}
+>
+  {v}
+</p>
                 <p className="text-xs text-gray-500 mt-1">{l}</p>
               </div>
             ))}
