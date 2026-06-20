@@ -317,7 +317,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </div>
           </div>
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-gray-600">© 2026 DzikoVinted. Tous droits réservés.</p>
+            <p className="text-xs text-gray-600">© 2026 Dziko Resell OS. Tous droits réservés.</p>
             <div className="flex gap-4">
               <a href="#" className="text-gray-600 hover:text-[#39FF14] transition-colors"><Twitter className="w-4 h-4" /></a>
               <a href="#" className="text-gray-600 hover:text-[#39FF14] transition-colors"><Instagram className="w-4 h-4" /></a>
