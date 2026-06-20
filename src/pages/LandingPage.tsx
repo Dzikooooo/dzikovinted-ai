@@ -143,7 +143,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <p className="text-sm text-gray-500">Sans carte bancaire · 10 analyses offertes</p>
           </div>
           <div className="mt-16 grid grid-cols-3 max-w-sm mx-auto gap-6">
-            {[['2 400+', 'annonces générées'], ['4.9/5', 'satisfaction'], ['-3h', 'par semaine']].map(([v, l]) => (
+            {[
+  ['+2 400', 'annonces créées'],
+  ['+15 000€', 'CA suivi'],
+  ['+320h', 'temps économisé']
+]].map(([v, l]) => (
               <div key={l} className="text-center">
                 <p className="text-2xl font-black text-[#39FF14]" style={{ textShadow: '0 0 20px rgba(57,255,20,0.4)' }}>{v}</p>
                 <p className="text-xs text-gray-500 mt-1">{l}</p>
