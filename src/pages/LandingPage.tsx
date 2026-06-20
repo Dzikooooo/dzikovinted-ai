@@ -42,7 +42,7 @@ const features = [
 const testimonials = [
   {
     name: 'Léa Moreau',
-    role: 'Revendeuse Vinted × 2 ans',
+    role: 'Reselleuse depuis 2 ans',
     avatar: 'LM',
     text: "Dziko Resell OS me fait gagner plusieurs heures chaque semaine. Je gère mes annonces, mon stock et mes ventes depuis une seule plateforme.",
     stars: 5,
