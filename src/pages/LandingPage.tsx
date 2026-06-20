@@ -44,7 +44,7 @@ const testimonials = [
     name: 'Léa Moreau',
     role: 'Revendeuse Vinted × 2 ans',
     avatar: 'LM',
-    text: "DzikoVinted m'a fait gagner 3h par semaine. Avant je passais une éternité à rédiger mes annonces. Maintenant c'est 10 secondes, les annonces sont meilleures et je vends plus vite.",
+    text: ""Dziko Resell OS me fait gagner plusieurs heures chaque semaine. Je gère mes annonces, mon stock et mes ventes depuis une seule plateforme."",
     stars: 5,
   },
   {
@@ -206,7 +206,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <section className="py-24 bg-[#181818]/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">Ils vendent plus vite avec DzikoVinted</h2>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4">Ils développent leur activité avec Dziko Resell OS</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t) => (
@@ -292,7 +292,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <div className="w-7 h-7 bg-[#39FF14] rounded-lg flex items-center justify-center"><Zap className="w-4 h-4 text-black" /></div>
                 <span className="font-black">Dziko<span className="text-[#39FF14]">Resell OS</span></span>
               </div>
-              <p className="text-sm text-gray-500 leading-relaxed">IA spécialisée pour générer vos annonces Vinted en quelques secondes.</p>
+              <p className="text-sm text-gray-500 leading-relaxed">Tout ce dont un revendeur a besoin, dans un seul système.</p>
             </div>
             <div>
               <h4 className="text-sm font-semibold mb-4">Produit</h4>
