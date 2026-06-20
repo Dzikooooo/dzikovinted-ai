@@ -262,7 +262,108 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   </div>
 </div>
         </div>
+            </section>
+
+      {/* Product Preview */}
+      <section className="pb-24">
+        <div className="max-w-6xl mx-auto px-4">
+
+          <div className="text-center mb-10">
+            <p className="text-[#39FF14] font-semibold mb-2">
+              Comment ça fonctionne
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-black">
+              Une annonce prête en moins de 10 secondes
+            </h2>
+          </div>
+
+          <div className="bg-[#181818] border border-white/10 rounded-[32px] p-6">
+            <div className="grid md:grid-cols-3 gap-6">
+
+              <div className="bg-black rounded-3xl p-6">
+                <p className="text-gray-500 text-sm mb-4">
+                  📸 Photo importée
+                </p>
+
+                <div className="aspect-square rounded-2xl bg-[#021d02] border border-[#39FF14]/20 flex items-center justify-center">
+                  <Camera className="w-16 h-16 text-[#39FF14]" />
+                </div>
+
+                <p className="text-center text-gray-400 mt-4">
+                  Nike Hoodie • Taille M
+                </p>
+              </div>
+
+              <div className="bg-black rounded-3xl p-6">
+                <p className="text-gray-500 text-sm mb-4">
+                  ⚡ Annonce générée
+                </p>
+
+                <h3 className="font-bold text-2xl mb-4">
+                  Sweat Nike noir oversize
+                </h3>
+
+                <p className="text-gray-400">
+                  Sweat Nike noir en très bon état,
+                  coupe oversize, idéal streetwear.
+                  Parfait pour un look casual.
+                </p>
+
+                <div className="flex gap-2 mt-6">
+                  <span className="bg-[#39FF14]/10 text-[#39FF14] px-3 py-1 rounded-full text-sm">
+                    SEO
+                  </span>
+
+                  <span className="bg-[#39FF14]/10 text-[#39FF14] px-3 py-1 rounded-full text-sm">
+                    Auto
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-black rounded-3xl p-6">
+                <p className="text-gray-500 text-sm mb-4">
+                  📊 Dashboard
+                </p>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span>Prix conseillé</span>
+                    <span className="font-bold text-[#39FF14]">
+                      34,90€
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span>Marge estimée</span>
+                    <span className="font-bold">
+                      +18€
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span>Stock actif</span>
+                    <span className="font-bold">
+                      42 articles
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span>CA du mois</span>
+                    <span className="font-bold">
+                      1 240€
+                    </span>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+
+        </div>
       </section>
+
+      {/* Features */}
 
       {/* Features */}
       <section id="features" className="py-24 sm:py-32">
