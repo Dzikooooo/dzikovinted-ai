@@ -363,7 +363,6 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Features */}
 
       {/* Features */}
       <section id="features" className="py-24 sm:py-32">
