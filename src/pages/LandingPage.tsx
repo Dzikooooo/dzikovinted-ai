@@ -7,12 +7,36 @@ interface LandingPageProps {
 }
 
 const features = [
-  { icon: Camera, title: 'Analyse IA des photos', desc: "L'IA détecte automatiquement marque, couleur, état et matière depuis vos photos." },
-  { icon: TrendingUp, title: 'Prix intelligent', desc: 'Estimation du prix de marché, prix vente rapide et prix premium selon la demande.' },
-  { icon: Sparkles, title: 'SEO Vinted optimisé', desc: 'Titre et description générés pour maximiser la visibilité dans les recherches.' },
-  { icon: Shield, title: 'Historique des annonces', desc: 'Retrouvez toutes vos annonces générées, modifiables et exportables.' },
-  { icon: Users, title: 'Multi-marketplace', desc: 'Vinted, Leboncoin, eBay — un format optimisé pour chaque plateforme.' },
-  { icon: Star, title: 'Statistiques avancées', desc: 'Suivez vos performances, revenus estimés et les marques les plus vendues.' },
+  {
+    icon: Camera,
+    title: 'Annonce IA',
+    desc: 'Titre, description, catégorie, taille et état générés automatiquement depuis vos photos.'
+  },
+  {
+    icon: TrendingUp,
+    title: 'Pricing Engine',
+    desc: 'Estimation intelligente du meilleur prix selon le marché et la demande.'
+  },
+  {
+    icon: Shield,
+    title: 'Gestion de stock',
+    desc: 'Centralisez tous vos articles et gardez une vue claire de votre inventaire.'
+  },
+  {
+    icon: Star,
+    title: 'Dashboard financier',
+    desc: 'Suivez votre chiffre d’affaires, vos bénéfices, vos marges et vos performances.'
+  },
+  {
+    icon: Users,
+    title: 'Multi-marketplace',
+    desc: 'Préparez vos annonces pour Vinted, Leboncoin, eBay et d’autres plateformes.'
+  },
+  {
+    icon: Sparkles,
+    title: 'Analytics',
+    desc: 'Identifiez les produits les plus rentables et optimisez votre activité.'
+  }
 ];
 
 const testimonials = [
