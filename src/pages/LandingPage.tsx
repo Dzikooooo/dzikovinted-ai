@@ -29,7 +29,7 @@ const features = [
   },
   {
     icon: Users,
-    title: 'Multi-marketplace',
+    title: 'Multi-marketplace (Bientôt)',
     desc: 'Publiez vos annonces sur plusieurs marketplaces depuis une seule interface.'
   },
   {
@@ -372,7 +372,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <section id="features" className="py-24 sm:py-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">Les modules de Dziko Resell OS</h2>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4">Tout ce dont vous avez besoin pour revendre.</h2>
             <p className="text-gray-400 max-w-xl mx-auto">Annonce IA, gestion de stock, suivi des ventes et analyse financière dans une seule plateforme.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -393,7 +393,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <section className="py-24 bg-[#181818]/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">Ils développent leur activité avec Dziko Resell OS</h2>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4">Les premiers revendeurs testent Dziko Resell OS</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t) => (
