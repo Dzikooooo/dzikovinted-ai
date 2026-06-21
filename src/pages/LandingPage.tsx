@@ -413,9 +413,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                     <p className="text-sm font-semibold">{t.name}</p>
                     <p className="text-xs text-gray-500">{t.role}</p>
                   </div>
-                  <div className="ml-auto flex gap-0.5">
-                    {Array.from({ length: t.stars }).map((_, i) => <Star key={i} className="w-3.5 h-3.5 fill-[#39FF14] text-[#39FF14]" />)}
-                  </div>
+                
                 </div>
               </div>
             ))}
