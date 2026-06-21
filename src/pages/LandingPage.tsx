@@ -265,7 +265,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </section>
 
       {/* Product Preview */}
-      <section className="pt-32 pb-0">
+      <section className="pt-20 pb-0">
         <div className="max-w-6xl mx-auto px-4">
 
           <div className="text-center mb-16">
