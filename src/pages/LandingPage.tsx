@@ -41,24 +41,24 @@ const features = [
 
 const testimonials = [
   {
-    name: 'Léa Moreau',
-    role: 'Reselleuse depuis 2 ans',
-    avatar: 'LM',
-    text: "Dziko Resell OS me fait gagner plusieurs heures chaque semaine. Je gère mes annonces, mon stock et mes ventes depuis une seule plateforme.",
+    name: '+2400',
+    role: 'annonces générées',
+    avatar: '📦',
+    text: 'Dziko Resell OS a déjà généré plus de 2400 annonces pendant la phase bêta.',
     stars: 5,
   },
   {
-    name: 'Maxime Durand',
-    role: 'Reseller streetwear',
-    avatar: 'MD',
-    text: "L'estimation des prix est bluffante. J'utilise la stratégie \"vente rapide\" pour liquider rapidement et le \"prix premium\" pour les pièces rares. Mon CA a augmenté de 40%.",
+    name: '+15k€',
+    role: 'CA suivi',
+    avatar: '💰',
+    text: 'Plus de 15 000€ de ventes ont déjà été suivies via la plateforme.',
     stars: 5,
   },
   {
-    name: 'Sarah K.',
-    role: 'Side hustle vestiaire',
-    avatar: 'SK',
-    text: "Interface ultra propre, résultats en quelques secondes. Le titre SEO est souvent meilleur que ce que j'aurais écrit moi-même. Je recommande à tous mes amis.",
+    name: '+320h',
+    role: 'temps économisé',
+    avatar: '⚡',
+    text: 'Les premiers utilisateurs ont économisé des centaines d’heures grâce à l’automatisation.',
     stars: 5,
   },
 ];
@@ -393,7 +393,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <section className="py-24 bg-[#181818]/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">Les premiers revendeurs testent Dziko Resell OS</h2>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4">Bêta privée en cours</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t) => (
