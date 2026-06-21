@@ -396,6 +396,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <h2 className="text-3xl sm:text-4xl font-black mb-4">
   Les premiers résultats de la bêta
 </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto mb-12">
+  Les premiers revendeurs utilisent déjà Dziko Resell OS.
+  Les retours détaillés arriveront après la phase bêta.
+</p>
+
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((t) => (
