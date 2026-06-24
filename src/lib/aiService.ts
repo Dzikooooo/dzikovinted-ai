@@ -15,14 +15,10 @@ async function blobUrlToBase64(blobUrl: string): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
-
 export async function analyzeWithAI(
   imageUrls: string[],
-  openaiKey?: string
+  geminiKey?: string
 ): Promise<GeneratedListing> {
-  const base64Images = await Promise.all(
-    imageUrls.map((url) => blobUrlToBase64(url))
-  );
 
   console.log('Uploaded images:', base64Images.length, 'images converted to base64');
 
@@ -31,7 +27,7 @@ export async function analyzeWithAI(
   if (session) {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-     const response = await fetch(`${supabaseUrl}/functions/v1/analyze-clothing`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/hyper-handler`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -39,7 +35,7 @@ export async function analyzeWithAI(
         },
         body: JSON.stringify({
           image_urls: base64Images,
-          openai_key: openaiKey || undefined,
+         gemini_key: geminiKey || undefined,
         }),
       });
 
@@ -72,7 +68,7 @@ export async function analyzeWithAI(
       };
     } catch (err) {
       console.error('Edge function call failed:', err);
-      if (openaiKey) {
+     if (geminiKey) {
         throw err;
       }
      throw new Error("Analyse IA indisponible : la fonction Supabase a échoué.");
