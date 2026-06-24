@@ -10,9 +10,8 @@ const corsHeaders = {
 
 interface AnalyzeRequest {
   image_urls: string[];
-  openai_key?: string;
+  gemini_key?: string;
 }
-
 const SYSTEM_PROMPT = `
 Tu es un expert Vinted spécialisé dans l'analyse de vêtements d'occasion à partir de photos.
 
@@ -80,7 +79,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const body: AnalyzeRequest = await req.json();
-    const { image_urls, openai_key } = body;
+   const { image_urls, gemini_key } = body;
 
     if (!image_urls || !Array.isArray(image_urls) || image_urls.length === 0) {
       return new Response(
@@ -89,19 +88,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const apiKey = openai_key || Deno.env.get("OPENAI_API_KEY");
+  const apiKey = gemini_key || Deno.env.get("GEMINI_API_KEY");
 
     let listing;
 
     if (apiKey) {
-      console.log("Using OpenAI API key:", apiKey.slice(0, 8) + "...");
+     console.log("Using Gemini API key:", apiKey.slice(0, 8) + "...");
 
-      const imageContent = image_urls.map((url: string) => {
-        if (url.startsWith("data:")) {
-          return { type: "image_url", image_url: { url } };
-        }
-        return { type: "image_url", image_url: { url } };
-      });
+const imageContent = image_urls.map((url: string) => ({
+  inline_data: {
+    mime_type: "image/jpeg",
+    data: url.replace(/^data:image\/\w+;base64,/, ""),
+  },
+}));
 
       const messages = [
         { role: "system", content: SYSTEM_PROMPT },
@@ -176,11 +175,10 @@ if (!content) {
 
       listing = JSON.parse(content);
    } else {
-  return new Response(
-    JSON.stringify({ error: "OPENAI_API_KEY manquante. Impossible de générer une annonce réelle." }),
-    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
+ return new Response(
+  JSON.stringify({ error: "GEMINI_API_KEY manquante. Impossible de générer une annonce réelle." }),
+  { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+);
 
     return new Response(JSON.stringify({ listing }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
