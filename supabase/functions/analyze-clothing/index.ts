@@ -113,29 +113,57 @@ Deno.serve(async (req: Request) => {
           ],
         },
       ];
-
-      const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+const geminiRes = await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${Deno.env.get("GEMINI_API_KEY")}`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: messages[messages.length - 1].content,
+            },
+            ...image_urls.map((url: string) => ({
+              inline_data: {
+                mime_type: "image/jpeg",
+                data: url.replace(/^data:image\/\w+;base64,/, ""),
+              },
+            })),
+          ],
         },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages,
-          response_format: { type: "json_object" },
-          max_tokens: 1500,
-        }),
-      });
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        responseMimeType: "application/json",
+        maxOutputTokens: 1500,
+      },
+    }),
+  }
+);
 
-      if (!openaiRes.ok) {
-        const errText = await openaiRes.text();
-        console.error("OpenAI API error:", openaiRes.status, errText);
-        return new Response(
-          JSON.stringify({ error: `OpenAI API error (${openaiRes.status}): ${errText.slice(0, 200)}` }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+if (!geminiRes.ok) {
+  const errText = await geminiRes.text();
+  console.error("Gemini API error:", geminiRes.status, errText);
+  return new Response(
+    JSON.stringify({ error: `Gemini API error (${geminiRes.status}): ${errText.slice(0, 200)}` }),
+    { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+const data = await geminiRes.json();
+const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+if (!content) {
+  return new Response(
+    JSON.stringify({ error: "Empty response from Gemini" }),
+    { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 
       const data = await openaiRes.json();
       const content = data.choices?.[0]?.message?.content;
