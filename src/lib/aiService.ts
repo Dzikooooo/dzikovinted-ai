@@ -19,7 +19,9 @@ export async function analyzeWithAI(
   imageUrls: string[],
   geminiKey?: string
 ): Promise<GeneratedListing> {
-
+  const base64Images = await Promise.all(
+    imageUrls.map((url) => blobUrlToBase64(url))
+  );
   console.log('Uploaded images:', base64Images.length, 'images converted to base64');
 
   const { data: { session } } = await supabase.auth.getSession();
