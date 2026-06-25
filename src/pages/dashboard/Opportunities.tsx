@@ -10,7 +10,7 @@ export default function Opportunities() {
     loadProducts();
   }, []);
 
- async function loadProducts() {
+async function loadProducts() {
   setLoading(true);
 
   const { data, error } = await supabase
