@@ -173,10 +173,9 @@ async function scanNow() {
                     <p className="text-gray-500 text-sm">
                       {item.brand} · {item.category}
                     </p>
-
-                    <p className="text-[#39FF14] mt-3 font-semibold">
-                      {getBadge(item.score)}
-                    </p>
+<span className="inline-flex mt-3 bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14] text-xs font-bold px-2.5 py-1 rounded-full">
+  {getBadge(item.score)}
+</span>
                   </div>
 
                   <a
