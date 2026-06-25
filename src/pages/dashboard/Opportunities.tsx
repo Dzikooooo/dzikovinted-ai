@@ -47,7 +47,7 @@ async function scanNow() {
     profit: 43,
     roi: 134,
     score: 94,
-    vinted_url: "https://www.vinted.fr",
+    vinted_url: `https://www.vinted.fr/items/${Date.now()}`,
     status: "live",
   };
 
