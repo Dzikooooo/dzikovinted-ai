@@ -5,6 +5,7 @@ import type { DashboardPage, AppPage } from '../../lib/types';
 import DashboardHome from './DashboardHome';
 import GeneratorPage from './GeneratorPage';
 import HistoryPage from './HistoryPage';
+import StockPage from './StockPage';
 import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
@@ -16,6 +17,7 @@ interface DashboardLayoutProps {
 const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[] = [
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
+  { page: 'stock', icon: History, label: 'Stock' },
   { page: 'history', icon: History, label: 'Mes annonces' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
