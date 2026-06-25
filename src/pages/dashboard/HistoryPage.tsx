@@ -143,21 +143,23 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
                     <Sparkles className="w-4 h-4 text-[#39FF14]/70" />
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{l.title}</p>
-                  <p className="text-xs text-gray-500">{l.brand} &middot; {l.category?.split(' ')[0]} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {l.is_favorite && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />}
-                 <div className="text-right">
-  <p className="text-[10px] text-gray-500 uppercase tracking-wide">
-    Valeur estimée
+               <div className="flex-1 min-w-0">
+  <p className="text-sm font-medium truncate">{l.title}</p>
+
+  <p className="text-xs text-gray-500">
+    {l.brand} &middot; {l.category?.split(' ')[0]} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    })}
   </p>
-  <p className="text-sm font-bold text-[#39FF14]">
-    {l.price} €
-  </p>
+
+  <div className="mt-1">
+    <span className="inline-flex items-center rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 px-2 py-0.5 text-[10px] text-[#39FF14]">
+      En stock
+    </span>
+  </div>
 </div>
-                </div>
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={(e) => { e.stopPropagation(); toggleFavorite(l); }} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
                     {l.is_favorite ? <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" /> : <StarOff className="w-3.5 h-3.5 text-gray-600" />}
