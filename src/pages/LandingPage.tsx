@@ -44,7 +44,7 @@ const testimonials = [
     name: '+2400',
     role: 'annonces générées',
     avatar: '📦',
-    text: 'Dziko Resell OS a déjà généré plus de 2400 annonces pendant la phase bêta.',
+    text: 'Resell OS a déjà généré plus de 2400 annonces pendant la phase bêta.',
     stars: 5,
   },
   {
