@@ -3,6 +3,7 @@ export type DashboardPage =
   | 'home'
   | 'generator'
   | 'market'
+  | 'opportunities'
   | 'stock'
   | 'stats'
   | 'subscription'
