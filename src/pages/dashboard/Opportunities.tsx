@@ -12,16 +12,13 @@ export default function Opportunities() {
 async function loadProducts() {
   console.log("Je lance la requête");
 
+ async function loadProducts() {
   const { data, error } = await supabase
     .from("market_opportunities")
     .select("*")
     .order("roi", { ascending: false });
 
-  console.log("DATA =", data);
-  console.log("LONGUEUR =", data?.length);
-  console.log("ERROR =", error);
-
-  if (data) {
+  if (!error && data) {
     setProducts(data);
   }
 }
