@@ -74,14 +74,71 @@ export default function Opportunities() {
           </p>
         </div>
 
-        <button
-          onClick={scanNow}
-          disabled={loading}
-          className="bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50"
-        >
-          {loading ? <RefreshCw size={20} className="animate-spin" /> : <Search size={20} />}
-          {loading ? "Scan..." : "Scanner maintenant"}
-        </button>
+       <div className="flex items-center gap-3">
+
+  <div className="flex bg-[#171717] border border-white/10 rounded-xl overflow-hidden">
+
+    <button
+      onClick={() => setSortBy("score")}
+      className={`px-4 py-3 text-sm font-semibold transition ${
+        sortBy === "score"
+          ? "bg-[#39FF14] text-black"
+          : "text-gray-400 hover:text-white"
+      }`}
+    >
+      Score IA
+    </button>
+
+    <button
+      onClick={() => setSortBy("profit")}
+      className={`px-4 py-3 text-sm font-semibold transition ${
+        sortBy === "profit"
+          ? "bg-[#39FF14] text-black"
+          : "text-gray-400 hover:text-white"
+      }`}
+    >
+      Profit
+    </button>
+
+    <button
+      onClick={() => setSortBy("roi")}
+      className={`px-4 py-3 text-sm font-semibold transition ${
+        sortBy === "roi"
+          ? "bg-[#39FF14] text-black"
+          : "text-gray-400 hover:text-white"
+      }`}
+    >
+      ROI
+    </button>
+
+    <button
+      onClick={() => setSortBy("created_at")}
+      className={`px-4 py-3 text-sm font-semibold transition ${
+        sortBy === "created_at"
+          ? "bg-[#39FF14] text-black"
+          : "text-gray-400 hover:text-white"
+      }`}
+    >
+      Récent
+    </button>
+
+  </div>
+
+  <button
+    onClick={scanNow}
+    disabled={loading}
+    className="bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50 hover:bg-[#50ff30] transition"
+  >
+    {loading ? (
+      <RefreshCw size={20} className="animate-spin" />
+    ) : (
+      <Search size={20} />
+    )}
+
+    {loading ? "Scan..." : "Scanner maintenant"}
+  </button>
+
+</div>
       </div>
 
       <div className="space-y-4">
