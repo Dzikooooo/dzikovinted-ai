@@ -54,12 +54,11 @@ export default function Opportunities() {
       })
       .select();
 
-    if (data && data.length > 0) {
-      setProducts((prev) => [data[0], ...prev]);
-    }
+  if (data) {
+  await loadProducts();
+}
 
-    setLoading(false);
-  }
+setLoading(false);
 
   return (
     <div className="p-8">
