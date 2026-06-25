@@ -54,7 +54,7 @@ async function scanNow() {
   const { data: existing } = await supabase
     .from("market_opportunities")
     .select("id")
-    .eq("title", newProduct.title)
+ .eq("vinted_url", newProduct.vinted_url)
     .limit(1);
 
   if (existing && existing.length > 0) {
