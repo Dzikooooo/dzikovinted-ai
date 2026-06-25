@@ -10,32 +10,23 @@ export default function Opportunities() {
     loadProducts();
   }, []);
 
-  async function loadProducts() {
-    setLoading(true);
+ async function loadProducts() {
+  setLoading(true);
 
-    const { data, error } = await supabase
-      .from("market_opportunities")
-      .select("*")
-      .order("score", { ascending: false });
+  const { data, error } = await supabase
+    .from("market_opportunities")
+    .select("*")
+    .order("score", { ascending: false });
 
-    if (!error && data) {
-      setProducts(data);
-    }
+  console.log("LOAD DATA:", data);
+  console.log("LOAD ERROR:", error);
 
-    setLoading(false);
+  if (data) {
+    setProducts(data);
   }
 
-  const getBadge = (score: number) => {
-    if (score >= 95) return "🔥 Excellent";
-    if (score >= 85) return "🟢 Très bon";
-    if (score >= 70) return "🟡 Correct";
-    return "⚪ À surveiller";
-  };
-
-async function scanNow() {
-  console.log("SCAN START");
-
-  setLoading(true);
+  setLoading(false);
+}
 
   const { data, error } = await supabase
     .from("market_opportunities")
