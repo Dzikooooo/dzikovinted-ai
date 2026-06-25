@@ -35,10 +35,12 @@ const trends = [
   },
 ];
 
+import type { DashboardPage } from "../../lib/types";
+
 export default function Market({
-  onNavigate,
+  setActivePage,
 }: {
-  onNavigate: (page: any) => void;
+  setActivePage: React.Dispatch<React.SetStateAction<DashboardPage>>;
 }) {
   
   return (
