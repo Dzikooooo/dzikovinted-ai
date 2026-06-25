@@ -1,9 +1,9 @@
 export type Plan = 'free' | 'pro' | 'team';
 export type DashboardPage =
   | 'home'
+  | 'new-item'
   | 'generator'
   | 'stock'
-  | 'history'
   | 'stats'
   | 'subscription'
   | 'settings';
