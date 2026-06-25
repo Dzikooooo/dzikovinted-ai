@@ -66,13 +66,7 @@ const createDraft = async () => {
   setDraftId(data.id);
   setStep(2);
 };
-    const urls = Array.from(files)
-      .filter((file) => file.type.startsWith('image/'))
-      .slice(0, 4 - images.length)
-      .map((file) => URL.createObjectURL(file));
-
-    setImages((prev) => [...prev, ...urls].slice(0, 4));
-  };
+  
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
@@ -131,11 +125,11 @@ const createDraft = async () => {
 
             <div className="flex justify-end pt-2">
               <button
-                onClick={() => setStep(2)}
+                onClick={createDraft}
                 disabled={!purchasePrice}
                 className="flex items-center gap-2 bg-[#39FF14] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all disabled:opacity-40"
               >
-                Suivant
+                {saving ? 'Enregistrement...' : 'Suivant'}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
