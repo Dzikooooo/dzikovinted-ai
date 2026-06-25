@@ -153,8 +153,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   </span>
 </h1>
        <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-12">
-  Prenez une photo de votre article. Dziko Resell OS génère automatiquement
-  une annonce optimisée, estime le meilleur prix et met à jour votre stock en quelques secondes.
+ Prenez une photo de votre article. Resell OS génère automatiquement
+une annonce optimisée, estime le meilleur prix et met à jour votre stock en quelques secondes.
 </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
@@ -277,8 +277,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </h2>
             
   <p className="text-gray-400 max-w-3xl mx-auto">
-    Prenez une photo. Dziko Resell OS génère automatiquement
-    votre annonce optimisée, estime le meilleur prix et met à jour votre stock.
+Prenez une photo. Resell OS génère automatiquement
+votre annonce optimisée, estime le meilleur prix et met à jour votre stock.
   </p>
           </div>
 
