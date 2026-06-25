@@ -10,46 +10,54 @@ export default function Opportunities() {
     loadProducts();
   }, []);
 
-async function loadProducts() {
-  setLoading(true);
+  async function loadProducts() {
+    setLoading(true);
 
-  const { data, error } = await supabase
-    .from("market_opportunities")
-    .select("*")
-    .order("score", { ascending: false });
+    const { data } = await supabase
+      .from("market_opportunities")
+      .select("*")
+      .order("score", { ascending: false });
 
+    if (data) {
+      setProducts(data);
+    }
 
-
-  if (data) {
-    setProducts(data);
+    setLoading(false);
   }
 
-  setLoading(false);
-}
+  const getBadge = (score: number) => {
+    if (score >= 95) return "🔥 Excellent";
+    if (score >= 85) return "🟢 Très bon";
+    if (score >= 70) return "🟡 Correct";
+    return "⚪ À surveiller";
+  };
 
-  const { data, error } = await supabase
-    .from("market_opportunities")
-    .insert({
-      title: "Adidas Samba",
-      brand: "Adidas",
-      category: "Chaussures",
-      image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
-      price_found: 32,
-      market_price: 75,
-      profit: 43,
-      roi: 134,
-      score: 94,
-      vinted_url: "https://www.vinted.fr",
-      status: "live",
-    })
-    .select();
+  async function scanNow() {
+    setLoading(true);
 
- 
+    const { data } = await supabase
+      .from("market_opportunities")
+      .insert({
+        title: "Adidas Samba",
+        brand: "Adidas",
+        category: "Chaussures",
+        image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
+        price_found: 32,
+        market_price: 75,
+        profit: 43,
+        roi: 134,
+        score: 94,
+        vinted_url: "https://www.vinted.fr",
+        status: "live",
+      })
+      .select();
 
-  await loadProducts();
+    if (data && data.length > 0) {
+      setProducts((prev) => [data[0], ...prev]);
+    }
 
-  setLoading(false);
-}
+    setLoading(false);
+  }
 
   return (
     <div className="p-8">
@@ -64,7 +72,7 @@ async function loadProducts() {
         </div>
 
         <button
-         onClick={scanNow}
+          onClick={scanNow}
           disabled={loading}
           className="bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50"
         >
@@ -79,7 +87,7 @@ async function loadProducts() {
             key={item.id}
             className="bg-[#171717] rounded-2xl p-5 border border-white/5 hover:border-[#39FF14]/40 transition"
           >
-           <div className="flex flex-col lg:flex-row gap-5">
+            <div className="flex flex-col lg:flex-row gap-5">
               <div className="w-full lg:w-32 h-48 lg:h-32 rounded-2xl overflow-hidden bg-[#0A0A0A] border border-white/10 flex-shrink-0">
                 <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
               </div>
@@ -114,7 +122,7 @@ async function loadProducts() {
                   </a>
                 </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mt-8">
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mt-8">
                   <div>
                     <p className="text-gray-500 text-sm">Prix trouvé</p>
                     <h3 className="text-3xl font-bold">{item.price_found}€</h3>
