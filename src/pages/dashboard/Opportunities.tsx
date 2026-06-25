@@ -18,8 +18,7 @@ async function loadProducts() {
     .select("*")
     .order("score", { ascending: false });
 
-  console.log("LOAD DATA:", data);
-  console.log("LOAD ERROR:", error);
+
 
   if (data) {
     setProducts(data);
@@ -45,8 +44,7 @@ async function loadProducts() {
     })
     .select();
 
-  console.log("INSERT DATA:", data);
-  console.log("INSERT ERROR:", error);
+ 
 
   await loadProducts();
 
