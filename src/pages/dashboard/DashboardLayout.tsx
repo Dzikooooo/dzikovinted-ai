@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap, LayoutDashboard, Sparkles, History, BarChart2, CreditCard, Settings, LogOut, ChevronRight, X, Menu, Plus } from 'lucide-react';
+import { Zap, LayoutDashboard, Sparkles, History, BarChart2, CreditCard, Settings, LogOut, ChevronRight, X, Menu, Plus, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { DashboardPage, AppPage } from '../../lib/types';
 import DashboardHome from './DashboardHome';
@@ -10,6 +10,7 @@ import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
 import NewItemPage from './NewItemPage';
+import Market from './Market';
 interface DashboardLayoutProps {
   onNavigate: (page: AppPage) => void;
 }
