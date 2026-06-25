@@ -145,9 +145,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-        <button
+      <button
   onClick={() => setActivePage('new-item')}
-  className="hidden sm:flex items-center gap-2 bg-[#39FF14] text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#50ff30] transition-all hover:shadow-[0_0_20px_rgba(57,255,20,0.3)]"
+  className="hidden sm:flex items-center gap-2 bg-[#39FF14] text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#50ff30] transition-all"
 >
   <Plus className="w-4 h-4" />
   Nouvel article
