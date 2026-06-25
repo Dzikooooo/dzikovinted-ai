@@ -162,8 +162,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
        <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
   {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
   {activePage === 'generator' && <GeneratorPage />}
- {activePage === 'market' && (
-<Market setActivePage={setActivePage} />
+ {activePage === 'market' && <Market setActivePage={setActivePage} />}
 )}
   {activePage === 'opportunities' && <Opportunities />}
   {activePage === 'new-item' && <NewItemPage />}
