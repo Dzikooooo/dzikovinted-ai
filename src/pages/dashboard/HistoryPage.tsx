@@ -181,7 +181,7 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
             {selected ? (
               <div className="bg-[#181818] border border-white/5 rounded-2xl p-5 sticky top-4 space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-sm">Detail de l'annonce</h3>
+                  <h3 className="font-bold text-sm">Fiche stock</h3>
                   <div className="flex gap-1.5">
                     <button onClick={() => copyListing(selected)} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors" title="Copier tout">
                       {copiedAll ? <Check className="w-4 h-4 text-[#39FF14]" /> : <Copy className="w-4 h-4 text-gray-500" />}
@@ -210,11 +210,11 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
                 <p className="text-xs text-gray-500 leading-relaxed whitespace-pre-line">{selected.description}</p>
 
                 <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Recommande', val: `${selected.price} EUR`, color: 'text-[#39FF14]' },
-                    { label: 'Rapide', val: `${selected.quick_price} EUR`, color: 'text-orange-400' },
-                    { label: 'Premium', val: `${selected.premium_price} EUR`, color: 'text-blue-400' },
-                  ].map(({ label, val, color }) => (
+                 {[
+  { label: 'Valeur estimée', val: `${selected.price} EUR`, color: 'text-[#39FF14]' },
+  { label: 'Achat', val: `${selected.purchase_price ?? 0} EUR`, color: 'text-gray-300' },
+  { label: 'Marge prévue', val: `${Number(selected.price || 0) - Number(selected.purchase_price || 0)} EUR`, color: 'text-blue-400' },
+].map(
                     <div key={label} className="bg-[#0A0A0A] rounded-lg p-2.5 text-center border border-white/5">
                       <p className={`text-base font-black ${color}`}>{val}</p>
                       <p className="text-[9px] text-gray-600 mt-0.5">{label}</p>
