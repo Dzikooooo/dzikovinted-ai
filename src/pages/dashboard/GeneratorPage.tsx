@@ -426,9 +426,11 @@ export default function GeneratorPage() {
         </button>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-black mb-1">Annonce <span className="text-[#39FF14]">generee</span></h1>
-            <p className="text-gray-400 text-sm">Prete a copier sur Vinted</p>
-          </div>
+  <h1 className="text-2xl sm:text-3xl font-black mb-1">
+    Annonce <span className="text-[#39FF14]">prête</span>
+  </h1>
+  <p className="text-gray-400 text-sm">Optimisée pour Vinted</p>
+</div>
           <div className="flex gap-2 flex-wrap">
             <button onClick={handleCopyAll} className="flex items-center gap-2 border border-white/10 text-gray-300 font-medium px-4 py-2 rounded-xl hover:bg-white/5 transition-all text-sm">
               <Copy className="w-4 h-4" /> Copier tout
