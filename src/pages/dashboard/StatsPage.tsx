@@ -70,7 +70,7 @@ export default function StatsPage() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-black mb-2">Statistiques</h1>
-        <p className="text-gray-400 text-sm">Vue d'ensemble de ton activite de revente sur DzikoVinted.</p>
+        <p className="text-gray-400 text-sm">Vue d'ensemble de ton activite de revente sur Resell OS.</p>
       </div>
 
       {/* KPI cards */}
