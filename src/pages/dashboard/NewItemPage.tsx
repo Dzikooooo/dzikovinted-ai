@@ -218,7 +218,7 @@ const createDraft = async () => {
               Analyse IA bientôt connectée
             </button>
           </div>
-        )}
+            )}
       </div>
     </div>
   );
