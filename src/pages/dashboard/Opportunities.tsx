@@ -37,15 +37,17 @@ export default function Opportunities() {
 async function scanNow() {
   setLoading(true);
 
-  const res = await fetch("/api/scan-market", {
+  const { data, error } = await supabase.functions.invoke("scan-market", {
     method: "POST",
   });
 
-  const result = await res.json();
-  console.log("SCAN RESULT:", result);
+  if (error) {
+    console.error("SCAN ERROR:", error);
+  } else {
+    console.log("SCAN RESULT:", data);
+  }
 
   await loadProducts();
-
   setLoading(false);
 }
 
