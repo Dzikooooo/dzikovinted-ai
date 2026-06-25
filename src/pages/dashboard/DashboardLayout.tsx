@@ -128,9 +128,8 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
              onClick={() => setActivePage('new-item')}
               className="hidden sm:flex items-center gap-2 bg-[#39FF14] text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#50ff30] transition-all hover:shadow-[0_0_20px_rgba(57,255,20,0.3)]"
             >
-            <Plus className="w-4 h-4" />
+           <Plus className="w-4 h-4" />
 Nouvel article
-              Générer
             </button>
             <div className="w-8 h-8 rounded-full bg-[#39FF14]/10 flex items-center justify-center text-xs font-bold text-[#39FF14]">
               {(profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase()}
