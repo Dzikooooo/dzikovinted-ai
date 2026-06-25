@@ -15,14 +15,12 @@ interface DashboardLayoutProps {
   onNavigate: (page: AppPage) => void;
 }
 
-const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[] = [
+const navItems = [
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
+  { page: 'market', icon: TrendingUp, label: 'Marché' },
   { page: 'stock', icon: History, label: 'Stock' },
-  { page: 'stats', icon: BarChart2, label: 'Statistiques' },
-  { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
-  { page: 'settings', icon: Settings, label: 'Paramètres' },
-  { page: 'new-item', icon: Plus, label: 'Nouvel article' },
+  ...
 ];
 
 export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
@@ -144,6 +142,7 @@ Nouvel article
         <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
           {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
           {activePage === 'generator' && <GeneratorPage />}
+          {activePage === 'market' && <Market />}
           {activePage === 'new-item' && <NewItemPage />}
          {activePage === 'stock' && <StockPage />}
           {activePage === 'stats' && <StatsPage />}
