@@ -32,6 +32,28 @@ export default function Opportunities() {
     return "⚪ À surveiller";
   };
 
+  async function scanNow() {
+  setLoading(true);
+
+  await supabase.from("market_opportunities").insert({
+    title: "Adidas Samba",
+    brand: "Adidas",
+    category: "Chaussures",
+    image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
+    price_found: 32,
+    market_price: 75,
+    profit: 43,
+    roi: 134,
+    score: 94,
+    vinted_url: "https://www.vinted.fr",
+    status: "live",
+  });
+
+  await loadProducts();
+
+  setLoading(false);
+}
+  
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-10">
@@ -45,7 +67,7 @@ export default function Opportunities() {
         </div>
 
         <button
-          onClick={loadProducts}
+         onClick={scanNow}
           disabled={loading}
           className="bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50"
         >
