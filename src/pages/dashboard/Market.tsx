@@ -108,17 +108,7 @@ export default function Market({
           <div>✅ IA qui prédit les prochaines tendances</div>
         </div>
 
-       <a
-  href="#opportunities"
-  onClick={(e) => {
-    e.preventDefault();
-    setActivePage("opportunities");
-  }}
-  className="mt-8 bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold inline-flex items-center gap-2 hover:scale-105 transition"
->
-  Voir les opportunités
-  <ArrowUpRight size={20} />
-</a>
+
       </div>
     </div>
   );
