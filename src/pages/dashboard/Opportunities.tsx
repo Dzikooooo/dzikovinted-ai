@@ -32,28 +32,36 @@ export default function Opportunities() {
     return "⚪ À surveiller";
   };
 
-  async function scanNow() {
+async function scanNow() {
+  console.log("SCAN START");
+
   setLoading(true);
 
-  await supabase.from("market_opportunities").insert({
-    title: "Adidas Samba",
-    brand: "Adidas",
-    category: "Chaussures",
-    image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
-    price_found: 32,
-    market_price: 75,
-    profit: 43,
-    roi: 134,
-    score: 94,
-    vinted_url: "https://www.vinted.fr",
-    status: "live",
-  });
+  const { data, error } = await supabase
+    .from("market_opportunities")
+    .insert({
+      title: "Adidas Samba",
+      brand: "Adidas",
+      category: "Chaussures",
+      image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
+      price_found: 32,
+      market_price: 75,
+      profit: 43,
+      roi: 134,
+      score: 94,
+      vinted_url: "https://www.vinted.fr",
+      status: "live",
+    })
+    .select();
+
+  console.log("INSERT DATA:", data);
+  console.log("INSERT ERROR:", error);
 
   await loadProducts();
 
   setLoading(false);
 }
-  
+
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-10">
