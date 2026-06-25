@@ -37,36 +37,12 @@ export default function Opportunities() {
 async function scanNow() {
   setLoading(true);
 
-  const newProduct = {
-    title: "Adidas Samba",
-    brand: "Adidas",
-    category: "Chaussures",
-    image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
-    price_found: 32,
-    market_price: 75,
-    profit: 43,
-    roi: 134,
-    score: 94,
-    vinted_url: "https://www.vinted.fr/items/adidas-samba-demo",
-    status: "live",
-  };
-
-  const { data: existing } = await supabase
-    .from("market_opportunities")
-    .select("id")
-    .eq("vinted_url", newProduct.vinted_url)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    await supabase
-      .from("market_opportunities")
-      .update(newProduct)
-      .eq("id", existing[0].id);
-  } else {
-    await supabase.from("market_opportunities").insert(newProduct);
-  }
+  await fetch("/api/scan-market", {
+    method: "POST",
+  });
 
   await loadProducts();
+
   setLoading(false);
 }
 
