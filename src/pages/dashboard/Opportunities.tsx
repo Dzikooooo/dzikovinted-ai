@@ -37,9 +37,12 @@ export default function Opportunities() {
 async function scanNow() {
   setLoading(true);
 
-  await fetch("/api/scan-market", {
+  const res = await fetch("/api/scan-market", {
     method: "POST",
   });
+
+  const result = await res.json();
+  console.log("SCAN RESULT:", result);
 
   await loadProducts();
 
