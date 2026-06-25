@@ -35,7 +35,11 @@ const trends = [
   },
 ];
 
-export default function Market() {
+export default function Market({
+  onNavigate,
+}: {
+  onNavigate: (page: any) => void;
+}) {
   return (
     <div className="p-8 space-y-8">
 
@@ -176,10 +180,13 @@ export default function Market() {
 
         </div>
 
-        <button className="mt-8 bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition">
-          Voir les opportunités
-          <ArrowUpRight size={20}/>
-        </button>
+       <button
+  onClick={() => onNavigate("opportunities")}
+  className="mt-8 bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition"
+>
+  Voir les opportunités
+  <ArrowUpRight size={20} />
+</button>
 
       </div>
 
