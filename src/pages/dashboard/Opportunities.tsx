@@ -6,9 +6,13 @@ export default function Opportunities() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [sortBy, setSortBy] = useState<
+    "score" | "profit" | "roi" | "created_at"
+  >("score");
+
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [sortBy]);
 
   async function loadProducts() {
     setLoading(true);
@@ -16,7 +20,7 @@ export default function Opportunities() {
     const { data } = await supabase
       .from("market_opportunities")
       .select("*")
-     .order("created_at", { ascending: false });
+      .order(sortBy, { ascending: false });
 
     if (data) {
       setProducts(data);
@@ -24,7 +28,6 @@ export default function Opportunities() {
 
     setLoading(false);
   }
-
   const getBadge = (score: number) => {
     if (score >= 95) return "🔥 Excellent";
     if (score >= 85) return "🟢 Très bon";
