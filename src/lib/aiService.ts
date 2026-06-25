@@ -65,7 +65,14 @@ export async function analyzeWithAI(
         price: Number(listing.price) || 0,
         quick_price: Number(listing.quick_price) || 0,
         premium_price: Number(listing.premium_price) || 0,
-        keywords: Array.isArray(listing.keywords) ? listing.keywords : [],
+       keywords: Array.isArray(listing.keywords)
+  ? listing.keywords
+      .map((k: string) => k.trim().toLowerCase())
+      .filter((k: string) => !/^taille\s*[xsml0-9]+$/i.test(k))
+      .filter((k: string) => !/^taille\s*(xl|xxl|xxxl)$/i.test(k))
+      .filter((k: string) => !["xs", "s", "m", "l", "xl", "xxl", "xxxl"].includes(k))
+      .filter((k: string, i: number, arr: string[]) => arr.indexOf(k) === i)
+  : [],
         vinted_filters: Array.isArray(listing.vinted_filters) ? listing.vinted_filters : [],
       };
     } catch (err) {
