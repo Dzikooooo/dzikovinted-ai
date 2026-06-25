@@ -163,7 +163,7 @@ Nouvel article
   {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
   {activePage === 'generator' && <GeneratorPage />}
  {activePage === 'market' && (
-  <Market onNavigate={(page) => setActivePage(page as DashboardPage)} />
+<Market setActivePage={setActivePage} />
 )}
   {activePage === 'opportunities' && <Opportunities />}
   {activePage === 'new-item' && <NewItemPage />}
