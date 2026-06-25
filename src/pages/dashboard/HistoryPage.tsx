@@ -75,7 +75,9 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black mb-1">Mes <span className="text-[#39FF14]">annonces</span></h1>
+         <h1 className="text-2xl sm:text-3xl font-black mb-1">
+  Mon <span className="text-[#39FF14]">stock</span>
+</h1>
           <p className="text-gray-400 text-sm">{listings.length} annonce{listings.length > 1 ? 's' : ''} sauvegardee{listings.length > 1 ? 's' : ''} &middot; {favCount} favori{favCount > 1 ? 's' : ''}</p>
         </div>
       </div>
@@ -112,9 +114,19 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
       ) : filtered.length === 0 ? (
         <div className="bg-[#181818] border border-white/5 border-dashed rounded-2xl p-16 text-center">
           <Sparkles className="w-10 h-10 text-gray-700 mx-auto mb-4" />
-          <p className="text-gray-400 font-semibold mb-2">{listings.length === 0 ? 'Aucune annonce sauvegardee' : 'Aucun resultat'}</p>
-          <p className="text-sm text-gray-600 mb-4">{listings.length === 0 ? 'Genere ta premiere annonce !' : 'Essaie un autre filtre.'}</p>
-          {listings.length === 0 && <button onClick={() => onNavigate('generator')} className="text-sm text-[#39FF14] hover:underline font-medium">Generer une annonce</button>}
+         <p className="text-gray-400 font-semibold mb-2">
+  {listings.length === 0 ? 'Aucun article en stock' : 'Aucun resultat'}
+</p>
+
+<p className="text-sm text-gray-600 mb-4">
+  {listings.length === 0 ? 'Ajoute ton premier article depuis le generateur.' : 'Essaie un autre filtre.'}
+</p>
+
+{listings.length === 0 && (
+  <button onClick={() => onNavigate('generator')} className="text-sm text-[#39FF14] hover:underline font-medium">
+    Ajouter un article
+  </button>
+)}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
