@@ -1,12 +1,13 @@
 export type Plan = 'free' | 'pro' | 'team';
 export type DashboardPage =
   | 'home'
-  | 'new-item'
   | 'generator'
+  | 'market'
   | 'stock'
   | 'stats'
   | 'subscription'
-  | 'settings';
+  | 'settings'
+  | 'new-item';
 export type AppPage = 'landing' | 'auth' | 'dashboard';
 export type AuthMode = 'login' | 'register' | 'forgot';
 
