@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import type { DashboardPage, AppPage } from '../../lib/types';
 import DashboardHome from './DashboardHome';
 import GeneratorPage from './GeneratorPage';
-import HistoryPage from './HistoryPage';
+
 import StockPage from './StockPage';
 import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
@@ -18,7 +18,6 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
   { page: 'stock', icon: History, label: 'Stock' },
-  { page: 'history', icon: History, label: 'Mes annonces' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
   { page: 'settings', icon: Settings, label: 'Paramètres' },
@@ -141,7 +140,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
         <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
           {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
           {activePage === 'generator' && <GeneratorPage />}
-          {activePage === 'history' && <HistoryPage onNavigate={setActivePage} />}
+         {activePage === 'stock' && <StockPage />}
           {activePage === 'stats' && <StatsPage />}
           {activePage === 'subscription' && <SubscriptionPage />}
           {activePage === 'settings' && <SettingsPage />}
