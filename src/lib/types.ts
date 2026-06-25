@@ -1,5 +1,12 @@
 export type Plan = 'free' | 'pro' | 'team';
-export type DashboardPage = 'home' | 'generator' | 'history' | 'stats' | 'subscription' | 'settings';
+export type DashboardPage =
+  | 'home'
+  | 'generator'
+  | 'stock'
+  | 'history'
+  | 'stats'
+  | 'subscription'
+  | 'settings';
 export type AppPage = 'landing' | 'auth' | 'dashboard';
 export type AuthMode = 'login' | 'register' | 'forgot';
 
@@ -21,24 +28,39 @@ export interface VintedFilter {
 export interface Listing {
   id: string;
   user_id: string;
+
   title: string;
   description: string;
+
   brand: string;
   category: string;
   color: string;
   size: string;
   material: string;
   condition: string;
+
   price: number;
   quick_price: number;
   premium_price: number;
+
   keywords: string[];
   vinted_filters: VintedFilter[];
   image_urls: string[];
+
+  purchase_price: number;
+  purchase_date: string | null;
+  purchase_location: string | null;
+
+  status: string;
+
+  sold_price: number | null;
+  sold_date: string | null;
+
+  fees: number;
+
   is_favorite: boolean;
   created_at: string;
 }
-
 export interface GeneratedListing {
   title: string;
   description: string;
