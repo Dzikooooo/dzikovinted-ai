@@ -397,7 +397,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   Les premiers résultats de la bêta
 </h2>
             <p className="text-gray-400 max-w-2xl mx-auto mb-12">
-  Les premiers revendeurs utilisent déjà Dziko Resell OS.
+  Les premiers revendeurs utilisent déjà Resell OS.
   Les retours détaillés arriveront après la phase bêta.
 </p>
 
@@ -482,7 +482,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-7 h-7 bg-[#39FF14] rounded-lg flex items-center justify-center"><Zap className="w-4 h-4 text-black" /></div>
-                <span className="font-black">Dziko<span className="text-[#39FF14]">Resell OS</span></span>
+                <span className="font-black">Resell<span className="text-[#39FF14]">OS</span></span>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">Tout ce dont un revendeur a besoin, dans un seul système.</p>
             </div>
@@ -504,12 +504,12 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <div>
               <h4 className="text-sm font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-sm text-gray-500">
-                <li className="flex items-center gap-2"><Mail className="w-3.5 h-3.5" /> hello@dzikovinted.fr</li>
+                <li className="flex items-center gap-2"><Mail className="w-3.5 h-3.5" /> alexisdzikowski14@gmail.com</li>
               </ul>
             </div>
           </div>
           <div className="border-t border-white/5 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-gray-600">© 2026 Dziko Resell OS. Tous droits réservés.</p>
+            <p className="text-xs text-gray-600">© 2026 Resell OS. Tous droits réservés.</p>
             <div className="flex gap-4">
               <a href="#" className="text-gray-600 hover:text-[#39FF14] transition-colors"><Twitter className="w-4 h-4" /></a>
               <a href="#" className="text-gray-600 hover:text-[#39FF14] transition-colors"><Instagram className="w-4 h-4" /></a>
