@@ -60,8 +60,8 @@ export default function Opportunities() {
             key={item.id}
             className="bg-[#171717] rounded-2xl p-5 border border-white/5 hover:border-[#39FF14]/40 transition"
           >
-            <div className="flex gap-5">
-              <div className="w-32 h-32 rounded-2xl overflow-hidden bg-[#0A0A0A] border border-white/10 flex-shrink-0">
+           <div className="flex flex-col lg:flex-row gap-5">
+              <div className="w-full lg:w-32 h-48 lg:h-32 rounded-2xl overflow-hidden bg-[#0A0A0A] border border-white/10 flex-shrink-0">
                 <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
               </div>
 
@@ -95,7 +95,7 @@ export default function Opportunities() {
                   </a>
                 </div>
 
-                <div className="grid grid-cols-5 gap-6 mt-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mt-8">
                   <div>
                     <p className="text-gray-500 text-sm">Prix trouvé</p>
                     <h3 className="text-3xl font-bold">{item.price_found}€</h3>
