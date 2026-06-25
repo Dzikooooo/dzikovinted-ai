@@ -36,13 +36,28 @@ export default function StockPage() {
   const stockValue = items.reduce((sum, item) => sum + Number(item.price || 0), 0);
   const investment = items.reduce((sum, item) => sum + Number(item.purchase_price || 0), 0);
   const potentialMargin = stockValue - investment;
+  const averageRoi = investment > 0 ? Math.round((potentialMargin / investment) * 100) : 0;
+
+  const soldItems = items.filter((item) => item.status === 'vendu');
+
+  const revenue = soldItems.reduce(
+    (sum, item) => sum + Number(item.sold_price || 0),
+    0
+  );
+
+  const profit = soldItems.reduce(
+    (sum, item) =>
+      sum +
+      (Number(item.sold_price || 0) -
+        Number(item.purchase_price || 0) -
+        Number(item.fees || 0)),
+    0
+  );
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-black mb-1">
-          Stock
-        </h1>
+        <h1 className="text-2xl sm:text-3xl font-black mb-1">Stock</h1>
         <p className="text-gray-400 text-sm">
           Gère tes articles, leur valeur et leur marge potentielle.
         </p>
@@ -53,6 +68,10 @@ export default function StockPage() {
         <StatCard label="Valeur du stock" value={`${stockValue} €`} />
         <StatCard label="Investissement" value={`${investment} €`} />
         <StatCard label="Marge potentielle" value={`${potentialMargin} €`} highlight />
+        <StatCard label="ROI moyen" value={`${averageRoi} %`} highlight />
+        <StatCard label="Articles vendus" value={soldItems.length.toString()} />
+        <StatCard label="Chiffre d'affaires" value={`${revenue} €`} />
+        <StatCard label="Bénéfice" value={`${profit} €`} highlight />
       </div>
 
       <div className="relative mb-6">
@@ -76,9 +95,16 @@ export default function StockPage() {
         <div className="grid grid-cols-1 gap-3">
           {filtered.map((item) => {
             const margin = Number(item.price || 0) - Number(item.purchase_price || 0);
+            const roi =
+              Number(item.purchase_price || 0) > 0
+                ? Math.round((margin / Number(item.purchase_price || 0)) * 100)
+                : 0;
 
             return (
-              <div key={item.id} className="bg-[#181818] border border-white/5 rounded-2xl p-4">
+              <div
+                key={item.id}
+                className="bg-[#181818] border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all"
+              >
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="font-semibold text-sm text-gray-100">{item.title}</p>
@@ -88,10 +114,11 @@ export default function StockPage() {
                     <p className="text-[10px] text-[#39FF14] mt-2">En stock</p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3 text-right">
+                  <div className="grid grid-cols-4 gap-3 text-right">
                     <MiniValue label="Valeur" value={`${item.price ?? 0} €`} />
                     <MiniValue label="Achat" value={`${item.purchase_price ?? 0} €`} />
                     <MiniValue label="Marge" value={`${margin} €`} highlight />
+                    <MiniValue label="ROI" value={`${roi} %`} highlight />
                   </div>
                 </div>
               </div>
