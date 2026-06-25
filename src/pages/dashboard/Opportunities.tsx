@@ -16,7 +16,7 @@ export default function Opportunities() {
     const { data } = await supabase
       .from("market_opportunities")
       .select("*")
-      .order("score", { ascending: false });
+     .order("created_at", { ascending: false });
 
     if (data) {
       setProducts(data);
