@@ -162,13 +162,8 @@ Nouvel article
        <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
   {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
   {activePage === 'generator' && <GeneratorPage />}
-  {activePage === 'market' && (
-  <Market
-    onNavigate={(page) => {
-      console.log("NAVIGATE TO", page);
-      setActivePage(page);
-    }}
-  />
+ {activePage === 'market' && (
+  <Market onNavigate={(page) => setActivePage(page as DashboardPage)} />
 )}
   {activePage === 'opportunities' && <Opportunities />}
   {activePage === 'new-item' && <NewItemPage />}
