@@ -34,31 +34,41 @@ export default function Opportunities() {
   if (score >= 70) return "Correct";
   return "À surveiller";
 };
-  async function scanNow() {
-    setLoading(true);
+async function scanNow() {
+  setLoading(true);
 
-    const { data } = await supabase
+  const newProduct = {
+    title: "Adidas Samba",
+    brand: "Adidas",
+    category: "Chaussures",
+    image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
+    price_found: 32,
+    market_price: 75,
+    profit: 43,
+    roi: 134,
+    score: 94,
+    vinted_url: "https://www.vinted.fr",
+    status: "live",
+  };
+
+  const { data: existing } = await supabase
+    .from("market_opportunities")
+    .select("id")
+    .eq("title", newProduct.title)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    await supabase
       .from("market_opportunities")
-      .insert({
-        title: "Adidas Samba",
-        brand: "Adidas",
-        category: "Chaussures",
-        image: "https://images.unsplash.com/photo-1549298916-b41d501d3772",
-        price_found: 32,
-        market_price: 75,
-        profit: 43,
-        roi: 134,
-        score: 94,
-        vinted_url: "https://www.vinted.fr",
-        status: "live",
-      })
-      .select();
+      .update(newProduct)
+      .eq("id", existing[0].id);
+  } else {
+    await supabase.from("market_opportunities").insert(newProduct);
+  }
 
-  if (data) {
   await loadProducts();
+  setLoading(false);
 }
-
-setLoading(false);
 
   return (
     <div className="p-8">
