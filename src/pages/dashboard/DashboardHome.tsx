@@ -52,7 +52,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           <h1 className="text-2xl sm:text-3xl font-black">
             {greeting()}, <span className="text-[#39FF14]">{firstName}</span>
           </h1>
-          <p className="text-gray-400 text-sm mt-1">Voici un apercu de ton activite DzikoVinted.</p>
+          <p className="text-gray-400 text-sm mt-1">Voici un apercu de ton activite Resell OS.</p>
         </div>
         <button
           onClick={() => onNavigate('generator')}
