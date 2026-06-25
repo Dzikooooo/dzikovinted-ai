@@ -1,5 +1,20 @@
 import { useState } from 'react';
-import { Zap, LayoutDashboard, Sparkles, History, BarChart2, CreditCard, Settings, LogOut, ChevronRight, X, Menu, Plus, TrendingUp } from 'lucide-react';
+import {
+  Zap,
+  LayoutDashboard,
+  Sparkles,
+  History,
+  BarChart2,
+  CreditCard,
+  Settings,
+  LogOut,
+  ChevronRight,
+  X,
+  Menu,
+  Plus,
+  TrendingUp,
+  Search
+} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { DashboardPage, AppPage } from '../../lib/types';
 import DashboardHome from './DashboardHome';
@@ -11,6 +26,7 @@ import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
 import NewItemPage from './NewItemPage';
 import Market from './Market';
+import Opportunities from './Opportunities';
 interface DashboardLayoutProps {
   onNavigate: (page: AppPage) => void;
 }
@@ -19,6 +35,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
   { page: 'market', icon: TrendingUp, label: 'Marché' },
+   { page: 'opportunities', icon: Search, label: 'Opportunités' },
   { page: 'stock', icon: History, label: 'Stock' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
@@ -143,14 +160,15 @@ Nouvel article
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
-          {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
-          {activePage === 'generator' && <GeneratorPage />}
-          {activePage === 'market' && <Market />}
-          {activePage === 'new-item' && <NewItemPage />}
-         {activePage === 'stock' && <StockPage />}
-          {activePage === 'stats' && <StatsPage />}
-          {activePage === 'subscription' && <SubscriptionPage />}
-          {activePage === 'settings' && <SettingsPage />}
+         {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
+{activePage === 'generator' && <GeneratorPage />}
+{activePage === 'market' && <Market />}
+{activePage === 'opportunities' && <Opportunities />}
+{activePage === 'new-item' && <NewItemPage />}
+{activePage === 'stock' && <StockPage />}
+{activePage === 'stats' && <StatsPage />}
+{activePage === 'subscription' && <SubscriptionPage />}
+{activePage === 'settings' && <SettingsPage />}
         </main>
       </div>
     </div>
