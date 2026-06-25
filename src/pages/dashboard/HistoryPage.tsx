@@ -130,47 +130,51 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-          {/* List */}
-          <div className="lg:col-span-3 space-y-2 max-h-[calc(100vh-16rem)] overflow-y-auto pr-1">
-            {filtered.map((l) => (
-              <div key={l.id} onClick={() => setSelected(l)} className={`group flex items-center gap-3 bg-[#181818] border rounded-xl px-4 py-3 cursor-pointer transition-all duration-200 ${selected?.id === l.id ? 'border-[#39FF14]/30 shadow-[0_0_20px_rgba(57,255,20,0.08)]' : 'border-white/5 hover:border-white/10'}`}>
-                {l.image_urls?.[0] ? (
-                  <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
-                    <img src={l.image_urls[0]} alt="" className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="w-11 h-11 bg-[#39FF14]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-4 h-4 text-[#39FF14]/70" />
-                  </div>
-                )}
-               <div className="flex-1 min-w-0">
-  <p className="text-sm font-medium truncate">{l.title}</p>
+        {/* List */}
+<div className="lg:col-span-3 space-y-2 max-h-[calc(100vh-16rem)] overflow-y-auto pr-1">
+  {filtered.map((l) => (
+    <div key={l.id} onClick={() => setSelected(l)} className={`group flex items-center gap-3 bg-[#181818] border rounded-xl px-4 py-3 cursor-pointer transition-all duration-200 ${selected?.id === l.id ? 'border-[#39FF14]/30 shadow-[0_0_20px_rgba(57,255,20,0.08)]' : 'border-white/5 hover:border-white/10'}`}>
+      {l.image_urls?.[0] ? (
+        <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+          <img src={l.image_urls[0]} alt="" className="w-full h-full object-cover" />
+        </div>
+      ) : (
+        <div className="w-11 h-11 bg-[#39FF14]/10 rounded-lg flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-4 h-4 text-[#39FF14]/70" />
+        </div>
+      )}
 
-  <p className="text-xs text-gray-500">
-    {l.brand} &middot; {l.category?.split(' ')[0]} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })}
-  </p>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{l.title}</p>
+        <p className="text-xs text-gray-500">
+          {l.brand} &middot; {l.category?.split(' ')[0]} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+        </p>
 
-  <div className="mt-1">
-    <span className="inline-flex items-center rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 px-2 py-0.5 text-[10px] text-[#39FF14]">
-      En stock
-    </span>
-  </div>
+        <div className="mt-1">
+          <span className="inline-flex items-center rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 px-2 py-0.5 text-[10px] text-[#39FF14]">
+            En stock
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-end gap-2">
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wide text-gray-500">Valeur estimée</p>
+          <p className="text-lg font-bold text-[#39FF14]">{l.price} €</p>
+        </div>
+
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={(e) => { e.stopPropagation(); toggleFavorite(l); }} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
+            {l.is_favorite ? <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" /> : <StarOff className="w-3.5 h-3.5 text-gray-600" />}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); deleteListing(l.id); }} className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors">
+            <Trash2 className="w-3.5 h-3.5 text-gray-600 hover:text-red-400" />
+          </button>
+        </div>
+      </div>
+    </div>
+  ))}
 </div>
-                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={(e) => { e.stopPropagation(); toggleFavorite(l); }} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
-                    {l.is_favorite ? <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" /> : <StarOff className="w-3.5 h-3.5 text-gray-600" />}
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); deleteListing(l.id); }} className="p-1.5 rounded-lg hover:bg-red-500/10 transition-colors">
-                    <Trash2 className="w-3.5 h-3.5 text-gray-600 hover:text-red-400" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
 
           {/* Detail panel */}
           <div className="lg:col-span-2">
