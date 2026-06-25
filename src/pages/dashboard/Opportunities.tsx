@@ -39,7 +39,6 @@ export default function Opportunities() {
           <h1 className="text-5xl font-black">
             Scanner <span className="text-[#39FF14]">Vinted</span>
           </h1>
-
           <p className="text-gray-400 mt-2">
             Les meilleures opportunités détectées en temps réel.
           </p>
@@ -63,11 +62,7 @@ export default function Opportunities() {
           >
             <div className="flex gap-5">
               <div className="w-32 h-32 rounded-2xl overflow-hidden bg-[#0A0A0A] border border-white/10 flex-shrink-0">
-                <img
-                  src={item.image}
-                  alt={item.title}
-                  className="w-full h-full object-cover"
-                />
+                <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
               </div>
 
               <div className="flex-1">
@@ -75,7 +70,6 @@ export default function Opportunities() {
                   <div>
                     <div className="flex items-center gap-3 mb-2">
                       <h2 className="text-2xl font-bold">{item.title}</h2>
-
                       <span className="bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14] text-xs font-bold px-2.5 py-1 rounded-full">
                         Score {item.score}/100
                       </span>
@@ -114,16 +108,12 @@ export default function Opportunities() {
 
                   <div>
                     <p className="text-gray-500 text-sm">Profit</p>
-                    <h3 className="text-[#39FF14] text-3xl font-black">
-                      +{item.profit}€
-                    </h3>
+                    <h3 className="text-[#39FF14] text-3xl font-black">+{item.profit}€</h3>
                   </div>
 
                   <div>
                     <p className="text-gray-500 text-sm">ROI</p>
-                    <h3 className="text-[#39FF14] text-3xl font-black">
-                      +{item.roi}%
-                    </h3>
+                    <h3 className="text-[#39FF14] text-3xl font-black">+{item.roi}%</h3>
                   </div>
 
                   <div>
