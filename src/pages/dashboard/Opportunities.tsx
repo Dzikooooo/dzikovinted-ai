@@ -28,13 +28,12 @@ export default function Opportunities() {
 
     setLoading(false);
   }
-  const getBadge = (score: number) => {
-    if (score >= 95) return "🔥 Excellent";
-    if (score >= 85) return "🟢 Très bon";
-    if (score >= 70) return "🟡 Correct";
-    return "⚪ À surveiller";
-  };
-
+ const getBadge = (score: number) => {
+  if (score >= 95) return "Excellent";
+  if (score >= 85) return "Très bon";
+  if (score >= 70) return "Correct";
+  return "À surveiller";
+};
   async function scanNow() {
     setLoading(true);
 
