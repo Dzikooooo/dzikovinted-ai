@@ -149,7 +149,14 @@ export default function HistoryPage({ onNavigate }: HistoryPageProps) {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {l.is_favorite && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />}
-                  <p className="text-sm font-bold text-[#39FF14]">{l.price} EUR</p>
+                 <div className="text-right">
+  <p className="text-[10px] text-gray-500 uppercase tracking-wide">
+    Valeur estimée
+  </p>
+  <p className="text-sm font-bold text-[#39FF14]">
+    {l.price} €
+  </p>
+</div>
                 </div>
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={(e) => { e.stopPropagation(); toggleFavorite(l); }} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors">
