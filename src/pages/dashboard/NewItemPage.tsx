@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, ArrowLeft, Upload, Check } from 'lucide-react';
-
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 type Step = 1 | 2 | 3;
 
 export default function NewItemPage() {
@@ -9,10 +10,62 @@ export default function NewItemPage() {
   const [purchaseLocation, setPurchaseLocation] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 10));
   const [images, setImages] = useState<string[]>([]);
+const { user } = useAuth();
+const [draftId, setDraftId] = useState<string | null>(null);
+const [saving, setSaving] = useState(false);
+  
+const handleFiles = (files: FileList | null) => {
+  if (!files) return;
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
+  const urls = Array.from(files)
+    .filter((file) => file.type.startsWith('image/'))
+    .slice(0, 4 - images.length)
+    .map((file) => URL.createObjectURL(file));
 
+  setImages((prev) => [...prev, ...urls].slice(0, 4));
+};   // <-- handleFiles se termine ici
+
+const createDraft = async () => {
+  if (!user || !purchasePrice) return;
+
+  setSaving(true);
+
+  const { data, error } = await supabase
+    .from('listings')
+    .insert({
+      user_id: user.id,
+      title: 'Article en cours',
+      description: '',
+      brand: 'À vérifier',
+      category: 'À vérifier',
+      color: 'À vérifier',
+      size: 'À vérifier',
+      material: 'À vérifier',
+      condition: 'Bon état',
+      price: 0,
+      quick_price: 0,
+      premium_price: 0,
+      keywords: [],
+      vinted_filters: [],
+      image_urls: [],
+      purchase_price: Number(purchasePrice),
+      purchase_location: purchaseLocation || null,
+      purchase_date: purchaseDate,
+      status: 'draft',
+    })
+    .select('id')
+    .single();
+
+  setSaving(false);
+
+  if (error) {
+    console.error('Draft creation error:', error);
+    return;
+  }
+
+  setDraftId(data.id);
+  setStep(2);
+};
     const urls = Array.from(files)
       .filter((file) => file.type.startsWith('image/'))
       .slice(0, 4 - images.length)
