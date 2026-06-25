@@ -48,15 +48,15 @@ export interface Listing {
   image_urls: string[];
 
   purchase_price: number;
-  purchase_date: string | null;
-  purchase_location: string | null;
+purchase_date: string | null;
+purchase_location: string | null;
 
-  status: string;
+status: 'draft' | 'en_stock' | 'vendu';
 
-  sold_price: number | null;
-  sold_date: string | null;
+sold_price: number | null;
+sold_date: string | null;
 
-  fees: number;
+fees: number;
 
   is_favorite: boolean;
   created_at: string;
