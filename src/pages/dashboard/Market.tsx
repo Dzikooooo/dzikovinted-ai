@@ -183,10 +183,7 @@ export default function Market({
         
 <button
   type="button"
-  onClick={() => {
-    console.log("click opportunités");
-    onNavigate("opportunities");
-  }}
+  onClick={() => onNavigate("opportunities")}
   className="mt-8 bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-105 transition"
 >
   Voir les opportunités
