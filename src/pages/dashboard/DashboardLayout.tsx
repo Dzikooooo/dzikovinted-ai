@@ -45,7 +45,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           <div className="w-8 h-8 bg-[#39FF14] rounded-lg flex items-center justify-center flex-shrink-0">
             <Zap className="w-5 h-5 text-black" />
           </div>
-          <span className="text-lg font-black">Dziko<span className="text-[#39FF14]">Vinted</span></span>
+         <span className="text-lg font-black">
+  <span className="text-[#39FF14]">Resell</span> OS
+</span>
         </button>
       </div>
 
