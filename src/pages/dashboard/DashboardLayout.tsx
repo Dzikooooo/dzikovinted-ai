@@ -159,16 +159,17 @@ Nouvel article
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
-         {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
-{activePage === 'market' && <Market onNavigate={setActivePage} />}
-{activePage === 'opportunities' && <Opportunities />}
-{activePage === 'new-item' && <NewItemPage />}
-{activePage === 'stock' && <StockPage />}
-{activePage === 'stats' && <StatsPage />}
-{activePage === 'subscription' && <SubscriptionPage />}
-{activePage === 'settings' && <SettingsPage />}
-        </main>
+       <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
+  {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
+  {activePage === 'generator' && <GeneratorPage />}
+  {activePage === 'market' && <Market onNavigate={setActivePage} />}
+  {activePage === 'opportunities' && <Opportunities />}
+  {activePage === 'new-item' && <NewItemPage />}
+  {activePage === 'stock' && <StockPage />}
+  {activePage === 'stats' && <StatsPage />}
+  {activePage === 'subscription' && <SubscriptionPage />}
+  {activePage === 'settings' && <SettingsPage />}
+</main>
       </div>
     </div>
   );
