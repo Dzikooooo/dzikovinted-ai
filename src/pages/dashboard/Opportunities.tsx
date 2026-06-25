@@ -47,14 +47,14 @@ async function scanNow() {
     profit: 43,
     roi: 134,
     score: 94,
-    vinted_url: `https://www.vinted.fr/items/${Date.now()}`,
+    vinted_url: "https://www.vinted.fr/items/adidas-samba-demo",
     status: "live",
   };
 
   const { data: existing } = await supabase
     .from("market_opportunities")
     .select("id")
- .eq("vinted_url", newProduct.vinted_url)
+    .eq("vinted_url", newProduct.vinted_url)
     .limit(1);
 
   if (existing && existing.length > 0) {
