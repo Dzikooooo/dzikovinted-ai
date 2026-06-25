@@ -102,8 +102,8 @@ function Navbar({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
           <div className="w-8 h-8 bg-[#39FF14] rounded-lg flex items-center justify-center">
             <Zap className="w-5 h-5 text-black" />
           </div>
-         <span className="text-xl font-black tracking-tight">
-  Dziko <span className="text-[#39FF14]">Resell OS</span>
+      <span className="text-xl font-black tracking-tight">
+  <span className="text-[#39FF14]">Resell</span> OS
 </span>
         </button>
         <div className="hidden sm:flex items-center gap-6">
