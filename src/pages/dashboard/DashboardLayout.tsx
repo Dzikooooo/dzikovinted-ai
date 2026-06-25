@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap, LayoutDashboard, Sparkles, History, BarChart2, CreditCard, Settings, LogOut, ChevronRight, X, Menu } from 'lucide-react';
+import { Zap, LayoutDashboard, Sparkles, History, BarChart2, CreditCard, Settings, LogOut, ChevronRight, X, Menu, Plus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { DashboardPage, AppPage } from '../../lib/types';
 import DashboardHome from './DashboardHome';
@@ -9,7 +9,7 @@ import StockPage from './StockPage';
 import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
-
+import NewItemPage from './NewItemPage';
 interface DashboardLayoutProps {
   onNavigate: (page: AppPage) => void;
 }
@@ -21,6 +21,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
   { page: 'settings', icon: Settings, label: 'Paramètres' },
+  { page: 'new-item', icon: Plus, label: 'Nouvel article' },
 ];
 
 export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
@@ -124,10 +125,11 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setActivePage('generator')}
+             onClick={() => setActivePage('new-item')}
               className="hidden sm:flex items-center gap-2 bg-[#39FF14] text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#50ff30] transition-all hover:shadow-[0_0_20px_rgba(57,255,20,0.3)]"
             >
-              <Sparkles className="w-4 h-4" />
+            <Plus className="w-4 h-4" />
+Nouvel article
               Générer
             </button>
             <div className="w-8 h-8 rounded-full bg-[#39FF14]/10 flex items-center justify-center text-xs font-bold text-[#39FF14]">
@@ -140,6 +142,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
         <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
           {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
           {activePage === 'generator' && <GeneratorPage />}
+          {activePage === 'new-item' && <NewItemPage />}
          {activePage === 'stock' && <StockPage />}
           {activePage === 'stats' && <StatsPage />}
           {activePage === 'subscription' && <SubscriptionPage />}
