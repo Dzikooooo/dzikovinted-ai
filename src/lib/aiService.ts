@@ -15,10 +15,21 @@ async function blobUrlToBase64(blobUrl: string): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
-export async function analyzeWithAI(
-  imageUrls: string[],
-  geminiKey?: string
-): Promise<GeneratedListing> {
+type AnalyzeOptions = {
+  imageUrls: string[];
+  platform: string;
+  photoStyle: string;
+  enhancePhoto: boolean;
+  geminiKey?: string;
+};
+
+export async function analyzeWithAI({
+  imageUrls,
+  platform,
+  photoStyle,
+  enhancePhoto,
+  geminiKey,
+}: AnalyzeOptions): Promise<GeneratedListing> {
   const base64Images = await Promise.all(
     imageUrls.map((url) => blobUrlToBase64(url))
   );
@@ -29,7 +40,7 @@ export async function analyzeWithAI(
   if (session) {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const response = await fetch(`${supabaseUrl}/functions/v1/hyper-handler`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/analyze-clothing`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -37,7 +48,10 @@ export async function analyzeWithAI(
         },
         body: JSON.stringify({
           image_urls: base64Images,
-         gemini_key: geminiKey || undefined,
+          gemini_key: geminiKey || undefined,
+          platform,
+          photo_style: photoStyle,
+          enhance_photo: enhancePhoto,
         }),
       });
 

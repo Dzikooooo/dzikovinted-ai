@@ -9,7 +9,11 @@ export type DashboardPage =
   | 'subscription'
   | 'settings'
   | 'new-item';
-export type AppPage = 'landing' | 'auth' | 'dashboard';
+  export type AppPage =
+  | "landing"
+  | "auth"
+  | "dashboard"
+  | "business";
 export type AuthMode = 'login' | 'register' | 'forgot';
 
 export interface Profile {

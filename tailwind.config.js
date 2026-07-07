@@ -5,16 +5,16 @@ export default {
     extend: {
       colors: {
         neon: {
-          50: '#f0fff0',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#39FF14',
-          600: '#22c55e',
-          700: '#16a34a',
-          800: '#15803d',
-          900: '#166534',
+          50: '#FFF9E6',
+          100: '#FFF1BF',
+          200: '#FFE680',
+          300: '#FFD84D',
+          400: '#FFCF24',
+          500: '#FFC400',
+          600: '#E5B000',
+          700: '#B88900',
+          800: '#8A6600',
+          900: '#5C4400',
         },
         dark: {
           50: '#1a1a1a',
@@ -45,10 +45,16 @@ export default {
       },
       keyframes: {
         'glow-pulse': {
-          '0%': { boxShadow: '0 0 5px rgba(57,255,20,0.3), 0 0 20px rgba(57,255,20,0.1)' },
-          '100%': { boxShadow: '0 0 20px rgba(57,255,20,0.6), 0 0 60px rgba(57,255,20,0.2)' },
+          '0%': {
+            boxShadow:
+              '0 0 5px rgba(255,196,0,0.25), 0 0 20px rgba(255,196,0,0.08)',
+          },
+          '100%': {
+            boxShadow:
+              '0 0 20px rgba(255,196,0,0.45), 0 0 60px rgba(255,196,0,0.18)',
+          },
         },
-        'float': {
+        float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-10px)' },
         },

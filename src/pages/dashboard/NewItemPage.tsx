@@ -95,7 +95,7 @@ const createDraft = async () => {
                 value={purchasePrice}
                 onChange={(e) => setPurchasePrice(e.target.value)}
                 placeholder="Ex : 8"
-                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#39FF14]/40"
+                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
               />
             </div>
 
@@ -107,7 +107,7 @@ const createDraft = async () => {
                 value={purchaseLocation}
                 onChange={(e) => setPurchaseLocation(e.target.value)}
                 placeholder="Ex : Emmaüs, friperie, vide-grenier..."
-                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#39FF14]/40"
+                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
               />
             </div>
 
@@ -119,7 +119,7 @@ const createDraft = async () => {
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#39FF14]/40"
+                className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
               />
             </div>
 
@@ -127,7 +127,7 @@ const createDraft = async () => {
               <button
                 onClick={createDraft}
                 disabled={!purchasePrice}
-                className="flex items-center gap-2 bg-[#39FF14] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all disabled:opacity-40"
+                className="flex items-center gap-2 bg-[#FFC400] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all disabled:opacity-40"
               >
                 {saving ? 'Enregistrement...' : 'Suivant'}
                 <ArrowRight className="w-4 h-4" />

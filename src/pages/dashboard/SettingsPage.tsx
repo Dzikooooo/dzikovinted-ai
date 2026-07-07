@@ -62,7 +62,7 @@ export default function SettingsPage() {
 
       <div className="flex gap-1 mb-8 overflow-x-auto pb-1">
         {tabs.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all duration-200 flex-shrink-0 ${activeTab === key ? 'bg-[#39FF14]/10 text-[#39FF14] font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}>
+          <button key={key} onClick={() => setActiveTab(key)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all duration-200 flex-shrink-0 ${activeTab === key ? 'bg-[#FFC400]/10 text-[#39FF14] font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}>
             <Icon className="w-3.5 h-3.5" />
             {label}
           </button>

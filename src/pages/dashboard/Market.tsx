@@ -25,9 +25,9 @@ export default function Market({
     <div className="p-8 space-y-8">
       <div>
         <div className="flex items-center gap-3 mb-2">
-          <TrendingUp className="w-8 h-8 text-[#39FF14]" />
+          <TrendingUp className="w-8 h-8 text-[#FFC400]" />
           <h1 className="text-4xl font-black">
-            Marché <span className="text-[#39FF14]">Vinted</span>
+            Marché <span className="text-[#FFC400]">Vinted</span>
           </h1>
         </div>
         <p className="text-gray-400">
@@ -37,25 +37,25 @@ export default function Market({
 
       <div className="grid lg:grid-cols-4 gap-6">
         <div className="bg-[#151515] rounded-2xl p-6 border border-white/5">
-          <Flame className="text-[#39FF14] mb-3" />
+          <Flame className="text-[#FFC400] mb-3" />
           <div className="text-3xl font-black">24</div>
           <p className="text-gray-400">Produits tendance</p>
         </div>
 
         <div className="bg-[#151515] rounded-2xl p-6 border border-white/5">
-          <Euro className="text-[#39FF14] mb-3" />
+          <Euro className="text-[#FFC400] mb-3" />
           <div className="text-3xl font-black">67€</div>
           <p className="text-gray-400">Prix moyen gagnant</p>
         </div>
 
         <div className="bg-[#151515] rounded-2xl p-6 border border-white/5">
-          <Activity className="text-[#39FF14] mb-3" />
+          <Activity className="text-[#FFC400] mb-3" />
           <div className="text-3xl font-black">+84%</div>
           <p className="text-gray-400">Demande moyenne</p>
         </div>
 
         <div className="bg-[#151515] rounded-2xl p-6 border border-white/5">
-          <Eye className="text-[#39FF14] mb-3" />
+          <Eye className="text-[#FFC400] mb-3" />
           <div className="text-3xl font-black">Live</div>
           <p className="text-gray-400">Marché surveillé</p>
         </div>
@@ -74,8 +74,8 @@ export default function Market({
               className="flex items-center justify-between p-6 hover:bg-white/[0.02] transition"
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-[#39FF14]/10 flex items-center justify-center">
-                  <Shirt className="text-[#39FF14]" />
+                <div className="w-12 h-12 rounded-xl bg-[#FFC400]/10 flex items-center justify-center">
+                  <Shirt className="text-[#FFC400]" />
                 </div>
                 <div>
                   <div className="font-semibold text-lg">{item.name}</div>
@@ -85,14 +85,14 @@ export default function Market({
 
               <div className="text-right">
                 <div className="font-bold text-xl">{item.price}</div>
-                <div className="text-[#39FF14] font-semibold">{item.sales}</div>
+                <div className="text-[#FFC400] font-semibold">{item.sales}</div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="bg-gradient-to-r from-[#39FF14]/10 to-transparent rounded-2xl border border-[#39FF14]/20 p-8">
+      <div className="bg-gradient-to-r from-[#FFC400]/10 to-transparent rounded-2xl border border-[#FFC400]/20 p-8">
         <h2 className="text-3xl font-black mb-3">🚀 Bientôt disponible</h2>
 
         <p className="text-gray-300 mb-6 max-w-2xl">

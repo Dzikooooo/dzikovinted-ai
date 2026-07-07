@@ -1,11 +1,49 @@
+:root {
+  --bg: #090909;
+  --surface: #171717;
+  --card: #1F1F1F;
+
+  --primary: #FFC400;
+  --primary-hover: #D89B00;
+
+  --success: #FFFFFF;
+  --danger: #FF4D4D;
+
+  --text: #FFFFFF;
+  --text-secondary: #A3A3A3;
+
+  --border: #2B2B2B;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ========================= */
+/* Scrollbar */
+/* ========================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #FFFFFF;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #E5E5E5;
+}
+
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: #39FF14 #111111;
+    scrollbar-color: #FFFFFF #0A0A0A;
   }
 
   body {
@@ -13,21 +51,32 @@
   }
 
   ::selection {
-    @apply bg-neon-500/30 text-white;
+    background: rgba(255,196,0,.25);
+    color: white;
   }
 }
 
 @layer components {
+
+  /* Glow jaune */
+
   .neon-glow {
-    box-shadow: 0 0 10px rgba(57,255,20,0.3), 0 0 40px rgba(57,255,20,0.1);
+    box-shadow:
+      0 0 10px rgba(255,196,0,.22),
+      0 0 40px rgba(255,196,0,.08);
   }
 
   .neon-glow-strong {
-    box-shadow: 0 0 20px rgba(57,255,20,0.5), 0 0 60px rgba(57,255,20,0.2), 0 0 100px rgba(57,255,20,0.1);
+    box-shadow:
+      0 0 20px rgba(255,196,0,.30),
+      0 0 60px rgba(255,196,0,.15),
+      0 0 100px rgba(255,196,0,.08);
   }
 
   .neon-text-glow {
-    text-shadow: 0 0 10px rgba(57,255,20,0.5), 0 0 40px rgba(57,255,20,0.2);
+    text-shadow:
+      0 0 12px rgba(255,196,0,.35),
+      0 0 40px rgba(255,196,0,.15);
   }
 
   .glass-card {
@@ -35,19 +84,31 @@
   }
 
   .btn-neon {
-    @apply bg-neon-500 text-dark-900 font-bold rounded-xl px-8 py-4
-           hover:bg-neon-400 transition-all duration-300
-           hover:shadow-[0_0_30px_rgba(57,255,20,0.4)]
-           active:scale-[0.98];
+    @apply bg-[#FFC400] text-black font-bold rounded-xl px-8 py-4 transition-all duration-300 active:scale-[0.98];
+
+    box-shadow: 0 0 25px rgba(255,196,0,.18);
+  }
+
+  .btn-neon:hover {
+    background: #D89B00;
+    box-shadow: 0 0 35px rgba(255,196,0,.28);
   }
 
   .btn-outline-neon {
-    @apply border-2 border-neon-500/50 text-neon-500 font-semibold rounded-xl px-6 py-3
-           hover:bg-neon-500/10 hover:border-neon-500 transition-all duration-300;
+    @apply border rounded-xl px-6 py-3 font-semibold transition-all duration-300;
+
+    border-color: rgba(255,196,0,.35);
+    color: #FFC400;
+  }
+
+  .btn-outline-neon:hover {
+    background: rgba(255,196,0,.08);
+    border-color: #FFC400;
   }
 
   .field-label {
-    @apply text-xs font-mono uppercase tracking-wider text-neon-500/70;
+    color: rgba(255,196,0,.7);
+    @apply text-xs font-mono uppercase tracking-wider;
   }
 
   .field-value {
@@ -55,15 +116,38 @@
   }
 
   .input-dark {
-    @apply w-full bg-dark-100 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200
-           placeholder:text-gray-600 focus:outline-none focus:border-neon-500/50
-           focus:ring-1 focus:ring-neon-500/20 transition-all duration-200;
+    @apply
+      w-full
+      bg-dark-100
+      border
+      border-white/10
+      rounded-xl
+      px-4
+      py-3
+      text-sm
+      text-gray-200
+      placeholder:text-gray-600
+      focus:outline-none
+      transition-all
+      duration-200;
+
+    border-color: rgba(255,255,255,.08);
+  }
+
+  .input-dark:focus {
+    border-color: rgba(255,196,0,.45);
+    box-shadow: 0 0 0 1px rgba(255,196,0,.15);
   }
 }
 
+/* ========================= */
+/* Background grille */
+/* ========================= */
+
 .grid-bg {
   background-image:
-    linear-gradient(rgba(57,255,20,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(57,255,20,0.03) 1px, transparent 1px);
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+
   background-size: 40px 40px;
 }

@@ -1,14 +1,17 @@
-import { useEffect, useState } from "react";
-import { Search, Clock, ArrowUpRight, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search, ArrowUpRight, RefreshCw } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+
+type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
+type CategoryFilter = "all" | "Sneakers" | "Jackets" | "Sweat" | "Fleece" | "Jeans" | "Shoes";
 
 export default function Opportunities() {
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const [sortBy, setSortBy] = useState<
-    "score" | "profit" | "roi" | "created_at"
-  >("score");
+  const [sortBy, setSortBy] = useState<SortBy>("score");
+  const [category, setCategory] = useState<CategoryFilter>("all");
+  const [minRoi, setMinRoi] = useState(false);
+  const [minProfit, setMinProfit] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -17,200 +20,303 @@ export default function Opportunities() {
   async function loadProducts() {
     setLoading(true);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("market_opportunities")
       .select("*")
       .order(sortBy, { ascending: false });
 
-    if (data) {
-      setProducts(data);
-    }
+    if (error) console.error(error);
+    if (data) setProducts(data);
 
     setLoading(false);
   }
- const getBadge = (score: number) => {
-  if (score >= 95) return "Excellent";
-  if (score >= 85) return "Très bon";
-  if (score >= 70) return "Correct";
-  return "À surveiller";
-};
-async function scanNow() {
-  setLoading(true);
 
-  const { data, error } = await supabase.functions.invoke("scan-market", {
-    method: "POST",
-  });
+  async function scanNow() {
+    setLoading(true);
 
-  if (error) {
-    console.error("SCAN ERROR:", error);
-  } else {
-    console.log("SCAN RESULT:", data);
+    const { data, error } = await supabase.functions.invoke("scan-market", {
+      method: "POST",
+    });
+
+    if (error) console.error("SCAN ERROR:", error);
+    else console.log("SCAN RESULT:", data);
+
+    await loadProducts();
+    setLoading(false);
   }
 
-  await loadProducts();
-  setLoading(false);
-}
+  const filteredProducts = useMemo(() => {
+    return products.filter((item) => {
+      if (category !== "all" && item.category !== category) return false;
+      if (minRoi && Number(item.roi) < 100) return false;
+      if (minProfit && Number(item.profit) < 40) return false;
+      return true;
+    });
+  }, [products, category, minRoi, minProfit]);
+
+  const stats = useMemo(() => {
+    const count = filteredProducts.length;
+    const avgProfit =
+      count === 0
+        ? 0
+        : filteredProducts.reduce((sum, item) => sum + Number(item.profit || 0), 0) / count;
+
+    const avgRoi =
+      count === 0
+        ? 0
+        : filteredProducts.reduce((sum, item) => sum + Number(item.roi || 0), 0) / count;
+
+    const bestProfit =
+      count === 0
+        ? 0
+        : Math.max(...filteredProducts.map((item) => Number(item.profit || 0)));
+
+    return {
+      count,
+      avgProfit: Math.round(avgProfit),
+      avgRoi: Math.round(avgRoi),
+      bestProfit: Math.round(bestProfit),
+    };
+  }, [filteredProducts]);
+
+  const getBadge = (roi: number) => {
+    if (roi >= 150) return "Exceptionnel";
+    if (roi >= 100) return "Excellent";
+    if (roi >= 80) return "Bon deal";
+    return "Correct";
+  };
+
+  const categories: CategoryFilter[] = [
+    "all",
+    "Sneakers",
+    "Jackets",
+    "Sweat",
+    "Fleece",
+    "Jeans",
+    "Shoes",
+  ];
 
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-10">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-8">
         <div>
           <h1 className="text-5xl font-black">
-            Scanner <span className="text-[#39FF14]">Vinted</span>
+            Scanner <span className="text-[#FFC400]">Vinted</span>
           </h1>
           <p className="text-gray-400 mt-2">
             Les meilleures opportunités détectées en temps réel.
           </p>
         </div>
 
-       <div className="flex items-center gap-3">
-
-  <div className="flex bg-[#171717] border border-white/10 rounded-xl overflow-hidden">
-
-    <button
-      onClick={() => setSortBy("score")}
-      className={`px-4 py-3 text-sm font-semibold transition ${
-        sortBy === "score"
-          ? "bg-[#39FF14] text-black"
-          : "text-gray-400 hover:text-white"
-      }`}
-    >
-      Score IA
-    </button>
-
-    <button
-      onClick={() => setSortBy("profit")}
-      className={`px-4 py-3 text-sm font-semibold transition ${
-        sortBy === "profit"
-          ? "bg-[#39FF14] text-black"
-          : "text-gray-400 hover:text-white"
-      }`}
-    >
-      Profit
-    </button>
-
-    <button
-      onClick={() => setSortBy("roi")}
-      className={`px-4 py-3 text-sm font-semibold transition ${
-        sortBy === "roi"
-          ? "bg-[#39FF14] text-black"
-          : "text-gray-400 hover:text-white"
-      }`}
-    >
-      ROI
-    </button>
-
-    <button
-      onClick={() => setSortBy("created_at")}
-      className={`px-4 py-3 text-sm font-semibold transition ${
-        sortBy === "created_at"
-          ? "bg-[#39FF14] text-black"
-          : "text-gray-400 hover:text-white"
-      }`}
-    >
-      Récent
-    </button>
-
-  </div>
-
-  <button
-    onClick={scanNow}
-    disabled={loading}
-    className="bg-[#39FF14] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center disabled:opacity-50 hover:bg-[#50ff30] transition"
-  >
-    {loading ? (
-      <RefreshCw size={20} className="animate-spin" />
-    ) : (
-      <Search size={20} />
-    )}
-
-    {loading ? "Scan..." : "Scanner maintenant"}
-  </button>
-
-</div>
+        <button
+          onClick={scanNow}
+          disabled={loading}
+          className="bg-[#FFC400] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center disabled:opacity-50 hover:bg-[#D89B00] transition"
+        >
+          {loading ? <RefreshCw size={20} className="animate-spin" /> : <Search size={20} />}
+          {loading ? "Scan..." : "Scanner maintenant"}
+        </button>
       </div>
 
-      <div className="space-y-4">
-        {products.map((item) => (
-          <div
-            key={item.id}
-            className="bg-[#171717] rounded-2xl p-5 border border-white/5 hover:border-[#39FF14]/40 transition"
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Opportunités" value={stats.count} />
+        <StatCard label="Profit moyen" value={`+${stats.avgProfit}€`} />
+        <StatCard label="ROI moyen" value={`+${stats.avgRoi}%`} />
+        <StatCard label="Meilleur deal" value={`+${stats.bestProfit}€`} />
+      </div>
+
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-wrap gap-2">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
+                category === cat
+                  ? "bg-[#FFC400] text-black border-[#FFC400]"
+                  : "bg-[#171717] text-gray-400 border-white/10 hover:text-white"
+              }`}
+            >
+              {cat === "all" ? "Toutes" : cat}
+            </button>
+          ))}
+
+          <button
+            onClick={() => setMinRoi(!minRoi)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
+              minRoi
+                ? "bg-[#FFC400] text-black border-[#FFC400]"
+                : "bg-[#171717] text-gray-400 border-white/10 hover:text-white"
+            }`}
           >
-            <div className="flex flex-col lg:flex-row gap-5">
-              <div className="w-full lg:w-32 h-48 lg:h-32 rounded-2xl overflow-hidden bg-[#0A0A0A] border border-white/10 flex-shrink-0">
-                <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+            ROI +100%
+          </button>
+
+          <button
+            onClick={() => setMinProfit(!minProfit)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
+              minProfit
+                ? "bg-[#FFC400] text-black border-[#FFC400]"
+                : "bg-[#171717] text-gray-400 border-white/10 hover:text-white"
+            }`}
+          >
+            Profit +40€
+          </button>
+        </div>
+
+        <div className="flex bg-[#171717] border border-white/10 rounded-xl overflow-hidden">
+          <SortButton label="Score" active={sortBy === "score"} onClick={() => setSortBy("score")} />
+          <SortButton label="Profit" active={sortBy === "profit"} onClick={() => setSortBy("profit")} />
+          <SortButton label="ROI" active={sortBy === "roi"} onClick={() => setSortBy("roi")} />
+          <SortButton label="Prix" active={sortBy === "price_found"} onClick={() => setSortBy("price_found")} />
+          <SortButton label="Récent" active={sortBy === "created_at"} onClick={() => setSortBy("created_at")} />
+        </div>
+      </div>
+
+      {filteredProducts.length === 0 ? (
+        <div className="bg-[#171717] border border-white/10 rounded-2xl p-10 text-center">
+          <h2 className="text-2xl font-black">Aucune opportunité</h2>
+          <p className="text-gray-500 mt-2">Lance un scan ou modifie tes filtres.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
+          {filteredProducts.map((item) => (
+            <div
+              key={item.id}
+              className="bg-[#171717] rounded-2xl border border-white/5 hover:border-[#FFC400]/40 transition overflow-hidden"
+            >
+              <div className="h-44 bg-[#0A0A0A] border-b border-white/10">
+                <img
+                  src={item.image}
+                  alt={item.title}
+                  className="w-full h-full object-cover"
+                />
               </div>
 
-              <div className="flex-1">
-                <div className="flex justify-between items-start gap-4">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <h2 className="text-2xl font-bold">{item.title}</h2>
-                      <span className="bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14] text-xs font-bold px-2.5 py-1 rounded-full">
-                        Score {item.score}/100
-                      </span>
-                    </div>
-
-                    <p className="text-gray-500 text-sm">
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                  <h2 className="text-base font-black line-clamp-2 min-h-[48px]">
+                      {item.title}
+                    </h2>
+                    <p className="text-gray-500 text-sm mt-1">
                       {item.brand} · {item.category}
                     </p>
-<span className="inline-flex mt-3 bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14] text-xs font-bold px-2.5 py-1 rounded-full">
-  {getBadge(item.score)}
+                  </div>
+
+                  <span className="bg-[#FFC400]/10 border border-[#FFC400]/20 text-[#FFC400] text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap">
+  ROI {Number(item.roi).toFixed(0)}%
 </span>
-                  </div>
-
-                  <a
-                    href={item.vinted_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="bg-[#39FF14] text-black px-5 py-2 rounded-xl font-bold flex items-center gap-2"
-                  >
-                    Voir
-                    <ArrowUpRight size={18} />
-                  </a>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-6 mt-8">
-                  <div>
-                    <p className="text-gray-500 text-sm">Prix trouvé</p>
-                    <h3 className="text-3xl font-bold">{item.price_found}€</h3>
-                  </div>
+                <span className="inline-flex mt-4 bg-[#FFC400]/10 border border-[#FFC400]/20 text-[#FFC400] text-xs font-bold px-2.5 py-1 rounded-full">
+                  {getBadge(Number(item.roi))}
+                </span>
 
-                  <div>
-                    <p className="text-gray-500 text-sm">Valeur marché</p>
-                    <h3 className="text-3xl font-bold">{item.market_price}€</h3>
-                  </div>
+                <div className="grid grid-cols-2 gap-3 mt-5">
+  <Metric
+    label="Prix"
+    value={`${Number(item.price_found).toFixed(0)}€`}
+  />
 
-                  <div>
-                    <p className="text-gray-500 text-sm">Profit</p>
-                    <h3 className="text-[#39FF14] text-3xl font-black">+{item.profit}€</h3>
-                  </div>
+  <Metric
+    label="Valeur"
+    value={`${Number(item.market_price).toFixed(0)}€`}
+  />
 
-                  <div>
-                    <p className="text-gray-500 text-sm">ROI</p>
-                    <h3 className="text-[#39FF14] text-3xl font-black">+{item.roi}%</h3>
-                  </div>
+  <Metric
+    label="Profit"
+    value={`+${Number(item.profit).toFixed(0)}€`}
+    green
+  />
 
-                  <div>
-                    <p className="text-gray-500 text-sm">Publié</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Clock size={16} />
-                      Live
-                    </div>
-                  </div>
-                </div>
+  <Metric
+    label="ROI"
+    value={`+${Number(item.roi).toFixed(0)}%`}
+    green
+  />
+
+  <Metric
+    label="Confiance"
+    value={`${item.confidence ?? "--"}%`}
+  />
+
+  <Metric
+    label="Source"
+    value={item.price_source ?? "IA"}
+  />
+</div>
 
                 <div className="mt-5 h-2 bg-white/10 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#39FF14] rounded-full"
-                    style={{ width: `${Math.min(item.score, 100)}%` }}
+                    className="h-full bg-[#FFC400] rounded-full"
+                    style={{ width: `${Math.min(Number(item.score || 0), 100)}%` }}
                   />
                 </div>
+
+                <a
+                  href={item.vinted_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-5 bg-[#FFC400] text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-[#D89B00] transition"
+                >
+                  Voir l’annonce
+                  <ArrowUpRight size={18} />
+                </a>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-[#171717] border border-white/10 rounded-2xl p-5">
+      <p className="text-gray-500 text-sm">{label}</p>
+      <h3 className="text-[#FFC400] text-3xl font-black mt-2">{value}</h3>
+    </div>
+  );
+}
+
+function SortButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-3 text-sm font-bold transition ${
+        active ? "bg-[#FFC400] text-black" : "text-gray-400 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  green = false,
+}: {
+  label: string;
+  value: string | number;
+  green?: boolean;
+}) {
+  return (
+    <div className="bg-[#0A0A0A] border border-white/5 rounded-xl p-3">
+      <p className="text-gray-500 text-xs">{label}</p>
+      <h3 className={`${green ? "text-[#FFC400]" : "text-white"} text-2xl font-black mt-1`}>
+      {value}
+      </h3>
     </div>
   );
 }

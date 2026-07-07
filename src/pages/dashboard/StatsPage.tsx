@@ -76,7 +76,7 @@ export default function StatsPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         {[
-          { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-[#39FF14]', bg: 'bg-[#39FF14]/10' },
+          { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-[#FFC400]', bg: 'bg-[#FFC400]/10' },
           { icon: DollarSign, label: 'Prix moyen', value: `${avgPrice.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
           { icon: TrendingUp, label: 'Revenus estimes', value: `${totalEstRevenue.toFixed(0)} EUR`, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
           { icon: BarChart2, label: 'Ce mois-ci', value: thisMonthCount.toString(), color: 'text-teal-400', bg: 'bg-teal-400/10' },
@@ -96,7 +96,7 @@ export default function StatsPage() {
         {/* Monthly chart */}
         <div className="bg-[#181818] border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-[#39FF14]" />
+            <BarChart2 className="w-4 h-4 text-[#FFC400]" />
             Annonces par mois
           </h2>
           {listings.length === 0 ? (
@@ -105,9 +105,9 @@ export default function StatsPage() {
             <div className="flex items-end gap-3 h-40">
               {last6Months.map(({ key, label, count }) => (
                 <div key={key} className="flex-1 flex flex-col items-center gap-2">
-                  <span className="text-xs font-mono text-[#39FF14]">{count > 0 ? count : ''}</span>
+                  <span className="text-xs font-mono text-[#FFC400]">{count > 0 ? count : ''}</span>
                   <div
-                    className="w-full rounded-t-lg transition-all duration-700 bg-gradient-to-t from-[#39FF14]/30 to-[#39FF14]/60 hover:from-[#39FF14]/40 hover:to-[#39FF14]/80"
+                    className="w-full rounded-t-lg transition-all duration-700 bg-gradient-to-t from-[#FFC400]/30 to-[#FFC400]/60 hover:from-[#FFC400]/40 hover:to-[#FFC400]/80"
                     style={{ height: `${(count / maxMonthCount) * 100}%`, minHeight: count > 0 ? '8px' : '2px' }}
                   />
                   <span className="text-[10px] text-gray-600 capitalize">{label}</span>
@@ -120,7 +120,7 @@ export default function StatsPage() {
         {/* Top brands */}
         <div className="bg-[#181818] border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <Tag className="w-4 h-4 text-[#39FF14]" />
+            <Tag className="w-4 h-4 text-[#FFC400]" />
             Marques les plus frequentes
           </h2>
           {topBrands.length === 0 ? (
@@ -140,7 +140,7 @@ export default function StatsPage() {
                       }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-[#39FF14] w-6 flex-shrink-0 text-right">{count}</span>
+                  <span className="text-xs font-mono text-[#FFC400] w-6 flex-shrink-0 text-right">{count}</span>
                 </div>
               ))}
             </div>
@@ -179,7 +179,7 @@ export default function StatsPage() {
             <div className="space-y-3">
               {[
                 { label: '< 30 EUR', count: listings.filter((l) => l.price < 30).length, color: 'from-gray-500/40 to-gray-500/60' },
-                { label: '30 - 75 EUR', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-[#39FF14]/40 to-[#39FF14]/70' },
+                { label: '30 - 75 EUR', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-[#FFC400]/40 to-[#FFC400]/70' },
                 { label: '75 - 150 EUR', count: listings.filter((l) => l.price >= 75 && l.price < 150).length, color: 'from-yellow-400/40 to-yellow-400/70' },
                 { label: '150+ EUR', count: listings.filter((l) => l.price >= 150).length, color: 'from-blue-400/40 to-blue-400/70' },
               ].map(({ label, count, color }) => (

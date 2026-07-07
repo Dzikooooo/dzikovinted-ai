@@ -101,7 +101,7 @@ export default function StockPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Rechercher un article..."
-          className="w-full bg-[#181818] border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-[#39FF14]/30"
+          className="w-full bg-[#181818] border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-[#FFC400]/30"
         />
       </div>
 
@@ -136,7 +136,7 @@ export default function StockPage() {
                     <p className="text-xs text-gray-500 mt-1">
                       {item.brand} · {item.category} · {item.size}
                     </p>
-                    <p className={`text-[10px] mt-2 ${isSold ? 'text-blue-400' : 'text-[#39FF14]'}`}>
+                    <p className={`text-[10px] mt-2 ${isSold ? 'text-blue-400' : 'text-[#FFC400]'}`}>
                       {isSold ? 'Vendu' : 'En stock'}
                     </p>
                   </div>
@@ -156,7 +156,7 @@ export default function StockPage() {
                           setSoldPrice(String(item.price ?? ''));
                           setFees('0');
                         }}
-                        className="text-xs font-semibold bg-[#39FF14] text-black px-3 py-2 rounded-xl hover:bg-[#50ff30] transition-all"
+                        className="text-xs font-semibold bg-[#FFC400] text-black px-3 py-2 rounded-xl hover:bg-[#50ff30] transition-all"
                       >
                         Marquer vendu
                       </button>
@@ -194,7 +194,7 @@ export default function StockPage() {
                   type="number"
                   value={soldPrice}
                   onChange={(e) => setSoldPrice(e.target.value)}
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#39FF14]/40"
+                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
                 />
               </div>
 
@@ -206,13 +206,13 @@ export default function StockPage() {
                   type="number"
                   value={fees}
                   onChange={(e) => setFees(e.target.value)}
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#39FF14]/40"
+                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
                 />
               </div>
 
               <button
                 onClick={markAsSold}
-                className="w-full bg-[#39FF14] text-black font-bold py-3 rounded-xl hover:bg-[#50ff30] transition-all"
+                className="w-full bg-[#FFC400] text-black font-bold py-3 rounded-xl hover:bg-[#50ff30] transition-all"
               >
                 Confirmer la vente
               </button>
@@ -228,7 +228,7 @@ function StatCard({ label, value, highlight }: { label: string; value: string; h
   return (
     <div className="bg-[#181818] border border-white/5 rounded-2xl p-4">
       <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">{label}</p>
-      <p className={`text-xl font-black ${highlight ? 'text-[#39FF14]' : 'text-gray-100'}`}>
+      <p className={`text-xl font-black ${highlight ? 'text-[#FFC400]' : 'text-gray-100'}`}>
         {value}
       </p>
     </div>
@@ -239,7 +239,7 @@ function MiniValue({ label, value, highlight }: { label: string; value: string; 
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wider text-gray-500">{label}</p>
-      <p className={`text-sm font-bold ${highlight ? 'text-[#39FF14]' : 'text-gray-200'}`}>
+      <p className={`text-sm font-bold ${highlight ? 'text-[#FFC400]' : 'text-gray-200'}`}>
         {value}
       </p>
     </div>

@@ -50,13 +50,13 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black">
-            {greeting()}, <span className="text-[#39FF14]">{firstName}</span>
+            {greeting()}, <span className="text-[#FFC400]">{firstName}</span>
           </h1>
           <p className="text-gray-400 text-sm mt-1">Voici un apercu de ton activite Resell OS.</p>
         </div>
         <button
           onClick={() => onNavigate('generator')}
-          className="flex items-center gap-2 bg-[#39FF14] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all hover:shadow-[0_0_20px_rgba(57,255,20,0.3)] text-sm"
+          className="flex items-center gap-2 bg-[#FFC400] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#D89B00] transition-all hover:shadow-[0_0_20px_rgba(255,196,0,0.25)] text-sm"
         >
           <Sparkles className="w-4 h-4" />
           Nouvelle annonce
@@ -68,13 +68,13 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         <div className="bg-gradient-to-r from-[#181818] to-[#181818] border border-white/5 rounded-2xl p-5 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-[#39FF14]/10 rounded-xl flex items-center justify-center">
-                <Zap className="w-6 h-6 text-[#39FF14]" />
+              <div className="w-12 h-12 bg-[#FFC400]/10 rounded-xl flex items-center justify-center">
+                <Zap className="w-6 h-6 text-[#FFC400]" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-200">Credits restants</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-3xl font-black text-[#39FF14]">{credits}</span>
+                  <span className="text-3xl font-black text-[#FFC400]">{credits}</span>
                   <span className="text-sm text-gray-500">/ {limit} ce mois</span>
                 </div>
               </div>
@@ -85,7 +85,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
                   className="h-full rounded-full transition-all duration-700 ease-out"
                   style={{
                     width: `${Math.min((credits / limit) * 100, 100)}%`,
-                    background: credits > 3 ? '#39FF14' : credits > 0 ? '#f59e0b' : '#ef4444',
+                    background: credits > 3 ? '#FFC400' : credits > 0 ? '#f59e0b' : '#ef4444',
                   }}
                 />
               </div>
@@ -108,8 +108,8 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
-          { icon: Sparkles, label: 'Annonces generees', value: loading ? '-' : listingsCount.toString(), color: 'text-[#39FF14]', bg: 'bg-[#39FF14]/10' },
-          { icon: CreditCard, label: 'Plan actuel', value: plan.toUpperCase(), color: plan === 'free' ? 'text-gray-400' : 'text-[#39FF14]', bg: plan === 'free' ? 'bg-gray-400/10' : 'bg-[#39FF14]/10' },
+          { icon: Sparkles, label: 'Annonces generees', value: loading ? '-' : listingsCount.toString(), color: 'text-[#FFC400]', bg: 'bg-[#FFC400]/10' },
+          { icon: CreditCard, label: 'Plan actuel', value: plan.toUpperCase(), color: plan === 'free' ? 'text-gray-400' : 'text-[#FFC400]', bg: plan === 'free' ? 'bg-gray-400/10' : 'bg-[#FFC400]/10' },
           { icon: Star, label: 'Favoris', value: loading ? '-' : favCount.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
           { icon: TrendingUp, label: 'Revenus estimes', value: loading ? '-' : `${recentListings.reduce((s, l) => s + (l.price ?? 0), 0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
@@ -126,7 +126,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
-          { icon: Sparkles, title: 'Generer une annonce', desc: 'Uploade des photos et genere.', page: 'generator' as DashboardPage, color: 'text-[#39FF14]', bg: 'bg-[#39FF14]/10', border: 'hover:border-[#39FF14]/20' },
+          { icon: Sparkles, title: 'Generer une annonce', desc: 'Uploade des photos et genere.', page: 'generator' as DashboardPage, color: 'text-[#FFC400]', bg: 'bg-[#FFC400]/10', border: 'hover:border-[#FFC400]/20' },
           { icon: History, title: 'Mes annonces', desc: 'Retrouve tes annonces sauvegardees.', page: 'history' as DashboardPage, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'hover:border-blue-400/20' },
           { icon: TrendingUp, title: 'Statistiques', desc: 'Suis tes performances et revenus.', page: 'stats' as DashboardPage, color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'hover:border-yellow-400/20' },
         ].map(({ icon: Icon, title, desc, page, color, bg, border }) => (
@@ -149,7 +149,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             Annonces recentes
           </h2>
           {listingsCount > 0 && (
-            <button onClick={() => onNavigate('history')} className="text-xs text-[#39FF14] hover:underline flex items-center gap-1">
+            <button onClick={() => onNavigate('history')} className="text-xs text-[#FFC400] hover:underline flex items-center gap-1">
               Voir tout <ArrowRight className="w-3 h-3" />
             </button>
           )}
@@ -161,7 +161,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             <Sparkles className="w-8 h-8 text-gray-700 mx-auto mb-3" />
             <p className="text-sm text-gray-500 mb-1">Aucune annonce encore</p>
             <p className="text-xs text-gray-600 mb-4">Lance ton premier generateur et vois la magie operer !</p>
-            <button onClick={() => onNavigate('generator')} className="text-sm text-[#39FF14] hover:underline font-medium">
+            <button onClick={() => onNavigate('generator')} className="text-sm text-[#FFC400] hover:underline font-medium">
               Generer maintenant
             </button>
           </div>
@@ -174,8 +174,8 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
                     <img src={l.image_urls[0]} alt="" className="w-full h-full object-cover" />
                   </div>
                 ) : (
-                  <div className="w-10 h-10 bg-[#39FF14]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-4 h-4 text-[#39FF14]/70" />
+                  <div className="w-10 h-10 bg-[#FFC400]/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Sparkles className="w-4 h-4 text-[#FFC400]/70" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
@@ -183,7 +183,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
                   <p className="text-xs text-gray-500">{l.brand} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</p>
                 </div>
                 {l.is_favorite && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />}
-                <p className="text-sm font-bold text-[#39FF14] flex-shrink-0">{l.price} EUR</p>
+                <p className="text-sm font-bold text-[#FFC400] flex-shrink-0">{l.price} EUR</p>
               </div>
             ))}
           </div>
