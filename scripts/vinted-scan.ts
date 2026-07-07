@@ -64,7 +64,7 @@ async function scanSearch(page: any, search: string) {
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
 
   let allItems: any[] = [];
