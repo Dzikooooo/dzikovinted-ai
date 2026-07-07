@@ -49,7 +49,23 @@ fournissent des faits bruts que tu dois relire et trier avant de les présenter.
      au moins une policy cohérente avec son usage réel (lecture publique,
      accès service_role only, etc.) ?
 
-4. Synthétise en un rapport court, groupé par sévérité :
+4. Signalements confirmés mais intentionnels (scaffolding pour une feature
+   future — à ne pas classer comme code mort, mais pas non plus des faux
+   positifs d'outil comme `AuthProvider` : l'outil a raison, c'est juste
+   volontaire) :
+   - Tables `subscriptions` et `accounts` (`audit:schema`, "jamais
+     référencées") : préparées pour une feature abonnement/multi-compte pas
+     encore branchée. Confirmé par l'utilisateur le 2026-07-07 — ne pas
+     supprimer, ne pas re-signaler comme oubli.
+   - Types `Plan`, `UsageRecord`, `Subscription` dans `src/lib/types.ts`
+     (`audit:deadcode`, "used in module" ou inutilisés hors module) : `Plan`
+     est utilisé en interne dans le fichier (`Profile.plan`, `Subscription.plan`,
+     `PLAN_LIMITS`) mais jamais importé ailleurs — normal, pas un problème.
+     `UsageRecord` et `Subscription` modélisent les futures tables du même nom
+     et ne sont pas encore consommés par l'UI — même scaffolding que ci-dessus,
+     ne pas supprimer.
+
+5. Synthétise en un rapport court, groupé par sévérité :
    - **À corriger** : incohérences confirmées (table/colonne manquante,
      doublon de migration réel, code mort confirmé).
    - **À surveiller** : signalements plausibles mais pas confirmés, à revoir
