@@ -4,7 +4,6 @@ import {
   Shirt,
   Euro,
   Activity,
-  ArrowUpRight,
   Eye,
 } from "lucide-react";
 import type { DashboardPage } from "../../lib/types";
@@ -17,7 +16,7 @@ const trends = [
 ];
 
 export default function Market({
-  setActivePage,
+  
 }: {
   setActivePage: React.Dispatch<React.SetStateAction<DashboardPage>>;
 }) {

@@ -1,5 +1,4 @@
 import type { GeneratedListing } from './types';
-import { analyzeClothing as mockAnalyze } from './mockAI';
 import { supabase } from './supabase';
 
 async function blobUrlToBase64(blobUrl: string): Promise<string> {

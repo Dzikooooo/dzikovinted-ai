@@ -11,7 +11,7 @@ export default function NewItemPage() {
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 10));
   const [images, setImages] = useState<string[]>([]);
 const { user } = useAuth();
-const [draftId, setDraftId] = useState<string | null>(null);
+const [, setDraftId] = useState<string | null>(null);
 const [saving, setSaving] = useState(false);
   
 const handleFiles = (files: FileList | null) => {

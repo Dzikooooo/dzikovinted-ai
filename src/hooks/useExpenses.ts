@@ -15,18 +15,15 @@ export function useExpenses() {
 
   async function loadExpenses() {
     setLoading(true);
-
     const { data, error } = await supabase
-      .from("business_expenses")
+      .from("expenses")
       .select("*")
       .order("expense_date", { ascending: false });
-
     if (error) {
       console.error(error);
       setLoading(false);
       return;
     }
-
     setExpenses(
       (data ?? []).map((expense) => ({
         id: expense.id,
@@ -36,7 +33,6 @@ export function useExpenses() {
         expenseDate: expense.expense_date,
       }))
     );
-
     setLoading(false);
   }
 
@@ -44,44 +40,26 @@ export function useExpenses() {
     loadExpenses();
   }, []);
 
-  async function addExpense(
-    category: string,
-    amount: number,
-    note: string
-  ) {
+  async function addExpense(category: string, amount: number, note: string) {
     const { data } = await supabase.auth.getUser();
-
     if (!data.user) return;
-
-    const { error } = await supabase.from("business_expenses").insert({
+    const { error } = await supabase.from("expenses").insert({
       user_id: data.user.id,
       category,
       amount,
       note,
     });
-
     if (error) {
       console.error(error);
       return;
     }
-
     await loadExpenses();
   }
 
   async function deleteExpense(id: string) {
-    await supabase
-      .from("business_expenses")
-      .delete()
-      .eq("id", id);
-
+    await supabase.from("expenses").delete().eq("id", id);
     await loadExpenses();
   }
 
-  return {
-    expenses,
-    loading,
-    addExpense,
-    deleteExpense,
-    reload: loadExpenses,
-  };
+  return { expenses, loading, addExpense, deleteExpense, reload: loadExpenses };
 }

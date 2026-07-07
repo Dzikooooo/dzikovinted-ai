@@ -127,7 +127,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
           { icon: Sparkles, title: 'Generer une annonce', desc: 'Uploade des photos et genere.', page: 'generator' as DashboardPage, color: 'text-[#FFC400]', bg: 'bg-[#FFC400]/10', border: 'hover:border-[#FFC400]/20' },
-          { icon: History, title: 'Mes annonces', desc: 'Retrouve tes annonces sauvegardees.', page: 'history' as DashboardPage, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'hover:border-blue-400/20' },
+          { icon: History, title: 'Mes annonces', desc: 'Retrouve tes annonces sauvegardees.', page: 'stock' as DashboardPage, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'hover:border-blue-400/20' },
           { icon: TrendingUp, title: 'Statistiques', desc: 'Suis tes performances et revenus.', page: 'stats' as DashboardPage, color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'hover:border-yellow-400/20' },
         ].map(({ icon: Icon, title, desc, page, color, bg, border }) => (
           <button key={title} onClick={() => onNavigate(page)} className={`bg-[#181818] border border-white/5 rounded-2xl p-5 text-left ${border} hover:-translate-y-0.5 transition-all duration-200 group`}>
@@ -149,7 +149,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             Annonces recentes
           </h2>
           {listingsCount > 0 && (
-            <button onClick={() => onNavigate('history')} className="text-xs text-[#FFC400] hover:underline flex items-center gap-1">
+            <button onClick={() => onNavigate('stock')} className="text-xs text-[#FFC400] hover:underline flex items-center gap-1">
               Voir tout <ArrowRight className="w-3 h-3" />
             </button>
           )}
