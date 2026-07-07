@@ -3,14 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
- "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview",
-  "typecheck": "tsc --noEmit -p tsconfig.app.json",
-  "scan": "tsx scripts/vinted-scan.ts"
-},
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "scan": "tsx scripts/vinted-scan.ts",
+    "audit:schema": "node scripts/audit-project.mjs",
+    "audit:deadcode": "ts-prune -p tsconfig.audit.json",
+    "audit": "npm run typecheck && npm run audit:schema && npm run audit:deadcode"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
     "dotenv": "^17.4.2",
@@ -31,6 +34,7 @@
     "playwright": "^1.61.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
+    "ts-prune": "^0.10.3",
     "tsx": "^4.22.4",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
