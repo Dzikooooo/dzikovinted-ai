@@ -85,6 +85,24 @@ export interface UsageRecord {
   analyses_count: number;
 }
 
+export interface MarketOpportunity {
+  id: string;
+  title: string;
+  brand: string | null;
+  category: string | null;
+  image: string | null;
+  price_found: number | null;
+  market_price: number | null;
+  profit: number | null;
+  roi: number | null;
+  score: number | null;
+  confidence: number | null;
+  price_source: string | null;
+  vinted_url: string | null;
+  status: string;
+  created_at: string;
+}
+
 export interface Subscription {
   id: string;
   user_id: string;

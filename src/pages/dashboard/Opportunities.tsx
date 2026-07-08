@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, ArrowUpRight, RefreshCw } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import type { MarketOpportunity } from "../../lib/types";
 
 type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
 type CategoryFilter = "all" | "Sneakers" | "Jackets" | "Sweat" | "Fleece" | "Jeans" | "Shoes";
 
 export default function Opportunities() {
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<MarketOpportunity[]>([]);
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("score");
   const [category, setCategory] = useState<CategoryFilter>("all");
@@ -179,7 +180,7 @@ export default function Opportunities() {
             >
               <div className="h-44 bg-dark-400 border-b border-white/10">
                 <img
-                  src={item.image}
+                  src={item.image ?? undefined}
                   alt={item.title}
                   className="w-full h-full object-cover"
                 />
@@ -247,7 +248,7 @@ export default function Opportunities() {
                 </div>
 
                 <a
-                  href={item.vinted_url}
+                  href={item.vinted_url ?? undefined}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-5 bg-neon-500 text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-neon-600 transition"
