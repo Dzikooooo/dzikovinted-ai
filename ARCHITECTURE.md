@@ -1,51 +1,208 @@
-# Architecture
+# Architecture — ResellOS
 
-## Structure du projet
+Document de référence unique pour reprendre le projet sans contexte perdu. Pour le détail du schéma de base de données, voir [DATABASE.md](DATABASE.md) ; pour l'état d'avancement et l'historique des audits, voir [ROADMAP.md](ROADMAP.md) ; pour le démarrage rapide, voir [README.md](README.md). Ce document ne duplique pas ce qui est déjà détaillé ailleurs — il y renvoie.
+
+## 1. Vue d'ensemble
+
+ResellOS est un SaaS mono-marketplace (Vinted) pour revendeurs : génération d'annonces par IA à partir de photos, détection d'opportunités d'achat par scan de marché, gestion de stock, comptabilité de base. Vinted n'expose aucune API publique — toute automatisation réelle passe soit par du scraping headless (le scan de marché aujourd'hui), soit, à terme, par une extension Chrome agissant dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr.
+
+C'est un **monolithe volontairement simple** : une SPA React sans router, un backend entièrement délégué à Supabase (pas de serveur applicatif à soi), un seul script Node externe au bundle pour le scraping. Le projet est encore petit — la plupart des décisions ci-dessous privilégient explicitement "pas d'abstraction avant qu'un second cas d'usage réel ne la justifie" plutôt que d'anticiper une croissance hypothétique.
+
+## 2. Organisation des dossiers
 
 ```
 src/
-  pages/              écrans, un fichier par route logique
-    dashboard/        écrans connectés (Dashboard, Stock, Depenses, Parametres...)
-      generator/       sous-etapes du generateur IA (Upload/Loading/Result/Edit)
-    landing/           sections de la landing page (Navbar, Hero, Pricing...)
-  components/ui/       composants reutilisables sans etat metier (StatCard, CopyBtn, FieldCard)
-  hooks/               logique Supabase reutilisable (useExpenses, useAccounts)
-  contexts/            AuthContext (session, profil, credits)
-  lib/                 client Supabase, types partages, service IA
-scripts/                scraping Vinted + moteur de prix (Node/Playwright, hors bundle frontend)
+  main.tsx              point d'entrée : monte <AuthProvider><App /></AuthProvider>
+  App.tsx                état de navigation racine (landing / auth / dashboard)
+  index.css               Tailwind + classes composants prêtes à l'emploi (.btn-neon, .glass-card...)
+
+  pages/
+    LandingPage.tsx        assemble les sections de landing/
+    AuthPage.tsx            login/register/mot de passe oublié, un seul composant, 3 modes
+    landing/                 sections de la page publique (Navbar, Hero, Features, Pricing, Testimonials, CTABanner, Footer, ProductPreview)
+    dashboard/
+      DashboardLayout.tsx     shell connecté : sidebar, topbar, routage interne par état (activePage)
+      DashboardHome.tsx        cockpit : métriques du jour/mois, alertes stock qui traine, raccourcis
+      GeneratorPage.tsx         orchestre le flow de génération IA en 4 etapes
+      generator/                 UploadStep, LoadingStep, ResultStep, EditStep — une etape = un composant
+      Opportunities.tsx         résultats du scanner de marché (lecture seule, alimenté par scripts/vinted-scan.ts)
+      StockPage.tsx              annonces en stock/vendues, marquer comme vendu
+      ExpensesPage.tsx           dépenses liées à l'activité
+      AccountingPage.tsx         CA, bénéfice, marge, ROI, TVA sur la marge, calculs URSSAF
+      VintedAccountPage.tsx      placeholder honnête pour la synchronisation extension Chrome (voir §8)
+      StatsPage.tsx               statistiques sur le catalogue et les ventes
+      SubscriptionPage.tsx       UI de plan/abonnement, aucune intégration Stripe réelle (voir §7)
+      SettingsPage.tsx            profil, mot de passe, comptes Vinted multiples, clé API, notifications, zone danger
+
+  components/ui/          composants réutilisables sans état métier propre (StatCard, CopyBtn, FieldCard)
+  hooks/                   logique Supabase réutilisable (useAccounts, useExpenses)
+  contexts/                AuthContext : session, profil, credits, actions d'authentification
+  lib/
+    supabase.ts              client Supabase (clé anon, protégé par RLS)
+    aiService.ts               appelle l'edge function analyze-clothing
+    types.ts                    tous les types partagés du frontend (Profile, Listing, MarketOpportunity...)
+
+scripts/                  hors bundle frontend, exécuté par Node/tsx
+  vinted-scan.ts             scraping Playwright + orchestration du scan
+  market-price.ts             calcul du prix de marché (médiane)
+  market-engine.ts            calcul profit/ROI/score à partir d'un item scrapé
+  types.ts                    types partagés entre les scripts (ScrapedItem, AnalyzedItem...)
+  audit-project.mjs            script d'audit schéma<->code (voir .claude/skills/project-audit/)
+
 supabase/
-  migrations/           schema SQL versionne
-  functions/             edge functions (analyze-clothing)
+  migrations/                schéma SQL versionné, source de vérité (voir DATABASE.md)
+  functions/analyze-clothing/  edge function Deno : reçoit des photos, appelle Gemini, retourne une annonce structurée
+
+.github/workflows/
+  scan-market.yml            cron toutes les 4h, lance npm run scan avec la clé service_role
 ```
 
-`src/components/` et `src/pages/*/`(sous-dossiers) sont volontairement plats : le projet est encore assez petit pour qu'une hiérarchie profonde n'apporte rien. Un composant rejoint `components/ui/` uniquement quand il est réellement utilisé à plus d'un endroit — ne pas y déplacer des composants à usage unique par anticipation.
+**Convention de dossier** : `components/ui/` et les sous-dossiers de `pages/` sont volontairement plats. Un composant ne rejoint `components/ui/` que lorsqu'il est réellement réutilisé à plus d'un endroit — ne pas y déplacer un composant à usage unique par anticipation. Une page dépasse ~250 lignes → c'est le signal pour la découper en sous-composants colocalisés (voir `generator/` et `landing/` comme modèle), pas pour introduire un dossier `shared/` générique.
 
-## Navigation
+## 3. Choix techniques
 
-Pas de router. `App.tsx` gère un état `page: 'landing' | 'auth' | 'dashboard'`, et `DashboardLayout.tsx` gère un second état `activePage: DashboardPage` pour les écrans internes. Conséquence assumée : pas d'URL par écran, pas de bouton retour navigateur, pas de lien profond partageable.
+| Choix | Alternative écartée | Pourquoi |
+|---|---|---|
+| Vite + React 18 + TypeScript strict | Next.js | Pas de besoin de SSR/SEO poussé pour une app derrière authentification ; Vite est plus simple et plus rapide en dev pour ce périmètre |
+| Pas de router (état React dans `App.tsx`/`DashboardLayout.tsx`) | react-router | Le projet n'a pas encore besoin d'URL par écran ni de deep-link. Limite assumée : pas de bouton retour navigateur, pas de lien partageable vers un écran précis. À réintroduire quand l'extension Chrome devra ouvrir ResellOS sur une annonce précise (voir ROADMAP.md Phase 2) |
+| Context React (`AuthContext`) | Redux/Zustand | Un seul état global (session/profil) ne justifie pas un state manager externe |
+| Supabase (Postgres + Auth + Edge Functions + Storage) | Backend custom (Node/Express) | Élimine un serveur applicatif entier à maintenir ; RLS déplace la logique d'autorisation dans la base plutôt que dans du code applicatif dupliqué |
+| Tailwind CSS + tokens sémantiques (`neon-*`, `dark-*`, `surface`) | CSS Modules / styled-components | Cohérence visuelle imposée par la config plutôt que par la discipline ; voir §9 |
+| Playwright (scraping) plutôt qu'API tierce | API Vinted publique, agrégateur eBay | Vinted n'a pas d'API publique ; eBay a été essayé comme source de prix de comparaison et bloque systématiquement le scraping automatisé (403) — abandonné au profit d'une médiane des prix Vinted eux-mêmes |
+| Cron GitHub Actions pour le scan | Cron Supabase / serveur dédié | Gratuit, déjà dans l'écosystème du repo, suffisant pour une fréquence de 4h |
+| Google Gemini pour l'analyse photo | OpenAI GPT-4 Vision | Choix historique du projet ; `SettingsPage.tsx` permet à l'utilisateur de fournir sa propre clé, mais le code/l'UI mentionnent encore "OpenAI API Key" par endroits — **incohérence connue à corriger**, l'edge function `analyze-clothing` appelle bien Gemini (voir §9) |
+| Pas de framework de tests | Vitest/Playwright Test | Aucun test automatisé n'existe à ce jour. Toute vérification passe par `typecheck`/`lint`/`build` + inspection manuelle en navigateur. Vrai manque, voir §10 |
 
-C'est une vraie limite si l'extension Chrome (Phase 2, voir [ROADMAP.md](ROADMAP.md)) doit un jour ouvrir ResellOS directement sur une annonce précise — à ce moment-là, introduire `react-router` devient justifié. Ne pas l'ajouter avant d'en avoir un besoin concret.
+## 4. Flux de données
 
-## Authentification
+### 4.1 Authentification
 
-`AuthContext` centralise `user`, `session`, `profile`, et les actions (`signIn`, `signUp`, `signOut`). Point d'attention historique : `signIn`/`signUp` mettent à jour `user`/`session` de façon synchrone dès la réponse Supabase, plutôt que de compter uniquement sur le listener asynchrone `onAuthStateChange` — un bug corrigé pendant l'audit de juillet 2026 faisait rebondir l'utilisateur vers l'écran de connexion juste après une authentification pourtant réussie, à cause de cette course entre navigation et mise à jour du contexte.
+```
+AuthPage → AuthContext.signIn/signUp → supabase.auth.*
+  → met à jour user/session de façon synchrone dès la réponse
+  → fetchProfile(userId) avec retry (le trigger handle_new_user() peut créer
+    le profil avec un léger délai après l'inscription)
+  → onAuthStateChange (listener asynchrone) prend le relais pour les
+    changements de session ultérieurs (refresh token, déconnexion depuis un
+    autre onglet...)
+```
 
-## Design system
+Point d'attention historique : compter uniquement sur le listener asynchrone créait une course avec la navigation post-login (l'utilisateur était renvoyé vers l'écran de connexion juste après une authentification pourtant réussie). D'où la mise à jour synchrone en plus du listener — ne pas la retirer sans comprendre ce piège.
 
-`tailwind.config.js` définit deux échelles de couleurs (`neon-*` pour la marque ambre, `dark-*` pour les fonds) plus deux tokens semantiques `surface`/`surface-alt` pour les fonds de carte. Toutes les pages sont censées consommer ces tokens (`bg-neon-500`, `bg-surface`) plutôt que des valeurs hex arbitraires (`bg-[#FFC400]`) — c'était la principale source d'incohérence visuelle avant l'audit de juillet 2026 (deux couleurs de marque différentes coexistaient, reliquat du rebranding DzikoVinted → ResellOS).
+### 4.2 Génération d'annonce par IA
 
-`src/index.css` contient aussi un jeu de classes composants tout faites (`.btn-neon`, `.glass-card`, `.input-dark`, `.neon-glow`...) qui utilisent déjà les bonnes couleurs mais ne sont pour l'instant utilisées par **aucune** page — chaque écran réimplémente son propre style en Tailwind brut. À utiliser en priorité pour tout nouveau composant plutôt que d'en écrire un de plus.
+```
+UploadStep (photos, style, retouche) → GeneratorPage (état du flow)
+  → LoadingStep → lib/aiService.ts::analyzeWithAI()
+    → convertit les blobs en base64
+    → POST supabase/functions/v1/analyze-clothing (JWT utilisateur en Authorization)
+      → edge function : vérifie l'utilisateur, appelle Gemini avec les photos
+      → retourne un GeneratedListing structuré (titre, description, prix, mots-clés...)
+  → ResultStep (aperçu) → EditStep (ajustements manuels)
+  → insert dans `listings` (status: 'draft' ou 'en_stock' selon l'action de l'utilisateur)
+```
 
-## Génération IA
+La clé Gemini peut être celle de l'utilisateur (passée dans le body, jamais stockée côté serveur) ou celle du serveur par défaut (`GEMINI_API_KEY` en variable d'environnement de l'edge function).
 
-`GeneratorPage.tsx` orchestre un flow en 4 étapes (upload → loading → résultat → édition), chacune dans son propre composant sous `generator/`. L'appel IA passe par `lib/aiService.ts` → edge function Supabase `analyze-clothing` → Gemini. La clé Gemini peut être fournie par l'utilisateur (stockée dans `localStorage`, envoyée à la edge function) ou par défaut celle du serveur (`GEMINI_API_KEY` côté edge function).
+### 4.3 Scan de marché (hors app, asynchrone)
 
-## Scanner de marché
+```
+GitHub Actions (cron 4h) OU npm run scan (local)
+  → scripts/vinted-scan.ts (Playwright, clé service_role — bypass RLS)
+    → lit `watchlist` (recherches à surveiller)
+    → scrape 2 pages de résultats Vinted par recherche
+    → market-price.ts : prix de marché = médiane des annonces trouvées
+    → market-engine.ts : calcule profit, ROI, score
+    → ré-écrit entièrement `market_opportunities`
+  → Opportunities.tsx (lecture seule côté app, clé anon) affiche le résultat
+  → DashboardHome.tsx compte les opportunités des dernières 24h pour le cockpit
+```
 
-`scripts/vinted-scan.ts` (Node + Playwright, **hors** du bundle frontend) scrape la grille de résultats de recherche Vinted directement (pas d'API publique), sur 2 pages par recherche de la table `watchlist`. Le titre réel de chaque annonce est extrait du slug de son URL (le libellé affiché sur la carte n'est que la marque). Le prix de marché est calculé comme la médiane des prix trouvés pour la même recherche — pas de source externe (eBay a été essayé, bloque systématiquement les requêtes automatisées avec un 403).
+Ce flux ne passe jamais par le frontend applicatif — c'est un job batch complètement découplé de la session utilisateur.
 
-Tourne en local (`npm run scan`) ou via cron GitHub Actions toutes les 4h (`.github/workflows/scan-market.yml`), écrit dans `market_opportunities` avec la clé `service_role` (voir [DATABASE.md](DATABASE.md) — cette table n'accepte plus les écritures anonymes depuis juillet 2026).
+### 4.4 Stock et comptabilité
 
-## Connecteurs marketplace (préparation)
+```
+listings (status: draft → en_stock → vendu)
+  → StockPage : marque un item comme vendu (sold_price, fees, sold_date)
+  → AccountingPage / DashboardHome / StatsPage : dérivent CA, bénéfice, marge,
+    ROI, TVA sur la marge, URSSAF à partir de listings + expenses
+```
 
-Aucun connecteur n'est encore codé. Vinted est aujourd'hui la seule marketplace gérée, et le code ne l'abstrait pas explicitement (pas d'interface `MarketplaceConnector`). Voir [ROADMAP.md](ROADMAP.md) Phase 2/3 avant d'introduire cette abstraction — ne pas la construire avant qu'un deuxième connecteur réel (extension Chrome Vinted, puis éventuellement une autre marketplace) n'en démontre le besoin.
+Aucune de ces pages ne fait de calcul côté base (pas de vue SQL ni de RPC) — tout est recalculé côté client à partir des lignes brutes à chaque chargement. Acceptable au volume actuel (un utilisateur = quelques centaines de lignes maximum), à revisiter si la volumétrie grossit.
+
+## 5. Interactions avec Supabase
+
+Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md). Résumé de qui accède à quoi :
+
+| Client | Clé utilisée | Accès |
+|---|---|---|
+| Frontend (`src/lib/supabase.ts`) | `VITE_SUPABASE_ANON_KEY` | Toutes les opérations CRUD sur les données de l'utilisateur connecté, filtrées par RLS (`auth.uid() = user_id`) |
+| Edge function `analyze-clothing` | `SUPABASE_ANON_KEY` + JWT utilisateur transmis | Vérifie l'identité de l'appelant avant tout traitement, pas d'accès élevé |
+| `scripts/vinted-scan.ts` | `SUPABASE_SERVICE_ROLE_KEY` | Bypass RLS — nécessaire car le scan tourne hors session utilisateur (cron), lit `watchlist` et écrit `market_opportunities` pour tous les utilisateurs |
+| Trigger `handle_new_user()` | interne Postgres | Crée automatiquement une ligne `profiles` à l'inscription (`auth.users` → `profiles`) |
+
+**Règle impérative** : tout changement de schéma passe par une migration versionnée (`supabase/migrations/`) + `npx supabase db push`, jamais par une modification directe dans le SQL Editor du dashboard. Une dérive de ce type s'est déjà produite (policies RLS non versionnées trouvées en prod, dont une faille de sécurité réelle) — voir DATABASE.md pour le détail et la procédure de vérification (`supabase db query --linked`, `supabase db advisors --linked`).
+
+## 6. Fonctionnalités existantes
+
+Fonctionnel de bout en bout, avec de vraies données (pas de mock) :
+
+- **Authentification** : inscription, connexion, mot de passe oublié, session persistante
+- **Génération d'annonce par IA** : photo → titre/description/prix/mots-clés/catégorie Vinted via Gemini
+- **Scanner d'opportunités** : scan Vinted automatisé (cron 4h), calcul profit/ROI/score, affichage trié
+- **Stock** : suivi des annonces (brouillon/en stock/vendu), marquage de vente avec frais, calcul de marge/ROI par article
+- **Dépenses** : ajout/suppression de dépenses catégorisées, total mensuel
+- **Comptabilité** : CA, bénéfice, marge, ROI, TVA sur la marge, calcul URSSAF
+- **Statistiques** : vue d'ensemble du catalogue et des ventes
+- **Comptes Vinted multiples** : gestion de noms de comptes (pas encore de synchronisation réelle, voir §7)
+- **Paramètres** : profil, mot de passe, clé API personnelle, préférences de notification
+
+## 7. Fonctionnalités prévues (non fonctionnelles aujourd'hui)
+
+Ces écrans/éléments existent dans l'UI avec un état honnête ("bientôt disponible", vide, désactivé) plutôt qu'avec de fausses données — ne jamais les faire *paraître* fonctionnels sans l'être réellement :
+
+- **Compte Vinted (`VintedAccountPage.tsx`)** : placeholder explicite en attente de l'extension Chrome — messages, offres, republication automatique, vues/favoris en temps réel, alertes (voir §8)
+- **Abonnement (`SubscriptionPage.tsx`)** : UI de plans statique, aucune intégration Stripe. Table `subscriptions` déjà en base (scaffolding), pas encore branchée
+- **Suppression de compte (`SettingsPage.tsx`, zone danger)** : bouton désactivé volontairement ("bientôt disponible") — aucune logique de suppression de compte n'existe côté backend, le bouton a été trouvé sans handler lors de l'audit de juillet 2026 et corrigé pour ne pas être une action destructive factice
+- **Multi-marketplace** : mentionné en roadmap sur la landing page ("Bientôt"), aucun code d'abstraction marketplace n'existe (voir §3, ligne Playwright, et ROADMAP.md Phase E)
+- **Incohérence connue** : `SettingsPage.tsx` référence encore "OpenAI API Key" dans l'UI alors que l'edge function appelle Gemini — reliquat d'un changement de fournisseur IA jamais nettoyé côté libellés, à corriger
+
+## 8. Points d'extension pour l'extension Chrome
+
+Vinted n'ayant pas d'API publique, toute action qui nécessite d'agir *dans* le compte Vinted de l'utilisateur (publier, republier, répondre à un message, accepter une offre) ne peut pas se faire depuis le backend seul — elle nécessite une extension agissant dans le contexte authentifié du navigateur sur vinted.fr. Prérequis avant de coder l'extension elle-même (Phase E de la ROADMAP, pas commencée) :
+
+1. **Colonne `marketplace` sur `listings`** — aujourd'hui implicite (tout est Vinted), à expliciter avant d'introduire un second canal (même l'extension Chrome elle-même compte comme un second "canal" d'écriture vers `listings`)
+2. **Table `marketplace_connections`** — pour stocker l'état de connexion/synchronisation de l'extension par utilisateur (dernière sync, statut, éventuel token/cookie de session si nécessaire)
+3. **Interface `MarketplaceConnector`** — actuellement inexistante ; le code ne l'abstrait pas car Vinted est la seule marketplace gérée. Ne pas la construire avant que l'extension Chrome (premier vrai second "connecteur", même si toujours Vinted) n'en démontre le besoin concret — voir la note anti-abstraction-prématurée en §2
+
+**Points d'ancrage déjà en place côté UI** pour brancher l'extension sans refonte :
+- `VintedAccountPage.tsx` : écran dédié déjà en place, à remplacer par de vraies données dès que l'extension expose un état de connexion
+- `SettingsPage.tsx` (onglet comptes) : `useAccounts` gère déjà plusieurs comptes Vinted nommés — l'extension devra associer chaque compte à une session Vinted réelle
+- `market_opportunities.vinted_url` : chaque opportunité a déjà l'URL Vinted de l'annonce — point d'ancrage naturel pour une action "ouvrir/acheter via l'extension" future
+- Communication navigateur ↔ extension : aucun mécanisme n'existe encore (`postMessage`, `chrome.runtime` externe, ou API custom) — à concevoir lors de la Phase 2, pas avant
+
+## 9. Conventions de développement
+
+- **TypeScript strict, zéro `any`** — vérifié par `npm run typecheck`. Si un type externe est incertain (réponse Supabase, payload d'edge function), le typer explicitement plutôt que d'échapper avec `any` ou `unknown` non affiné
+- **Pas de commentaire qui répète le code** — un commentaire n'a de valeur que s'il explique un *pourquoi* non évident (contrainte cachée, contournement d'un bug précis, comportement surprenant). Voir les exemples dans `AuthContext.tsx` (course de navigation) ou `aiService.ts`
+- **Design system** : toujours consommer les tokens Tailwind (`bg-neon-500`, `bg-surface`, `text-dark-400`...) définis dans `tailwind.config.js`, jamais de valeur hex arbitraire (`bg-[#FFC400]`). `src/index.css` contient des classes composants prêtes (`.btn-neon`, `.glass-card`, `.input-dark`) qui utilisent déjà ces tokens — à privilégier pour tout nouveau composant plutôt que de réimplémenter le style en Tailwind brut (chantier de migration pas terminé sur les pages existantes, voir ROADMAP.md)
+- **Contenu honnête plutôt que factice** : une fonctionnalité pas encore branchée doit apparaître clairement comme telle (état vide, "bientôt disponible", bouton désactivé) — jamais de fausses données, de bouton sans handler, ou de badge qui laisse croire à une action réelle. Règle issue directement d'un bug corrigé lors de l'audit de juillet 2026 (bouton de suppression de compte sans handler, voir §7)
+- **Accessibilité** : tout bouton icône-seul (sans texte visible) doit avoir un `aria-label` décrivant l'action. Norme appliquée rétroactivement à tout le projet lors de l'audit de juillet 2026
+- **Un composant rejoint `components/ui/` seulement s'il est réutilisé** à plus d'un endroit (voir §2) — pas d'extraction anticipée
+- **Migrations Supabase toujours versionnées**, jamais de modification directe en base via le dashboard (voir §5 et DATABASE.md)
+- **Scripts de vérification avant tout commit significatif** : `npm run typecheck`, `npm run lint`, `npm run build`, et `npm run audit` (schéma + code mort, voir `.claude/skills/project-audit/`) — pas de suite de tests automatisés à ce jour, donc ces vérifications statiques + un passage manuel en navigateur (Claude Preview ou équivalent) sont le seul filet de sécurité actuel
+- **Commits** : messages en français, détaillés, groupés par unité de travail cohérente plutôt qu'un commit par fichier
+
+## 10. Prochaines étapes recommandées
+
+Par ordre de priorité réaliste (voir aussi le détail complet dans [ROADMAP.md](ROADMAP.md)) :
+
+1. **Décider du sort de `business_items`/`business_expenses`** — tables orphelines, la première contient 53 lignes de données réelles jamais migrées. Bloquant moralement avant de considérer le schéma "propre"
+2. **Corriger l'incohérence "OpenAI API Key" vs Gemini** dans `SettingsPage.tsx` (§7) — petit fix, confusion utilisateur réelle
+3. **Phase E (préparation extension Chrome)** — colonne `marketplace`, table `marketplace_connections`, avant de coder l'extension elle-même (§8)
+4. **Introduire un framework de tests minimal** (Vitest pour la logique pure de `scripts/market-engine.ts`/`market-price.ts` serait le point de départ le plus rentable — logique déterministe, facile à tester, déjà à l'origine d'au moins un bug de calcul corrigé manuellement)
+5. **Terminer la migration vers les classes `.btn-neon`/`.glass-card`/`.input-dark`** sur les pages qui réimplémentent encore leur style en Tailwind brut
+6. **Traiter les items de sécurité/perf restants documentés dans DATABASE.md** : policy storage `listing-images` trop permissive, protection mots de passe compromis désactivée, policies RLS dupliquées, pattern `auth.uid()` non optimisé
+7. **Router applicatif (`react-router`)** — seulement quand l'extension Chrome ou un besoin de deep-link concret l'exige (§3), pas avant
+8. **Interface `MarketplaceConnector`** — seulement quand un second connecteur réel (extension Chrome, puis éventuellement une autre marketplace) en démontre le besoin (§8)
