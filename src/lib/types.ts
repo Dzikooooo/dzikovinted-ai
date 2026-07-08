@@ -98,6 +98,7 @@ export interface MarketOpportunity {
   score: number | null;
   confidence: number | null;
   price_source: string | null;
+  favourites: number | null;
   vinted_url: string | null;
   status: string;
   created_at: string;

@@ -101,7 +101,15 @@ async function main() {
 
     let allItems: any[] = [];
 
-    await supabase.from("market_opportunities").delete().neq("id", "");
+    const { error: deleteError } = await supabase
+      .from("market_opportunities")
+      .delete()
+      .gte("created_at", "1970-01-01");
+
+    if (deleteError) {
+      console.error("DELETE ERROR (aborting, refuse de melanger des donnees perimees) :", deleteError);
+      return;
+    }
 
     const { data: watchlist, error } = await supabase
       .from("watchlist")
@@ -166,6 +174,7 @@ async function main() {
           score: item.score,
           confidence: item.confidence,
           price_source: item.price_source,
+          favourites: item.favourites,
 
           vinted_url: item.url,
           status: "live",

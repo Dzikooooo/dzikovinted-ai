@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, ArrowUpRight, RefreshCw } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Heart, RefreshCw, Search } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import type { MarketOpportunity } from "../../lib/types";
 import { StatCard } from "../../components/ui/StatCard";
 
 type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
 type CategoryFilter = "all" | "Sneakers" | "Jackets" | "Sweat" | "Fleece" | "Jeans" | "Shoes";
+
+const TIERS = [
+  { min: 150, label: "Exceptionnel", className: "bg-neon-500 text-black" },
+  { min: 100, label: "Excellent", className: "bg-neon-500/15 text-neon-500 border border-neon-500/30" },
+  { min: 80, label: "Bon deal", className: "bg-blue-400/15 text-blue-400 border border-blue-400/30" },
+  { min: 0, label: "Correct", className: "bg-white/10 text-gray-300 border border-white/10" },
+];
+
+function getTier(roi: number) {
+  return TIERS.find((t) => roi >= t.min) ?? TIERS[TIERS.length - 1];
+}
 
 export default function Opportunities() {
   const [products, setProducts] = useState<MarketOpportunity[]>([]);
@@ -72,13 +83,6 @@ export default function Opportunities() {
       bestProfit: Math.round(bestProfit),
     };
   }, [filteredProducts]);
-
-  const getBadge = (roi: number) => {
-    if (roi >= 150) return "Exceptionnel";
-    if (roi >= 100) return "Excellent";
-    if (roi >= 80) return "Bon deal";
-    return "Correct";
-  };
 
   const categories: CategoryFilter[] = [
     "all",
@@ -175,93 +179,92 @@ export default function Opportunities() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
           {filteredProducts.map((item) => (
-            <div
-              key={item.id}
-              className="bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 transition overflow-hidden"
-            >
-              <div className="h-44 bg-dark-400 border-b border-white/10">
-                <img
-                  src={item.image ?? undefined}
-                  alt={item.title}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                  <h2 className="text-base font-black line-clamp-2 min-h-[48px]">
-                      {item.title}
-                    </h2>
-                    <p className="text-gray-500 text-sm mt-1">
-                      {item.brand} · {item.category}
-                    </p>
-                  </div>
-
-                  <span className="bg-neon-500/10 border border-neon-500/20 text-neon-500 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap">
-  ROI {Number(item.roi).toFixed(0)}%
-</span>
-                </div>
-
-                <span className="inline-flex mt-4 bg-neon-500/10 border border-neon-500/20 text-neon-500 text-xs font-bold px-2.5 py-1 rounded-full">
-                  {getBadge(Number(item.roi))}
-                </span>
-
-                <div className="grid grid-cols-2 gap-3 mt-5">
-  <Metric
-    label="Prix"
-    value={`${Number(item.price_found).toFixed(0)}€`}
-  />
-
-  <Metric
-    label="Valeur"
-    value={`${Number(item.market_price).toFixed(0)}€`}
-  />
-
-  <Metric
-    label="Profit"
-    value={`+${Number(item.profit).toFixed(0)}€`}
-    green
-  />
-
-  <Metric
-    label="ROI"
-    value={`+${Number(item.roi).toFixed(0)}%`}
-    green
-  />
-
-  <Metric
-    label="Confiance"
-    value={`${item.confidence ?? "--"}%`}
-  />
-
-  <Metric
-    label="Source"
-    value={item.price_source ?? "IA"}
-  />
-</div>
-
-                <div className="mt-5 h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-neon-500 rounded-full"
-                    style={{ width: `${Math.min(Number(item.score || 0), 100)}%` }}
-                  />
-                </div>
-
-                <a
-                  href={item.vinted_url ?? undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-5 bg-neon-500 text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-neon-600 transition"
-                >
-                  Voir l’annonce
-                  <ArrowUpRight size={18} />
-                </a>
-              </div>
-            </div>
+            <OpportunityCard key={item.id} item={item} />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function OpportunityCard({ item }: { item: MarketOpportunity }) {
+  const roi = Number(item.roi || 0);
+  const tier = getTier(roi);
+  const favourites = item.favourites ?? 0;
+
+  return (
+    <div className="group bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 hover:-translate-y-1 transition-all duration-300 overflow-hidden hover:shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
+      <div className="relative h-44 bg-dark-400 border-b border-white/10 overflow-hidden">
+        <img
+          src={item.image ?? undefined}
+          alt={item.title}
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+        <span className={`absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full ${tier.className}`}>
+          {tier.label}
+        </span>
+        {favourites > 0 && (
+          <span className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+            <Heart className="w-3 h-3 fill-current" />
+            {favourites}
+          </span>
+        )}
+      </div>
+
+      <div className="p-5">
+        <h2 className="text-base font-black line-clamp-2 min-h-[48px]">{item.title}</h2>
+        <p className="text-gray-500 text-sm mt-1">
+          {item.brand} · {item.category}
+        </p>
+
+        <div className="flex items-center gap-2 mt-4 text-sm">
+          <span className="text-gray-400 font-medium">{Number(item.price_found).toFixed(0)}€</span>
+          <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
+          <span className="text-gray-200 font-semibold">{Number(item.market_price).toFixed(0)}€ estimés</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <div className="bg-dark-400 border border-white/5 rounded-xl p-3">
+            <p className="text-gray-500 text-xs">Profit</p>
+            <h3 className="text-neon-500 text-2xl font-black mt-1">
+              +{Number(item.profit).toFixed(0)}€
+            </h3>
+          </div>
+          <div className="bg-dark-400 border border-white/5 rounded-xl p-3">
+            <p className="text-gray-500 text-xs">ROI</p>
+            <h3 className="text-neon-500 text-2xl font-black mt-1">
+              +{roi.toFixed(0)}%
+            </h3>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1.5">
+            <span>Score IA</span>
+            <span>{Math.round(Number(item.score || 0))}/100</span>
+          </div>
+          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-neon-500 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(Number(item.score || 0), 100)}%` }}
+            />
+          </div>
+        </div>
+
+        <p className="text-[11px] text-gray-600 mt-3">
+          Confiance {item.confidence ?? "--"}% · {item.price_source ?? "estimation IA"}
+        </p>
+
+        <a
+          href={item.vinted_url ?? undefined}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 bg-neon-500 text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all"
+        >
+          Voir l'annonce
+          <ArrowUpRight size={18} />
+        </a>
+      </div>
     </div>
   );
 }
@@ -284,24 +287,5 @@ function SortButton({
     >
       {label}
     </button>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  green = false,
-}: {
-  label: string;
-  value: string | number;
-  green?: boolean;
-}) {
-  return (
-    <div className="bg-dark-400 border border-white/5 rounded-xl p-3">
-      <p className="text-gray-500 text-xs">{label}</p>
-      <h3 className={`${green ? "text-neon-500" : "text-white"} text-2xl font-black mt-1`}>
-      {value}
-      </h3>
-    </div>
   );
 }
