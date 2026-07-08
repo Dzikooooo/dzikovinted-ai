@@ -85,6 +85,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: null, confirmEmail: true };
     }
 
+    setSession(data.session);
+    setUser(data.user);
     await fetchProfile(data.user.id);
     return { error: null, confirmEmail: false };
   };
@@ -103,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (data.user) {
+      setSession(data.session);
+      setUser(data.user);
       await fetchProfile(data.user.id);
     }
 
