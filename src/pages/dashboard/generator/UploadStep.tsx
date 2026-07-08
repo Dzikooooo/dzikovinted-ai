@@ -6,8 +6,6 @@ interface UploadStepProps {
   onImagesChange: (images: string[]) => void;
   photoStyle: string;
   onPhotoStyleChange: (style: string) => void;
-  platform: string;
-  onPlatformChange: (platform: string) => void;
   enhancePhoto: boolean;
   onEnhancePhotoChange: (value: boolean) => void;
   error: string | null;
@@ -24,20 +22,11 @@ const PHOTO_STYLES = [
   { id: 'lifestyle', label: 'Lifestyle' },
 ];
 
-const PLATFORMS = [
-  { id: 'vinted', label: 'Vinted' },
-  { id: 'leboncoin', label: 'Leboncoin' },
-  { id: 'ebay', label: 'eBay' },
-  { id: 'depop', label: 'Depop' },
-];
-
 export function UploadStep({
   images,
   onImagesChange,
   photoStyle,
   onPhotoStyleChange,
-  platform,
-  onPlatformChange,
   enhancePhoto,
   onEnhancePhotoChange,
   error,
@@ -243,27 +232,6 @@ export function UploadStep({
                 />
                 Améliorer automatiquement la qualité
               </label>
-            </div>
-            <div className="mb-5 bg-dark-400 border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-3">
-                Plateforme
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {PLATFORMS.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => onPlatformChange(item.id)}
-                    className={`rounded-xl px-3 py-2 text-xs font-bold border transition ${
-                      platform === item.id
-                        ? "bg-neon-500 text-black border-neon-500"
-                        : "bg-surface text-gray-400 border-white/10"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-white/5">
               <p className="text-sm text-gray-500">{images.length} photo{images.length > 1 ? 's' : ''} selectionnee{images.length > 1 ? 's' : ''}</p>

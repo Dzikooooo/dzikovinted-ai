@@ -56,7 +56,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
         if (error) {
           setError(error);
         } else {
-          setInfo('Si cet email existe, vous recevrez un lien de reinitialisation.');
+          setInfo('Si cet email existe, tu recevras un lien de reinitialisation.');
         }
       }
     } finally {
@@ -115,7 +115,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Jean Dupont"
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
+                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                   />
                 </div>
               </div>
@@ -131,7 +131,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="toi@example.com"
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                 />
               </div>
             </div>
@@ -147,7 +147,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
+                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                   />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -167,7 +167,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
+                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                   />
                 </div>
               </div>

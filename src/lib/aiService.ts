@@ -16,7 +16,6 @@ async function blobUrlToBase64(blobUrl: string): Promise<string> {
 }
 type AnalyzeOptions = {
   imageUrls: string[];
-  platform: string;
   photoStyle: string;
   enhancePhoto: boolean;
   geminiKey?: string;
@@ -24,7 +23,6 @@ type AnalyzeOptions = {
 
 export async function analyzeWithAI({
   imageUrls,
-  platform,
   photoStyle,
   enhancePhoto,
   geminiKey,
@@ -48,7 +46,6 @@ export async function analyzeWithAI({
         body: JSON.stringify({
           image_urls: base64Images,
           gemini_key: geminiKey || undefined,
-          platform,
           photo_style: photoStyle,
           enhance_photo: enhancePhoto,
         }),

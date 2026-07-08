@@ -15,7 +15,6 @@ export default function GeneratorPage() {
   const [step, setStep] = useState<GenStep>('upload');
   const [images, setImages] = useState<string[]>([]);
   const [photoStyle, setPhotoStyle] = useState("white");
-  const [platform, setPlatform] = useState("vinted");
   const [enhancePhoto, setEnhancePhoto] = useState(true);
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<GeneratedListing | null>(null);
@@ -47,7 +46,6 @@ export default function GeneratorPage() {
       const openaiKey = localStorage.getItem('dzikovinted_openai_key') || undefined;
       const generated = await analyzeWithAI({
         imageUrls: images,
-        platform,
         photoStyle,
         enhancePhoto,
         geminiKey: openaiKey,
@@ -120,8 +118,6 @@ export default function GeneratorPage() {
         onImagesChange={setImages}
         photoStyle={photoStyle}
         onPhotoStyleChange={setPhotoStyle}
-        platform={platform}
-        onPlatformChange={setPlatform}
         enhancePhoto={enhancePhoto}
         onEnhancePhotoChange={setEnhancePhoto}
         error={error}

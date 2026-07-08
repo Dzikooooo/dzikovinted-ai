@@ -93,7 +93,7 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all" />
+              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
             </div>
           </div>
           <div>
@@ -127,7 +127,7 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Mot de passe actuel</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all" placeholder="********" />
+              <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
               <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                 {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -137,7 +137,7 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all" placeholder="********" />
+              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
             </div>
           </div>
           <button onClick={changePassword} className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm">
@@ -163,7 +163,7 @@ export default function SettingsPage() {
               onChange={(e) => setNewAccountName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddAccount()}
               placeholder="Nom du compte (ex: Compte principal)"
-              className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all"
+              className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             />
             <button
               onClick={handleAddAccount}
@@ -233,7 +233,7 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">OpenAI API Key</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="sk-..." className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 transition-all" />
+              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="sk-..." className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
             </div>
           </div>
           <button
