@@ -1,11 +1,18 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import LandingPage from './pages/LandingPage';
-import AuthPage from './pages/AuthPage';
-import DashboardLayout from './pages/dashboard/DashboardLayout';
 import type { AppPage } from './lib/types';
-import { useState } from 'react';
 
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const DashboardLayout = lazy(() => import('./pages/dashboard/DashboardLayout'));
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen bg-dark-400 flex items-center justify-center">
+      <div className="w-10 h-10 rounded-full border-2 border-neon-500/30 border-t-neon-500 animate-spin" />
+    </div>
+  );
+}
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -15,7 +22,7 @@ function AppContent() {
     if (!loading) {
       if (user && (page === 'landing' || page === 'auth')) setPage('dashboard');
     }
-  }, [user, loading]);
+  }, [user, loading, page]);
 
   const navigate = (p: AppPage) => {
     setPage(p);
@@ -33,14 +40,16 @@ function AppContent() {
     );
   }
 
-  
-  
   if (page === 'dashboard') {
     if (!user) {
       navigate('auth');
       return null;
     }
-    return <DashboardLayout onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <DashboardLayout onNavigate={navigate} />
+      </Suspense>
+    );
   }
 
   if (page === 'auth') {
@@ -48,7 +57,11 @@ function AppContent() {
       navigate('dashboard');
       return null;
     }
-    return <AuthPage onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <AuthPage onNavigate={navigate} />
+      </Suspense>
+    );
   }
 
   return <LandingPage onNavigate={navigate} />;

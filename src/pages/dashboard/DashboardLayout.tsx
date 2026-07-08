@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import {
   Zap,
   LayoutDashboard,
@@ -19,16 +19,25 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { DashboardPage, AppPage } from '../../lib/types';
-import DashboardHome from './DashboardHome';
-import GeneratorPage from './GeneratorPage';
-import StockPage from './StockPage';
-import ExpensesPage from './ExpensesPage';
-import AccountingPage from './AccountingPage';
-import VintedAccountPage from './VintedAccountPage';
-import StatsPage from './StatsPage';
-import SubscriptionPage from './SubscriptionPage';
-import SettingsPage from './SettingsPage';
-import Opportunities from './Opportunities';
+
+const DashboardHome = lazy(() => import('./DashboardHome'));
+const GeneratorPage = lazy(() => import('./GeneratorPage'));
+const StockPage = lazy(() => import('./StockPage'));
+const ExpensesPage = lazy(() => import('./ExpensesPage'));
+const AccountingPage = lazy(() => import('./AccountingPage'));
+const VintedAccountPage = lazy(() => import('./VintedAccountPage'));
+const StatsPage = lazy(() => import('./StatsPage'));
+const SubscriptionPage = lazy(() => import('./SubscriptionPage'));
+const SettingsPage = lazy(() => import('./SettingsPage'));
+const Opportunities = lazy(() => import('./Opportunities'));
+
+function PageFallback() {
+  return (
+    <div className="flex items-center justify-center h-full py-24">
+      <div className="w-8 h-8 rounded-full border-2 border-neon-500/30 border-t-neon-500 animate-spin" />
+    </div>
+  );
+}
 
 interface DashboardLayoutProps {
   onNavigate: (page: AppPage) => void;
@@ -160,6 +169,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           <aside className="relative z-10 w-64 bg-[#0D0D0D] border-r border-white/5 flex flex-col">
             <button
               onClick={() => setSidebarOpen(false)}
+              aria-label="Fermer le menu"
               className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-white/5"
             >
               <X className="w-5 h-5 text-gray-400" />
@@ -177,6 +187,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
+              aria-label="Ouvrir le menu"
               className="lg:hidden p-2 rounded-lg hover:bg-white/5 transition-colors"
             >
               <Menu className="w-5 h-5 text-gray-400" />
@@ -206,16 +217,18 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto bg-dark-400">
-          {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
-          {activePage === 'generator' && <GeneratorPage />}
-          {activePage === 'opportunities' && <Opportunities />}
-          {activePage === 'stock' && <StockPage />}
-          {activePage === 'vinted-account' && <VintedAccountPage />}
-          {activePage === 'accounting' && <AccountingPage />}
-          {activePage === 'expenses' && <ExpensesPage />}
-          {activePage === 'stats' && <StatsPage />}
-          {activePage === 'subscription' && <SubscriptionPage />}
-          {activePage === 'settings' && <SettingsPage />}
+          <Suspense fallback={<PageFallback />}>
+            {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
+            {activePage === 'generator' && <GeneratorPage />}
+            {activePage === 'opportunities' && <Opportunities />}
+            {activePage === 'stock' && <StockPage />}
+            {activePage === 'vinted-account' && <VintedAccountPage />}
+            {activePage === 'accounting' && <AccountingPage />}
+            {activePage === 'expenses' && <ExpensesPage />}
+            {activePage === 'stats' && <StatsPage />}
+            {activePage === 'subscription' && <SubscriptionPage />}
+            {activePage === 'settings' && <SettingsPage />}
+          </Suspense>
         </main>
       </div>
     </div>

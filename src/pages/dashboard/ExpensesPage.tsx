@@ -101,6 +101,7 @@ export default function ExpensesPage() {
                 <p className="text-sm font-bold text-gray-200">{expense.amount.toFixed(2)} €</p>
                 <button
                   onClick={() => deleteExpense(expense.id)}
+                  aria-label="Supprimer la dépense"
                   className="p-2 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -118,6 +119,7 @@ export default function ExpensesPage() {
               <h2 className="text-lg font-black">Nouvelle depense</h2>
               <button
                 onClick={() => setShowForm(false)}
+                aria-label="Fermer"
                 className="p-1.5 rounded-lg hover:bg-white/5"
               >
                 <X className="w-4 h-4 text-gray-500" />

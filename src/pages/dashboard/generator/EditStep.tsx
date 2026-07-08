@@ -89,7 +89,7 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn 
             {editForm.keywords.map((kw, i) => (
               <span key={i} className="flex items-center gap-1.5 px-3 py-1 text-xs font-mono bg-neon-500/10 text-neon-500 rounded-full border border-neon-500/20">
                 #{kw.replace(/\s+/g, '')}
-                <button onClick={() => updateField('keywords', editForm.keywords.filter((_, j) => j !== i))} className="text-neon-500/40 hover:text-red-400 transition-colors ml-1">
+                <button onClick={() => updateField('keywords', editForm.keywords.filter((_, j) => j !== i))} aria-label={`Supprimer le mot-cle ${kw}`} className="text-neon-500/40 hover:text-red-400 transition-colors ml-1">
                   <X className="w-3 h-3" />
                 </button>
               </span>

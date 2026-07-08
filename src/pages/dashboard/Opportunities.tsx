@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, ArrowUpRight, Heart, RefreshCw, Search } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import type { MarketOpportunity } from "../../lib/types";
@@ -26,11 +26,7 @@ export default function Opportunities() {
   const [minRoi, setMinRoi] = useState(false);
   const [minProfit, setMinProfit] = useState(false);
 
-  useEffect(() => {
-    loadProducts();
-  }, [sortBy]);
-
-  async function loadProducts() {
+  const loadProducts = useCallback(async () => {
     setLoading(true);
 
     const { data, error } = await supabase
@@ -42,7 +38,11 @@ export default function Opportunities() {
     if (data) setProducts(data);
 
     setLoading(false);
-  }
+  }, [sortBy]);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
 
   async function scanNow() {
     setLoading(true);

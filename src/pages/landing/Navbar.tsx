@@ -78,6 +78,7 @@ active:scale-[0.98] bg-neon-500 flex items-center justify-center shadow-[0_0_30p
 
           <button
             onClick={() => setOpen(!open)}
+            aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
             className="md:hidden"
           >
             {open ? (

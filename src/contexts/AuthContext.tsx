@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, useRef, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
 import type { User, Session } from '@supabase/supabase-js';
@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const initializedRef = useRef(false);
 
-  const fetchProfile = async (userId: string, retries = 3): Promise<void> => {
+  const fetchProfile = useCallback(async (userId: string, retries = 3): Promise<void> => {
     const { data } = await supabase
       .from('profiles')
       .select('*')
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await new Promise((r) => setTimeout(r, 500));
       return fetchProfile(userId, retries - 1);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchProfile]);
 
   const signUp = async (email: string, password: string, fullName: string): Promise<{ error: string | null; confirmEmail: boolean }> => {
     const { data, error } = await supabase.auth.signUp({

@@ -1,6 +1,7 @@
 import { getMarketPrice } from "./market-price";
+import type { AnalyzedItem, WatchlistItem } from "./types";
 
-export function analyzeMarket(item: any, comparablePrices: number[]) {
+export function analyzeMarket(item: WatchlistItem, comparablePrices: number[]): AnalyzedItem {
   const market = getMarketPrice(item, comparablePrices);
 
   const marketPrice = market.marketPrice;
@@ -22,7 +23,7 @@ export function analyzeMarket(item: any, comparablePrices: number[]) {
   };
 }
 
-function calculateScore(item: any) {
+function calculateScore(item: Omit<AnalyzedItem, "score">) {
   let score = 40;
 
   if (item.roi >= 200) score += 25;

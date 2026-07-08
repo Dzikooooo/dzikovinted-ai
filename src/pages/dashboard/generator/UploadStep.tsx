@@ -160,6 +160,7 @@ export function UploadStep({
 
                   <button
                     onClick={() => onImagesChange(images.filter((_, j) => j !== i))}
+                    aria-label="Supprimer cette image"
                     className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/80 border border-white/10"
                   >
                     <X className="w-3.5 h-3.5 text-white" />
@@ -170,6 +171,7 @@ export function UploadStep({
                     {i > 0 && (
                       <button
                         onClick={(e) => { e.stopPropagation(); moveImage(i, i - 1); }}
+                        aria-label="Deplacer l'image vers le haut"
                         className="w-7 h-7 rounded-md bg-black/80 border border-white/10 flex items-center justify-center active:bg-neon-500/20"
                       >
                         <ChevronUp className="w-4 h-4 text-white" />
@@ -178,6 +180,7 @@ export function UploadStep({
                     {i < images.length - 1 && (
                       <button
                         onClick={(e) => { e.stopPropagation(); moveImage(i, i + 1); }}
+                        aria-label="Deplacer l'image vers le bas"
                         className="w-7 h-7 rounded-md bg-black/80 border border-white/10 flex items-center justify-center active:bg-neon-500/20"
                       >
                         <ChevronDown className="w-4 h-4 text-white" />

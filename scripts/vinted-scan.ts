@@ -1,6 +1,7 @@
-import { chromium } from "playwright";
+import { chromium, type Page } from "playwright";
 import { supabase } from "./supabase";
 import { analyzeMarket } from "./market-engine";
+import type { AnalyzedItem, ScrapedItem } from "./types";
 
 function normalize(str: string) {
   return str
@@ -16,7 +17,7 @@ const SYNONYMS: Record<string, string[]> = {
   sweatshirt: ["sweatshirt", "sweat", "pull", "pullover", "crewneck"],
 };
 
-function isRelevant(item: any, search: string) {
+function isRelevant(item: ScrapedItem, search: string) {
   const title = normalize(item.title);
   const terms = normalize(search).split(" ");
 
@@ -28,10 +29,10 @@ function isRelevant(item: any, search: string) {
 
 const PAGES_PER_SEARCH = 2;
 
-async function extractItemsFromPage(page: any) {
+async function extractItemsFromPage(page: Page): Promise<ScrapedItem[]> {
   return page.evaluate(() => {
     const titleEls = document.querySelectorAll('[data-testid$="--description-title"]');
-    const results: any[] = [];
+    const results: ScrapedItem[] = [];
 
     titleEls.forEach((titleEl) => {
       const testid = titleEl.getAttribute("data-testid") || "";
@@ -64,8 +65,8 @@ async function extractItemsFromPage(page: any) {
   });
 }
 
-async function scanSearch(page: any, search: string) {
-  const foundItems: any[] = [];
+async function scanSearch(page: Page, search: string) {
+  const foundItems: ScrapedItem[] = [];
 
   for (let pageNum = 1; pageNum <= PAGES_PER_SEARCH; pageNum++) {
     await page.goto(
@@ -99,7 +100,7 @@ async function main() {
   try {
     const page = await browser.newPage();
 
-    let allItems: any[] = [];
+    const allItems: AnalyzedItem[] = [];
 
     const { error: deleteError } = await supabase
       .from("market_opportunities")

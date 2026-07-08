@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Search, X, Sparkles, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -16,7 +16,7 @@ export default function StockPage() {
   const [soldPrice, setSoldPrice] = useState('');
   const [fees, setFees] = useState('0');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!user) return;
 
     const { data, error } = await supabase
@@ -27,11 +27,11 @@ export default function StockPage() {
 
     if (!error) setItems((data ?? []) as Listing[]);
     setLoading(false);
-  };
+  }, [user]);
 
   useEffect(() => {
     load();
-  }, [user]);
+  }, [load]);
 
   const markAsSold = async () => {
     if (!sellingItem) return;
@@ -217,6 +217,7 @@ export default function StockPage() {
               </div>
               <button
                 onClick={() => setSellingItem(null)}
+                aria-label="Fermer"
                 className="p-1.5 rounded-lg hover:bg-white/5"
               >
                 <X className="w-4 h-4 text-gray-500" />

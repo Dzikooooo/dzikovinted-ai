@@ -128,7 +128,7 @@ export default function SettingsPage() {
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
               <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
-              <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
+              <button type="button" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                 {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
@@ -191,6 +191,7 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-200">{account.name}</p>
                   <button
                     onClick={() => deleteAccount(account.id)}
+                    aria-label={`Supprimer le compte ${account.name}`}
                     className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -254,9 +255,9 @@ export default function SettingsPage() {
           <div className="border border-red-500/10 rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Supprimer mon compte</p>
             <p className="text-xs text-gray-500 mb-4">Cette action est irreversible. Toutes tes donnees seront supprimees definitivement.</p>
-            <button className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 font-medium px-4 py-2 rounded-xl hover:bg-red-500/20 transition-all text-sm">
+            <button disabled title="Bientot disponible" className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 font-medium px-4 py-2 rounded-xl opacity-50 cursor-not-allowed text-sm">
               <Trash2 className="w-4 h-4" />
-              Supprimer mon compte
+              Supprimer mon compte (bientot disponible)
             </button>
           </div>
         </div>
