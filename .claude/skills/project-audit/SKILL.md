@@ -64,6 +64,12 @@ fournissent des faits bruts que tu dois relire et trier avant de les présenter.
      `UsageRecord` et `Subscription` modélisent les futures tables du même nom
      et ne sont pas encore consommés par l'UI — même scaffolding que ci-dessus,
      ne pas supprimer.
+   - Table `usage` (`audit:schema`, "jamais référencée") : faux positif
+     confirmé le 2026-07-08 — utilisée via l'RPC Postgres `increment_usage`
+     (définie dans `20260615085958_add_increment_usage_rpc.sql`), appelée
+     depuis `src/pages/dashboard/GeneratorPage.tsx` via `supabase.rpc(...)`.
+     L'heuristique de `audit:schema` ne détecte que les appels `.from("...")`,
+     pas les RPC — ne pas re-signaler.
 
 5. Synthétise en un rapport court, groupé par sévérité :
    - **À corriger** : incohérences confirmées (table/colonne manquante,
