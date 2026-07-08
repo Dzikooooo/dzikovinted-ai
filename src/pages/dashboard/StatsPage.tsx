@@ -21,7 +21,7 @@ export default function StatsPage() {
   const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
   const avgPrice = avg(listings.map((l) => l.price));
-  const totalEstRevenue = listings.reduce((sum, l) => sum + (l.price ?? 0), 0);
+  const catalogValue = listings.reduce((sum, l) => sum + (l.price ?? 0), 0);
   const favCount = listings.filter((l) => l.is_favorite).length;
   const brandCounts = listings.reduce<Record<string, number>>((acc, l) => { if (l.brand) acc[l.brand] = (acc[l.brand] ?? 0) + 1; return acc; }, {});
   const topBrands = Object.entries(brandCounts).sort(([, a], [, b]) => b - a).slice(0, 6);
@@ -78,7 +78,7 @@ export default function StatsPage() {
         {[
           { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-neon-500', bg: 'bg-neon-500/10' },
           { icon: DollarSign, label: 'Prix moyen', value: `${avgPrice.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-          { icon: TrendingUp, label: 'Revenus estimes', value: `${totalEstRevenue.toFixed(0)} EUR`, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+          { icon: TrendingUp, label: 'Valeur du catalogue', value: `${catalogValue.toFixed(0)} EUR`, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
           { icon: BarChart2, label: 'Ce mois-ci', value: thisMonthCount.toString(), color: 'text-teal-400', bg: 'bg-teal-400/10' },
           { icon: Star, label: 'Favoris', value: favCount.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
