@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Sparkles, TrendingUp, History, Star, ArrowRight, Zap, Clock, CreditCard } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import type { DashboardPage, Listing } from '../../lib/types';
@@ -9,24 +9,28 @@ interface DashboardHomeProps {
   onNavigate: (page: DashboardPage) => void;
 }
 
+const AGING_STOCK_DAYS = 21;
+
+function profitOf(l: Listing) {
+  return Number(l.sold_price || 0) - Number(l.purchase_price || 0) - Number(l.fees || 0);
+}
+
 export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
-  const [listingsCount, setListingsCount] = useState(0);
-  const [recentListings, setRecentListings] = useState<Listing[]>([]);
-  const [favCount, setFavCount] = useState(0);
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [newOpportunities, setNewOpportunities] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const [{ count }, { data: recent }, { count: favs }] = await Promise.all([
-        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-        supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5),
-        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_favorite', true),
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const [{ data: allListings }, { count: oppCount }] = await Promise.all([
+        supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
       ]);
-      setListingsCount(count ?? 0);
-      setRecentListings((recent ?? []) as Listing[]);
-      setFavCount(favs ?? 0);
+      setListings((allListings ?? []) as Listing[]);
+      setNewOpportunities(oppCount ?? 0);
       setLoading(false);
     })();
   }, [user]);
@@ -34,6 +38,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
   const limit = PLAN_LIMITS[plan];
+  const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'la';
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -42,7 +47,68 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     return 'Bonsoir';
   };
 
-  const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'la';
+  const metrics = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    const monthStartStr = monthStart.toISOString().slice(0, 10);
+
+    const soldItems = listings.filter((l) => l.status === 'vendu');
+    const stockItems = listings.filter((l) => l.status !== 'vendu');
+
+    const soldToday = soldItems.filter((l) => l.sold_date === today);
+    const soldThisMonth = soldItems.filter((l) => l.sold_date && l.sold_date >= monthStartStr);
+
+    const profitToday = soldToday.reduce((s, l) => s + profitOf(l), 0);
+    const profitMonth = soldThisMonth.reduce((s, l) => s + profitOf(l), 0);
+    const revenueMonth = soldThisMonth.reduce((s, l) => s + Number(l.sold_price || 0), 0);
+    const investedMonth = soldThisMonth.reduce((s, l) => s + Number(l.purchase_price || 0), 0);
+    const roiMonth = investedMonth > 0 ? Math.round((profitMonth / investedMonth) * 100) : 0;
+
+    const stockValue = stockItems.reduce((s, l) => s + Number(l.price || 0), 0);
+    const agingStock = stockItems.filter(
+      (l) => Date.now() - new Date(l.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000
+    );
+
+    return {
+      soldTodayCount: soldToday.length,
+      profitToday,
+      revenueMonth,
+      profitMonth,
+      roiMonth,
+      stockValue,
+      agingStockCount: agingStock.length,
+      recentListings: listings.slice(0, 5),
+      hasAnyListing: listings.length > 0,
+    };
+  }, [listings]);
+
+  const todayCards = [
+    {
+      icon: ShoppingBag,
+      label: metrics.soldTodayCount > 0 ? `${metrics.soldTodayCount} vente${metrics.soldTodayCount > 1 ? 's' : ''} aujourd'hui` : 'Aucune vente aujourd\'hui',
+      detail: metrics.profitToday > 0 ? `+${metrics.profitToday.toFixed(0)} EUR de benefice` : 'Reviens plus tard',
+      page: 'stock' as DashboardPage,
+      color: 'text-neon-500',
+      bg: 'bg-neon-500/10',
+    },
+    {
+      icon: Search,
+      label: newOpportunities > 0 ? `${newOpportunities} nouvelle${newOpportunities > 1 ? 's' : ''} opportunite${newOpportunities > 1 ? 's' : ''}` : 'Aucune opportunite recente',
+      detail: 'Detectees sur les dernieres 24h',
+      page: 'opportunities' as DashboardPage,
+      color: 'text-blue-400',
+      bg: 'bg-blue-400/10',
+    },
+    {
+      icon: Clock,
+      label: metrics.agingStockCount > 0 ? `${metrics.agingStockCount} article${metrics.agingStockCount > 1 ? 's' : ''} a surveiller` : 'Stock sain',
+      detail: `En stock depuis plus de ${AGING_STOCK_DAYS} jours`,
+      page: 'stock' as DashboardPage,
+      color: 'text-amber-400',
+      bg: 'bg-amber-400/10',
+    },
+  ];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
@@ -52,7 +118,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           <h1 className="text-2xl sm:text-3xl font-black">
             {greeting()}, <span className="text-neon-500">{firstName}</span>
           </h1>
-          <p className="text-gray-400 text-sm mt-1">Voici un apercu de ton activite Resell OS.</p>
+          <p className="text-gray-400 text-sm mt-1">Voici ce qui demande ton attention aujourd'hui.</p>
         </div>
         <button
           onClick={() => onNavigate('generator')}
@@ -105,40 +171,64 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         </div>
       )}
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {[
-          { icon: Sparkles, label: 'Annonces generees', value: loading ? '-' : listingsCount.toString(), color: 'text-neon-500', bg: 'bg-neon-500/10' },
-          { icon: CreditCard, label: 'Plan actuel', value: plan.toUpperCase(), color: plan === 'free' ? 'text-gray-400' : 'text-neon-500', bg: plan === 'free' ? 'bg-gray-400/10' : 'bg-neon-500/10' },
-          { icon: Star, label: 'Favoris', value: loading ? '-' : favCount.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-          { icon: TrendingUp, label: 'Revenus estimes', value: loading ? '-' : `${recentListings.reduce((s, l) => s + (l.price ?? 0), 0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-        ].map(({ icon: Icon, label, value, color, bg }) => (
-          <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
-            <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-              <Icon className={`w-4 h-4 ${color}`} />
-            </div>
-            <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
-            <p className="text-[11px] text-gray-500">{label}</p>
-          </div>
-        ))}
+      {/* Aujourd'hui */}
+      <div className="mb-8">
+        <h2 className="font-bold text-sm text-gray-300 mb-4">Aujourd'hui</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {todayCards.map(({ icon: Icon, label, detail, page, color, bg }) => (
+            <button
+              key={label}
+              onClick={() => onNavigate(page)}
+              className="bg-surface border border-white/5 rounded-2xl p-5 text-left hover:border-white/10 hover:-translate-y-0.5 transition-all duration-200 group"
+            >
+              <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                <Icon className={`w-4 h-4 ${color}`} />
+              </div>
+              <h3 className="font-semibold text-sm mb-1">{loading ? '...' : label}</h3>
+              <p className="text-xs text-gray-500">{detail}</p>
+              <ArrowRight className={`w-4 h-4 ${color} mt-3 opacity-0 group-hover:opacity-100 transition-opacity`} />
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        {[
-          { icon: Sparkles, title: 'Generer une annonce', desc: 'Uploade des photos et genere.', page: 'generator' as DashboardPage, color: 'text-neon-500', bg: 'bg-neon-500/10', border: 'hover:border-neon-500/20' },
-          { icon: History, title: 'Mes annonces', desc: 'Retrouve tes annonces sauvegardees.', page: 'stock' as DashboardPage, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'hover:border-blue-400/20' },
-          { icon: TrendingUp, title: 'Statistiques', desc: 'Suis tes performances et revenus.', page: 'stats' as DashboardPage, color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'hover:border-yellow-400/20' },
-        ].map(({ icon: Icon, title, desc, page, color, bg, border }) => (
-          <button key={title} onClick={() => onNavigate(page)} className={`bg-surface border border-white/5 rounded-2xl p-5 text-left ${border} hover:-translate-y-0.5 transition-all duration-200 group`}>
-            <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-              <Icon className={`w-4 h-4 ${color}`} />
-            </div>
-            <h3 className="font-semibold text-sm mb-1">{title}</h3>
-            <p className="text-xs text-gray-500">{desc}</p>
-            <ArrowRight className={`w-4 h-4 ${color} mt-3 opacity-0 group-hover:opacity-100 transition-opacity`} />
+      {/* Vue financiere */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-sm text-gray-300">Ce mois-ci</h2>
+          <button onClick={() => onNavigate('stats')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+            Voir le detail <ArrowRight className="w-3 h-3" />
           </button>
-        ))}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { icon: TrendingUp, label: "Chiffre d'affaires", value: loading ? '-' : `${metrics.revenueMonth.toFixed(0)} EUR`, color: 'text-gray-100', bg: 'bg-white/5' },
+            { icon: Sparkles, label: 'Benefice', value: loading ? '-' : `${metrics.profitMonth.toFixed(0)} EUR`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
+            { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
+            { icon: Package, label: 'Valeur du stock', value: loading ? '-' : `${metrics.stockValue.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+          ].map(({ icon: Icon, label, value, color, bg }) => (
+            <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
+              <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                <Icon className={`w-4 h-4 ${color}`} />
+              </div>
+              <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
+              <p className="text-[11px] text-gray-500">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Compte Vinted (extension a venir) */}
+      <div className="bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 mb-8 flex items-center gap-4">
+        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
+          <Puzzle className="w-4 h-4 text-gray-500" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-300">Synchronisation Vinted</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Messages, offres et republications automatiques apparaitront ici une fois l'extension Chrome connectee.
+          </p>
+        </div>
       </div>
 
       {/* Recent listings */}
@@ -148,7 +238,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             <Clock className="w-4 h-4 text-gray-500" />
             Annonces recentes
           </h2>
-          {listingsCount > 0 && (
+          {metrics.hasAnyListing && (
             <button onClick={() => onNavigate('stock')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
               Voir tout <ArrowRight className="w-3 h-3" />
             </button>
@@ -156,18 +246,18 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         </div>
         {loading ? (
           <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-14 bg-surface rounded-xl animate-pulse" />)}</div>
-        ) : recentListings.length === 0 ? (
+        ) : metrics.recentListings.length === 0 ? (
           <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-10 text-center">
             <Sparkles className="w-8 h-8 text-gray-700 mx-auto mb-3" />
             <p className="text-sm text-gray-500 mb-1">Aucune annonce encore</p>
-            <p className="text-xs text-gray-600 mb-4">Lance ton premier generateur et vois la magie operer !</p>
+            <p className="text-xs text-gray-600 mb-4">Lance ton premier generateur et vois le resultat.</p>
             <button onClick={() => onNavigate('generator')} className="text-sm text-neon-500 hover:underline font-medium">
               Generer maintenant
             </button>
           </div>
         ) : (
           <div className="space-y-2">
-            {recentListings.map((l) => (
+            {metrics.recentListings.map((l) => (
               <div key={l.id} className="bg-surface border border-white/5 rounded-xl px-4 py-3 flex items-center gap-4 hover:border-white/10 transition-colors group">
                 {l.image_urls?.[0] ? (
                   <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
