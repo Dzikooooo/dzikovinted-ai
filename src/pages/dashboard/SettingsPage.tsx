@@ -176,7 +176,9 @@ export default function SettingsPage() {
           </div>
 
           {accountsLoading ? (
-            <p className="text-gray-500 text-sm">Chargement...</p>
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-11 bg-dark-400 rounded-xl animate-pulse" />)}
+            </div>
           ) : accounts.length === 0 ? (
             <p className="text-sm text-gray-600">Aucun compte enregistre pour l'instant.</p>
           ) : (

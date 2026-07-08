@@ -7,9 +7,8 @@ const plans = [
     icon: Zap,
     price: '0',
     period: '/mois',
-    desc: 'Pour découvrir DzikoVinted',
+    desc: 'Pour découvrir Resell OS',
     features: ['10 analyses par mois', '1 photo par annonce', 'Titre + description', 'Prix recommandé', 'Historique 7 jours'],
-    cta: 'Plan actuel',
     plan: 'free',
     highlighted: false,
   },
@@ -20,7 +19,6 @@ const plans = [
     period: '/mois',
     desc: 'Pour les revendeurs actifs',
     features: ['Analyses illimitées', '10 photos par annonce', 'Tout le plan Free', '3 niveaux de prix', 'Filtres Vinted complets', 'Mots-clés SEO', 'Historique illimité', 'Export CSV'],
-    cta: 'Passer au Pro',
     plan: 'pro',
     highlighted: true,
   },
@@ -31,7 +29,6 @@ const plans = [
     period: '/mois',
     desc: 'Pour les équipes',
     features: ['Tout le plan Pro', "Jusqu'à 5 utilisateurs", 'Analytiques avancées', 'Mode batch', 'API access', 'Support prioritaire'],
-    cta: "Contacter l'équipe",
     plan: 'team',
     highlighted: false,
   },
@@ -60,9 +57,9 @@ export default function SubscriptionPage() {
           </p>
         </div>
         {currentPlan !== 'free' && (
-          <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-white border border-white/10 px-4 py-2 rounded-xl hover:bg-white/5 transition-all">
+          <button disabled className="flex items-center gap-2 text-sm text-gray-600 border border-white/5 px-4 py-2 rounded-xl cursor-not-allowed">
             <ExternalLink className="w-4 h-4" />
-            Gérer la facturation
+            Facturation bientôt disponible
           </button>
         )}
       </div>
@@ -100,17 +97,17 @@ export default function SubscriptionPage() {
                 ))}
               </ul>
               <button
-                disabled={isCurrent}
-                className={`w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${isCurrent ? 'bg-white/5 text-gray-500 cursor-not-allowed' : plan.highlighted ? 'bg-neon-500 text-black hover:bg-neon-600 hover:shadow-[0_0_30px_rgba(255,196,0,0.3)] active:scale-[0.98]' : 'bg-white/5 text-gray-300 hover:bg-white/10 active:scale-[0.98]'}`}
+                disabled
+                className="w-full py-3 rounded-xl font-semibold text-sm bg-white/5 text-gray-500 cursor-not-allowed"
               >
-                {isCurrent ? 'Plan actuel' : plan.cta}
+                {isCurrent ? 'Plan actuel' : 'Bientôt disponible'}
               </button>
             </div>
           );
         })}
       </div>
 
-      <p className="text-center text-xs text-gray-600 mt-8">Stripe integration coming soon · Pas de carte nécessaire pour le plan Free</p>
+      <p className="text-center text-xs text-gray-600 mt-8">Paiement en ligne bientôt disponible · Pas de carte nécessaire pour le plan Free</p>
     </div>
   );
 }

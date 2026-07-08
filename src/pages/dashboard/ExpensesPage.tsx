@@ -76,7 +76,9 @@ export default function ExpensesPage() {
       </div>
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Chargement...</p>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-surface rounded-2xl animate-pulse" />)}
+        </div>
       ) : expenses.length === 0 ? (
         <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
           <p className="text-gray-400 font-semibold mb-2">Aucune depense enregistree</p>
