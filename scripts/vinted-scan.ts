@@ -18,15 +18,10 @@ function isRelevant(item: any, search: string) {
   return terms.every((term) => title.includes(term));
 }
 
-async function scanSearch(page: any, search: string) {
-  await page.goto(
-    `https://www.vinted.fr/catalog?search_text=${encodeURIComponent(search)}`,
-    { waitUntil: "networkidle" }
-  );
+const PAGES_PER_SEARCH = 2;
 
-  await page.waitForTimeout(4000);
-
-  const foundItems = await page.evaluate(() => {
+async function extractItemsFromPage(page: any) {
+  return page.evaluate(() => {
     const titleEls = document.querySelectorAll('[data-testid$="--description-title"]');
     const results: any[] = [];
 
@@ -59,6 +54,19 @@ async function scanSearch(page: any, search: string) {
 
     return results;
   });
+}
+
+async function scanSearch(page: any, search: string) {
+  const foundItems: any[] = [];
+
+  for (let pageNum = 1; pageNum <= PAGES_PER_SEARCH; pageNum++) {
+    await page.goto(
+      `https://www.vinted.fr/catalog?search_text=${encodeURIComponent(search)}&page=${pageNum}`,
+      { waitUntil: "networkidle" }
+    );
+    await page.waitForTimeout(4000);
+    foundItems.push(...(await extractItemsFromPage(page)));
+  }
 
   const cleanItems = foundItems.filter(
     (item, index, self) =>
