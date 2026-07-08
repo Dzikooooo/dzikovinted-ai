@@ -61,7 +61,7 @@ export default function ExpensesPage() {
 
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-[#FFC400] text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-[#D89B00] transition-all flex-shrink-0"
+          className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 transition-all flex-shrink-0"
         >
           <Plus className="w-4 h-4" />
           Ajouter
@@ -77,7 +77,7 @@ export default function ExpensesPage() {
       {loading ? (
         <p className="text-gray-500 text-sm">Chargement...</p>
       ) : expenses.length === 0 ? (
-        <div className="bg-[#181818] border border-white/5 border-dashed rounded-2xl p-12 text-center">
+        <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
           <p className="text-gray-400 font-semibold mb-2">Aucune depense enregistree</p>
           <p className="text-sm text-gray-600">Ajoute ta premiere depense pour suivre tes frais.</p>
         </div>
@@ -86,7 +86,7 @@ export default function ExpensesPage() {
           {expenses.map((expense) => (
             <div
               key={expense.id}
-              className="bg-[#181818] border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all flex items-center justify-between gap-4"
+              className="bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all flex items-center justify-between gap-4"
             >
               <div>
                 <p className="font-semibold text-sm text-gray-100">{expense.category}</p>
@@ -110,7 +110,7 @@ export default function ExpensesPage() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md bg-[#181818] border border-white/10 rounded-2xl p-5">
+          <div className="w-full max-w-md bg-surface border border-white/10 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-black">Nouvelle depense</h2>
               <button
@@ -129,7 +129,7 @@ export default function ExpensesPage() {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>
@@ -148,7 +148,7 @@ export default function ExpensesPage() {
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
                 />
               </div>
 
@@ -161,14 +161,14 @@ export default function ExpensesPage() {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="Details..."
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
                 />
               </div>
 
               <button
                 onClick={handleAdd}
                 disabled={saving || !amount}
-                className="w-full bg-[#FFC400] text-black font-bold py-3 rounded-xl hover:bg-[#50ff30] transition-all disabled:opacity-60"
+                className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all disabled:opacity-60"
               >
                 {saving ? 'Enregistrement...' : 'Ajouter la depense'}
               </button>
@@ -182,9 +182,9 @@ export default function ExpensesPage() {
 
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="bg-[#181818] border border-white/5 rounded-2xl p-4">
+    <div className="bg-surface border border-white/5 rounded-2xl p-4">
       <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">{label}</p>
-      <p className={`text-xl font-black ${highlight ? 'text-[#FFC400]' : 'text-gray-100'}`}>
+      <p className={`text-xl font-black ${highlight ? 'text-neon-500' : 'text-gray-100'}`}>
         {value}
       </p>
     </div>

@@ -58,10 +58,10 @@ export default function StatsPage() {
   if (loading) return (
     <div className="p-8 max-w-6xl mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 bg-[#181818] rounded-2xl animate-pulse" />)}
+        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 bg-surface rounded-2xl animate-pulse" />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-52 bg-[#181818] rounded-2xl animate-pulse" />)}
+        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-52 bg-surface rounded-2xl animate-pulse" />)}
       </div>
     </div>
   );
@@ -76,13 +76,13 @@ export default function StatsPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         {[
-          { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-[#FFC400]', bg: 'bg-[#FFC400]/10' },
+          { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-neon-500', bg: 'bg-neon-500/10' },
           { icon: DollarSign, label: 'Prix moyen', value: `${avgPrice.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
           { icon: TrendingUp, label: 'Revenus estimes', value: `${totalEstRevenue.toFixed(0)} EUR`, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
           { icon: BarChart2, label: 'Ce mois-ci', value: thisMonthCount.toString(), color: 'text-teal-400', bg: 'bg-teal-400/10' },
           { icon: Star, label: 'Favoris', value: favCount.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
-          <div key={label} className="bg-[#181818] border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
+          <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
             <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
               <Icon className={`w-4 h-4 ${color}`} />
             </div>
@@ -94,9 +94,9 @@ export default function StatsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Monthly chart */}
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-[#FFC400]" />
+            <BarChart2 className="w-4 h-4 text-neon-500" />
             Annonces par mois
           </h2>
           {listings.length === 0 ? (
@@ -105,9 +105,9 @@ export default function StatsPage() {
             <div className="flex items-end gap-3 h-40">
               {last6Months.map(({ key, label, count }) => (
                 <div key={key} className="flex-1 flex flex-col items-center gap-2">
-                  <span className="text-xs font-mono text-[#FFC400]">{count > 0 ? count : ''}</span>
+                  <span className="text-xs font-mono text-neon-500">{count > 0 ? count : ''}</span>
                   <div
-                    className="w-full rounded-t-lg transition-all duration-700 bg-gradient-to-t from-[#FFC400]/30 to-[#FFC400]/60 hover:from-[#FFC400]/40 hover:to-[#FFC400]/80"
+                    className="w-full rounded-t-lg transition-all duration-700 bg-gradient-to-t from-neon-500/30 to-neon-500/60 hover:from-neon-500/40 hover:to-neon-500/80"
                     style={{ height: `${(count / maxMonthCount) * 100}%`, minHeight: count > 0 ? '8px' : '2px' }}
                   />
                   <span className="text-[10px] text-gray-600 capitalize">{label}</span>
@@ -118,9 +118,9 @@ export default function StatsPage() {
         </div>
 
         {/* Top brands */}
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <Tag className="w-4 h-4 text-[#FFC400]" />
+            <Tag className="w-4 h-4 text-neon-500" />
             Marques les plus frequentes
           </h2>
           {topBrands.length === 0 ? (
@@ -136,11 +136,11 @@ export default function StatsPage() {
                       className="h-full rounded-full transition-all duration-700"
                       style={{
                         width: `${(count / maxBrandCount) * 100}%`,
-                        background: `linear-gradient(90deg, rgba(57,255,20,0.4), rgba(57,255,20,0.8))`,
+                        background: `linear-gradient(90deg, rgba(255,196,0,0.4), rgba(255,196,0,0.8))`,
                       }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-[#FFC400] w-6 flex-shrink-0 text-right">{count}</span>
+                  <span className="text-xs font-mono text-neon-500 w-6 flex-shrink-0 text-right">{count}</span>
                 </div>
               ))}
             </div>
@@ -148,7 +148,7 @@ export default function StatsPage() {
         </div>
 
         {/* Categories */}
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
             <Layers className="w-4 h-4 text-blue-400" />
             Categories
@@ -158,7 +158,7 @@ export default function StatsPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {topCats.map(([cat, count]) => (
-                <div key={cat} className="bg-[#0A0A0A] rounded-xl p-3 border border-white/5 hover:border-blue-400/20 transition-colors">
+                <div key={cat} className="bg-dark-400 rounded-xl p-3 border border-white/5 hover:border-blue-400/20 transition-colors">
                   <p className="text-lg font-black text-blue-400 mb-1">{count}</p>
                   <p className="text-xs text-gray-500 truncate">{cat}</p>
                 </div>
@@ -168,7 +168,7 @@ export default function StatsPage() {
         </div>
 
         {/* Price distribution */}
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-yellow-400" />
             Distribution des prix
@@ -179,7 +179,7 @@ export default function StatsPage() {
             <div className="space-y-3">
               {[
                 { label: '< 30 EUR', count: listings.filter((l) => l.price < 30).length, color: 'from-gray-500/40 to-gray-500/60' },
-                { label: '30 - 75 EUR', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-[#FFC400]/40 to-[#FFC400]/70' },
+                { label: '30 - 75 EUR', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-neon-500/40 to-neon-500/70' },
                 { label: '75 - 150 EUR', count: listings.filter((l) => l.price >= 75 && l.price < 150).length, color: 'from-yellow-400/40 to-yellow-400/70' },
                 { label: '150+ EUR', count: listings.filter((l) => l.price >= 150).length, color: 'from-blue-400/40 to-blue-400/70' },
               ].map(({ label, count, color }) => (
@@ -196,7 +196,7 @@ export default function StatsPage() {
         </div>
 
         {/* Condition breakdown */}
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 lg:col-span-2">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 lg:col-span-2">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
             <Star className="w-4 h-4 text-teal-400" />
             Etat des articles
@@ -208,7 +208,7 @@ export default function StatsPage() {
               {conditions.map(([condition, count]) => {
                 const pct = ((count / listings.length) * 100).toFixed(0);
                 return (
-                  <div key={condition} className="bg-[#0A0A0A] rounded-xl px-4 py-3 border border-white/5 flex items-center gap-3 hover:border-teal-400/20 transition-colors">
+                  <div key={condition} className="bg-dark-400 rounded-xl px-4 py-3 border border-white/5 flex items-center gap-3 hover:border-teal-400/20 transition-colors">
                     <div className="text-center">
                       <p className="text-lg font-black text-teal-400">{pct}%</p>
                     </div>

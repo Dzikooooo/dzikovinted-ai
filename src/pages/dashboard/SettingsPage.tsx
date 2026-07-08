@@ -73,7 +73,7 @@ export default function SettingsPage() {
 
       <div className="flex gap-1 mb-8 overflow-x-auto pb-1">
         {tabs.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all duration-200 flex-shrink-0 ${activeTab === key ? 'bg-[#FFC400]/10 text-[#FFC400] font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}>
+          <button key={key} onClick={() => setActiveTab(key)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all duration-200 flex-shrink-0 ${activeTab === key ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}>
             <Icon className="w-3.5 h-3.5" />
             {label}
           </button>
@@ -81,10 +81,10 @@ export default function SettingsPage() {
       </div>
 
       {activeTab === 'profile' && (
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Informations du profil</h2>
           {profileMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-[#FFC400]/10 border-[#FFC400]/20 text-[#FFC400]' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
               {profileMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
               {profileMsg.text}
             </div>
@@ -93,21 +93,21 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40 transition-all" />
+              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all" />
             </div>
           </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Email</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="email" value={email} disabled className="w-full bg-[#0A0A0A] border border-white/5 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-500 cursor-not-allowed" />
+              <input type="email" value={email} disabled className="w-full bg-dark-400 border border-white/5 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-500 cursor-not-allowed" />
             </div>
           </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Plan</label>
-            <div className="px-4 py-3 bg-[#0A0A0A] border border-white/5 rounded-xl text-sm text-[#FFC400] font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
+            <div className="px-4 py-3 bg-dark-400 border border-white/5 rounded-xl text-sm text-neon-500 font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
           </div>
-          <button onClick={saveProfile} disabled={saving} className="flex items-center gap-2 bg-[#FFC400] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all text-sm disabled:opacity-60">
+          <button onClick={saveProfile} disabled={saving} className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm disabled:opacity-60">
             <Save className="w-4 h-4" />
             {saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </button>
@@ -115,10 +115,10 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'security' && (
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Changer le mot de passe</h2>
           {secMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${secMsg.type === 'success' ? 'bg-[#FFC400]/10 border-[#FFC400]/20 text-[#FFC400]' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${secMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
               {secMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
               {secMsg.text}
             </div>
@@ -127,7 +127,7 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Mot de passe actuel</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40 transition-all" placeholder="********" />
+              <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all" placeholder="********" />
               <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                 {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -137,10 +137,10 @@ export default function SettingsPage() {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40 transition-all" placeholder="********" />
+              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all" placeholder="********" />
             </div>
           </div>
-          <button onClick={changePassword} className="flex items-center gap-2 bg-[#FFC400] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all text-sm">
+          <button onClick={changePassword} className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm">
             <Save className="w-4 h-4" />
             Mettre a jour
           </button>
@@ -148,7 +148,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'accounts' && (
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <div>
             <h2 className="font-bold text-sm">Comptes Vinted</h2>
             <p className="text-xs text-gray-500 mt-1">
@@ -163,12 +163,12 @@ export default function SettingsPage() {
               onChange={(e) => setNewAccountName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddAccount()}
               placeholder="Nom du compte (ex: Compte principal)"
-              className="flex-1 bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40 transition-all"
+              className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 transition-all"
             />
             <button
               onClick={handleAddAccount}
               disabled={!newAccountName.trim()}
-              className="flex items-center gap-2 bg-[#FFC400] text-black font-bold px-4 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all text-sm disabled:opacity-60 flex-shrink-0"
+              className="flex items-center gap-2 bg-neon-500 text-black font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm disabled:opacity-60 flex-shrink-0"
             >
               <Plus className="w-4 h-4" />
               Ajouter
@@ -184,7 +184,7 @@ export default function SettingsPage() {
               {accounts.map((account) => (
                 <div
                   key={account.id}
-                  className="flex items-center justify-between px-4 py-3 bg-[#0A0A0A] border border-white/5 rounded-xl"
+                  className="flex items-center justify-between px-4 py-3 bg-dark-400 border border-white/5 rounded-xl"
                 >
                   <p className="text-sm text-gray-200">{account.name}</p>
                   <button
@@ -201,7 +201,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'notifications' && (
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 space-y-4">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-4">
           <h2 className="font-bold text-sm mb-2">Preferences de notifications</h2>
           {[
             { label: 'Resume hebdomadaire', desc: 'Recois un resume de tes annonces chaque semaine.' },
@@ -215,7 +215,7 @@ export default function SettingsPage() {
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" className="sr-only peer" defaultChecked />
-                <div className="w-10 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#FFC400]" />
+                <div className="w-10 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-neon-500" />
               </label>
             </div>
           ))}
@@ -223,22 +223,22 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'api' && (
-        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Cles API</h2>
-          <div className="bg-[#0A0A0A] border border-[#FFC400]/20 rounded-xl p-4">
-            <p className="text-xs text-[#FFC400]/70 font-mono mb-1">OpenAI API Key</p>
+          <div className="bg-dark-400 border border-neon-500/20 rounded-xl p-4">
+            <p className="text-xs text-neon-500/70 font-mono mb-1">OpenAI API Key</p>
             <p className="text-xs text-gray-500">Connecte ton compte OpenAI pour des analyses IA reelles. Sans cle, le mode mock est utilise (ou la cle serveur si configuree).</p>
           </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">OpenAI API Key</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="sk-..." className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-[#FFC400]/40 transition-all" />
+              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="sk-..." className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 transition-all" />
             </div>
           </div>
           <button
             onClick={saveApiKey}
-            className="flex items-center gap-2 bg-[#FFC400] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all text-sm"
+            className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm"
           >
             <Save className="w-4 h-4" />
             {apiSaved ? 'Sauvegarde !' : 'Sauvegarder la cle'}
@@ -247,7 +247,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'danger' && (
-        <div className="bg-[#181818] border border-red-500/20 rounded-2xl p-6 space-y-5">
+        <div className="bg-surface border border-red-500/20 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm text-red-400">Zone de danger</h2>
           <div className="border border-red-500/10 rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Supprimer mon compte</p>

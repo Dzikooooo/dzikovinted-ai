@@ -24,9 +24,9 @@ function AppContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+      <div className="min-h-screen bg-dark-400 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-full border-2 border-[#FFC400]/30 border-t-[#FFC400] animate-spin" />
+          <div className="w-10 h-10 rounded-full border-2 border-neon-500/30 border-t-neon-500 animate-spin" />
           <p className="text-sm text-gray-500">Chargement...</p>
         </div>
       </div>

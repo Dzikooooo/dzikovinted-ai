@@ -93,7 +93,7 @@ export default function Opportunities() {
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-8">
         <div>
           <h1 className="text-5xl font-black">
-            Scanner <span className="text-[#FFC400]">Vinted</span>
+            Scanner <span className="text-neon-500">Vinted</span>
           </h1>
           <p className="text-gray-400 mt-2">
             Les meilleures opportunités détectées en temps réel.
@@ -103,7 +103,7 @@ export default function Opportunities() {
         <button
           onClick={scanNow}
           disabled={loading}
-          className="bg-[#FFC400] text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center disabled:opacity-50 hover:bg-[#D89B00] transition"
+          className="bg-neon-500 text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center disabled:opacity-50 hover:bg-neon-600 transition"
         >
           {loading ? <RefreshCw size={20} className="animate-spin" /> : <Search size={20} />}
           {loading ? "Scan..." : "Scanner maintenant"}
@@ -125,8 +125,8 @@ export default function Opportunities() {
               onClick={() => setCategory(cat)}
               className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
                 category === cat
-                  ? "bg-[#FFC400] text-black border-[#FFC400]"
-                  : "bg-[#171717] text-gray-400 border-white/10 hover:text-white"
+                  ? "bg-neon-500 text-black border-neon-500"
+                  : "bg-surface-alt text-gray-400 border-white/10 hover:text-white"
               }`}
             >
               {cat === "all" ? "Toutes" : cat}
@@ -137,8 +137,8 @@ export default function Opportunities() {
             onClick={() => setMinRoi(!minRoi)}
             className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
               minRoi
-                ? "bg-[#FFC400] text-black border-[#FFC400]"
-                : "bg-[#171717] text-gray-400 border-white/10 hover:text-white"
+                ? "bg-neon-500 text-black border-neon-500"
+                : "bg-surface-alt text-gray-400 border-white/10 hover:text-white"
             }`}
           >
             ROI +100%
@@ -148,15 +148,15 @@ export default function Opportunities() {
             onClick={() => setMinProfit(!minProfit)}
             className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
               minProfit
-                ? "bg-[#FFC400] text-black border-[#FFC400]"
-                : "bg-[#171717] text-gray-400 border-white/10 hover:text-white"
+                ? "bg-neon-500 text-black border-neon-500"
+                : "bg-surface-alt text-gray-400 border-white/10 hover:text-white"
             }`}
           >
             Profit +40€
           </button>
         </div>
 
-        <div className="flex bg-[#171717] border border-white/10 rounded-xl overflow-hidden">
+        <div className="flex bg-surface-alt border border-white/10 rounded-xl overflow-hidden">
           <SortButton label="Score" active={sortBy === "score"} onClick={() => setSortBy("score")} />
           <SortButton label="Profit" active={sortBy === "profit"} onClick={() => setSortBy("profit")} />
           <SortButton label="ROI" active={sortBy === "roi"} onClick={() => setSortBy("roi")} />
@@ -166,7 +166,7 @@ export default function Opportunities() {
       </div>
 
       {filteredProducts.length === 0 ? (
-        <div className="bg-[#171717] border border-white/10 rounded-2xl p-10 text-center">
+        <div className="bg-surface-alt border border-white/10 rounded-2xl p-10 text-center">
           <h2 className="text-2xl font-black">Aucune opportunité</h2>
           <p className="text-gray-500 mt-2">Lance un scan ou modifie tes filtres.</p>
         </div>
@@ -175,9 +175,9 @@ export default function Opportunities() {
           {filteredProducts.map((item) => (
             <div
               key={item.id}
-              className="bg-[#171717] rounded-2xl border border-white/5 hover:border-[#FFC400]/40 transition overflow-hidden"
+              className="bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 transition overflow-hidden"
             >
-              <div className="h-44 bg-[#0A0A0A] border-b border-white/10">
+              <div className="h-44 bg-dark-400 border-b border-white/10">
                 <img
                   src={item.image}
                   alt={item.title}
@@ -196,12 +196,12 @@ export default function Opportunities() {
                     </p>
                   </div>
 
-                  <span className="bg-[#FFC400]/10 border border-[#FFC400]/20 text-[#FFC400] text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap">
+                  <span className="bg-neon-500/10 border border-neon-500/20 text-neon-500 text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap">
   ROI {Number(item.roi).toFixed(0)}%
 </span>
                 </div>
 
-                <span className="inline-flex mt-4 bg-[#FFC400]/10 border border-[#FFC400]/20 text-[#FFC400] text-xs font-bold px-2.5 py-1 rounded-full">
+                <span className="inline-flex mt-4 bg-neon-500/10 border border-neon-500/20 text-neon-500 text-xs font-bold px-2.5 py-1 rounded-full">
                   {getBadge(Number(item.roi))}
                 </span>
 
@@ -241,7 +241,7 @@ export default function Opportunities() {
 
                 <div className="mt-5 h-2 bg-white/10 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#FFC400] rounded-full"
+                    className="h-full bg-neon-500 rounded-full"
                     style={{ width: `${Math.min(Number(item.score || 0), 100)}%` }}
                   />
                 </div>
@@ -250,7 +250,7 @@ export default function Opportunities() {
                   href={item.vinted_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-5 bg-[#FFC400] text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-[#D89B00] transition"
+                  className="mt-5 bg-neon-500 text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-neon-600 transition"
                 >
                   Voir l’annonce
                   <ArrowUpRight size={18} />
@@ -266,9 +266,9 @@ export default function Opportunities() {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-[#171717] border border-white/10 rounded-2xl p-5">
+    <div className="bg-surface-alt border border-white/10 rounded-2xl p-5">
       <p className="text-gray-500 text-sm">{label}</p>
-      <h3 className="text-[#FFC400] text-3xl font-black mt-2">{value}</h3>
+      <h3 className="text-neon-500 text-3xl font-black mt-2">{value}</h3>
     </div>
   );
 }
@@ -286,7 +286,7 @@ function SortButton({
     <button
       onClick={onClick}
       className={`px-4 py-3 text-sm font-bold transition ${
-        active ? "bg-[#FFC400] text-black" : "text-gray-400 hover:text-white"
+        active ? "bg-neon-500 text-black" : "text-gray-400 hover:text-white"
       }`}
     >
       {label}
@@ -304,9 +304,9 @@ function Metric({
   green?: boolean;
 }) {
   return (
-    <div className="bg-[#0A0A0A] border border-white/5 rounded-xl p-3">
+    <div className="bg-dark-400 border border-white/5 rounded-xl p-3">
       <p className="text-gray-500 text-xs">{label}</p>
-      <h3 className={`${green ? "text-[#FFC400]" : "text-white"} text-2xl font-black mt-1`}>
+      <h3 className={`${green ? "text-neon-500" : "text-white"} text-2xl font-black mt-1`}>
       {value}
       </h3>
     </div>

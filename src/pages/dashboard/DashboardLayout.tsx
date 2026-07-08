@@ -53,7 +53,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
   const planColors: Record<string, string> = {
     free: 'text-gray-400',
-    pro: 'text-[#FFC400]',
+    pro: 'text-neon-500',
     team: 'text-blue-400',
   };
   
@@ -64,12 +64,12 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       {/* Logo */}
       <div className="p-5 border-b border-white/5">
         <button onClick={() => onNavigate('landing')} className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-[#FFC400] rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 bg-neon-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <Zap className="w-5 h-5 text-black" />
           </div>
           <span className="text-lg font-black">
             <span className="text-white">Resell</span>
-            <span className="text-[#FFC400]">OS</span>
+            <span className="text-neon-500">OS</span>
           </span>
         </button>
       </div>
@@ -88,20 +88,20 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 group ${
                 isActive
-                  ? 'bg-[#FFC400]/10 text-[#FFC400] font-medium'
+                  ? 'bg-neon-500/10 text-neon-500 font-medium'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
               }`}
             >
               <Icon
                 className={`w-4 h-4 flex-shrink-0 ${
-                  isActive ? 'text-[#FFC400]' : 'text-gray-500 group-hover:text-gray-300'
+                  isActive ? 'text-neon-500' : 'text-gray-500 group-hover:text-gray-300'
                 }`}
               />
 
               {label}
 
               {isActive && (
-                <ChevronRight className="w-3.5 h-3.5 ml-auto text-[#FFC400]" />
+                <ChevronRight className="w-3.5 h-3.5 ml-auto text-neon-500" />
               )}
             </button>
           );
@@ -111,7 +111,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       {/* User */}
       <div className="p-3 border-t border-white/5">
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/3 mb-2">
-          <div className="w-8 h-8 rounded-full bg-[#FFC400]/10 flex items-center justify-center text-xs font-bold text-[#FFC400] flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-neon-500/10 flex items-center justify-center text-xs font-bold text-neon-500 flex-shrink-0">
             {(profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase()}
           </div>
 
@@ -137,9 +137,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   );
 
   return (
-    <div className="flex h-screen bg-[#0A0A0A] overflow-hidden">
+    <div className="flex h-screen bg-dark-400 overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex flex-col w-60 bg-[#0A0A0A] border-r border-white/5 flex-shrink-0">
+      <aside className="hidden lg:flex flex-col w-60 bg-dark-400 border-r border-white/5 flex-shrink-0">
         <SidebarContent />
       </aside>
 
@@ -167,7 +167,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="flex items-center justify-between px-4 sm:px-6 h-16 border-b border-white/5 flex-shrink-0 bg-[#0A0A0A]">
+        <header className="flex items-center justify-between px-4 sm:px-6 h-16 border-b border-white/5 flex-shrink-0 bg-dark-400">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -186,20 +186,20 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setActivePage('generator')}
-              className="hidden sm:flex items-center gap-2 bg-[#FFC400] text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#D89B00] transition-all"
+              className="hidden sm:flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-neon-600 transition-all"
             >
               <Plus className="w-4 h-4" />
               Nouvel article
             </button>
 
-            <div className="w-8 h-8 rounded-full bg-[#FFC400]/10 flex items-center justify-center text-xs font-bold text-[#FFC400]">
+            <div className="w-8 h-8 rounded-full bg-neon-500/10 flex items-center justify-center text-xs font-bold text-neon-500">
               {(profile?.full_name || profile?.email || 'U').charAt(0).toUpperCase()}
             </div>
           </div>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
+        <main className="flex-1 overflow-y-auto bg-dark-400">
           {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
           {activePage === 'generator' && <GeneratorPage />}
           {activePage === 'opportunities' && <Opportunities />}

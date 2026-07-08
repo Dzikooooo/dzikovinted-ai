@@ -101,14 +101,14 @@ export default function StockPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Rechercher un article..."
-          className="w-full bg-[#181818] border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-[#FFC400]/30"
+          className="w-full bg-surface border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/30"
         />
       </div>
 
       {loading ? (
         <p className="text-gray-500 text-sm">Chargement...</p>
       ) : filtered.length === 0 ? (
-        <div className="bg-[#181818] border border-white/5 border-dashed rounded-2xl p-12 text-center">
+        <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
           <p className="text-gray-400 font-semibold mb-2">Aucun article en stock</p>
           <p className="text-sm text-gray-600">Ajoute un article depuis le générateur.</p>
         </div>
@@ -128,7 +128,7 @@ export default function StockPage() {
             return (
               <div
                 key={item.id}
-                className="bg-[#181818] border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all"
+                className="bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all"
               >
                 <div className="flex items-center justify-between gap-4">
                   <div>
@@ -136,7 +136,7 @@ export default function StockPage() {
                     <p className="text-xs text-gray-500 mt-1">
                       {item.brand} · {item.category} · {item.size}
                     </p>
-                    <p className={`text-[10px] mt-2 ${isSold ? 'text-blue-400' : 'text-[#FFC400]'}`}>
+                    <p className={`text-[10px] mt-2 ${isSold ? 'text-blue-400' : 'text-neon-500'}`}>
                       {isSold ? 'Vendu' : 'En stock'}
                     </p>
                   </div>
@@ -156,7 +156,7 @@ export default function StockPage() {
                           setSoldPrice(String(item.price ?? ''));
                           setFees('0');
                         }}
-                        className="text-xs font-semibold bg-[#FFC400] text-black px-3 py-2 rounded-xl hover:bg-[#50ff30] transition-all"
+                        className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 transition-all"
                       >
                         Marquer vendu
                       </button>
@@ -171,7 +171,7 @@ export default function StockPage() {
 
       {sellingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md bg-[#181818] border border-white/10 rounded-2xl p-5">
+          <div className="w-full max-w-md bg-surface border border-white/10 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="text-lg font-black">Marquer comme vendu</h2>
@@ -194,7 +194,7 @@ export default function StockPage() {
                   type="number"
                   value={soldPrice}
                   onChange={(e) => setSoldPrice(e.target.value)}
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
                 />
               </div>
 
@@ -206,13 +206,13 @@ export default function StockPage() {
                   type="number"
                   value={fees}
                   onChange={(e) => setFees(e.target.value)}
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#FFC400]/40"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
                 />
               </div>
 
               <button
                 onClick={markAsSold}
-                className="w-full bg-[#FFC400] text-black font-bold py-3 rounded-xl hover:bg-[#50ff30] transition-all"
+                className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
               >
                 Confirmer la vente
               </button>
@@ -226,9 +226,9 @@ export default function StockPage() {
 
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="bg-[#181818] border border-white/5 rounded-2xl p-4">
+    <div className="bg-surface border border-white/5 rounded-2xl p-4">
       <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">{label}</p>
-      <p className={`text-xl font-black ${highlight ? 'text-[#FFC400]' : 'text-gray-100'}`}>
+      <p className={`text-xl font-black ${highlight ? 'text-neon-500' : 'text-gray-100'}`}>
         {value}
       </p>
     </div>
@@ -239,7 +239,7 @@ function MiniValue({ label, value, highlight }: { label: string; value: string; 
   return (
     <div>
       <p className="text-[10px] uppercase tracking-wider text-gray-500">{label}</p>
-      <p className={`text-sm font-bold ${highlight ? 'text-[#FFC400]' : 'text-gray-200'}`}>
+      <p className={`text-sm font-bold ${highlight ? 'text-neon-500' : 'text-gray-200'}`}>
         {value}
       </p>
     </div>

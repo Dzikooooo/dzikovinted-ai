@@ -65,23 +65,23 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(57,255,20,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(57,255,20,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-[#FFC400]/4 rounded-full blur-[160px]" />
+    <div className="min-h-screen bg-dark-400 flex flex-col items-center justify-center px-4 relative overflow-hidden">
+      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,196,0,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,196,0,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-neon-500/4 rounded-full blur-[160px]" />
 
       <div className="relative z-10 w-full max-w-md">
-        <button onClick={() => onNavigate('landing')} className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#FFC400] transition-colors mb-8">
+        <button onClick={() => onNavigate('landing')} className="flex items-center gap-2 text-sm text-gray-500 hover:text-neon-500 transition-colors mb-8">
           <ArrowLeft className="w-4 h-4" /> Retour à l'accueil
         </button>
 
         <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-[#FFC400] rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-neon-500 rounded-lg flex items-center justify-center">
             <Zap className="w-5 h-5 text-black" />
           </div>
-          <span className="text-xl font-black">Dziko<span className="text-[#FFC400]">Vinted</span></span>
+          <span className="text-xl font-black">Dziko<span className="text-neon-500">Vinted</span></span>
         </div>
 
-        <div className="bg-[#181818] border border-white/8 rounded-2xl p-8">
+        <div className="bg-surface border border-white/8 rounded-2xl p-8">
           <h1 className="text-2xl font-black mb-1">
             {mode === 'login' ? 'Connexion' : mode === 'register' ? 'Créer un compte' : 'Mot de passe oublié'}
           </h1>
@@ -97,9 +97,9 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
           )}
 
           {info && (
-            <div className="flex items-center gap-3 bg-[#FFC400]/10 border border-[#FFC400]/20 rounded-xl px-4 py-3 mb-6">
-              <AlertCircle className="w-4 h-4 text-[#FFC400] flex-shrink-0" />
-              <p className="text-sm text-[#FFC400]">{info}</p>
+            <div className="flex items-center gap-3 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3 mb-6">
+              <AlertCircle className="w-4 h-4 text-neon-500 flex-shrink-0" />
+              <p className="text-sm text-neon-500">{info}</p>
             </div>
           )}
 
@@ -115,7 +115,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Jean Dupont"
-                    className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-[#FFC400]/40 focus:ring-1 focus:ring-[#FFC400]/20 transition-all"
+                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
                   />
                 </div>
               </div>
@@ -131,7 +131,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="toi@example.com"
-                  className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-[#FFC400]/40 focus:ring-1 focus:ring-[#FFC400]/20 transition-all"
+                  className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
                 />
               </div>
             </div>
@@ -147,7 +147,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-[#FFC400]/40 focus:ring-1 focus:ring-[#FFC400]/20 transition-all"
+                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
                   />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -167,7 +167,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-[#0A0A0A] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-[#FFC400]/40 focus:ring-1 focus:ring-[#FFC400]/20 transition-all"
+                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-1 focus:ring-neon-500/20 transition-all"
                   />
                 </div>
               </div>
@@ -175,7 +175,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
             {mode === 'login' && (
               <div className="flex justify-end">
-                <button type="button" onClick={() => { setMode('forgot'); setError(null); }} className="text-xs text-gray-500 hover:text-[#FFC400] transition-colors">
+                <button type="button" onClick={() => { setMode('forgot'); setError(null); }} className="text-xs text-gray-500 hover:text-neon-500 transition-colors">
                   Mot de passe oublié ?
                 </button>
               </div>
@@ -184,7 +184,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#FFC400] text-black font-bold py-3.5 rounded-xl hover:bg-[#D89B00] transition-all duration-200 hover:shadow-[0_0_30px_rgba(57,255,20,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2"
+              className="w-full bg-neon-500 text-black font-bold py-3.5 rounded-xl hover:bg-neon-600 transition-all duration-200 hover:shadow-[0_0_30px_rgba(255,196,0,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2"
             >
               {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : mode === 'register' ? 'Créer mon compte' : 'Envoyer le lien'}
             </button>
@@ -193,11 +193,11 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
           <div className="border-t border-white/5 mt-6 pt-6 text-center">
             {mode === 'login' ? (
               <p className="text-sm text-gray-500">Pas encore de compte ?{' '}
-                <button onClick={() => { setMode('register'); setError(null); }} className="text-[#FFC400] hover:underline font-medium">Créer un compte</button>
+                <button onClick={() => { setMode('register'); setError(null); }} className="text-neon-500 hover:underline font-medium">Créer un compte</button>
               </p>
             ) : (
               <p className="text-sm text-gray-500">Déjà un compte ?{' '}
-                <button onClick={() => { setMode('login'); setError(null); }} className="text-[#FFC400] hover:underline font-medium">Se connecter</button>
+                <button onClick={() => { setMode('login'); setError(null); }} className="text-neon-500 hover:underline font-medium">Se connecter</button>
               </p>
             )}
           </div>
