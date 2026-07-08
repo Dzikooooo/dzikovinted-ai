@@ -11,11 +11,19 @@ function normalize(str: string) {
     .trim();
 }
 
+const SYNONYMS: Record<string, string[]> = {
+  hoodie: ["hoodie", "sweat a capuche", "sweat capuche", "capuche", "trui", "felpa", "sudadera"],
+  sweatshirt: ["sweatshirt", "sweat", "pull", "pullover", "crewneck"],
+};
+
 function isRelevant(item: any, search: string) {
   const title = normalize(item.title);
   const terms = normalize(search).split(" ");
 
-  return terms.every((term) => title.includes(term));
+  return terms.every((term) => {
+    const candidates = SYNONYMS[term] ?? [term];
+    return candidates.some((candidate) => title.includes(candidate));
+  });
 }
 
 const PAGES_PER_SEARCH = 2;
