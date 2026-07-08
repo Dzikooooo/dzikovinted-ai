@@ -13,7 +13,6 @@ import {
   X,
   Menu,
   Plus,
-  TrendingUp,
   Search
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,8 +24,6 @@ import ExpensesPage from './ExpensesPage';
 import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
-import NewItemPage from './NewItemPage';
-import Market from './Market';
 import Opportunities from './Opportunities';
 
 interface DashboardLayoutProps {
@@ -36,14 +33,12 @@ interface DashboardLayoutProps {
 const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[] = [
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
-  { page: 'market', icon: TrendingUp, label: 'Marché' },
   { page: 'opportunities', icon: Search, label: 'Opportunités' },
   { page: 'stock', icon: History, label: 'Stock' },
   { page: 'expenses', icon: Wallet, label: 'Depenses' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
   { page: 'settings', icon: Settings, label: 'Paramètres' },
-  { page: 'new-item', icon: Plus, label: 'Nouvel article' },
 ];
 
 export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
@@ -190,7 +185,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setActivePage('new-item')}
+              onClick={() => setActivePage('generator')}
               className="hidden sm:flex items-center gap-2 bg-[#FFC400] text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-[#D89B00] transition-all"
             >
               <Plus className="w-4 h-4" />
@@ -207,9 +202,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
         <main className="flex-1 overflow-y-auto bg-[#0A0A0A]">
           {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
           {activePage === 'generator' && <GeneratorPage />}
-          {activePage === 'market' && <Market setActivePage={setActivePage} />}
           {activePage === 'opportunities' && <Opportunities />}
-          {activePage === 'new-item' && <NewItemPage />}
           {activePage === 'stock' && <StockPage />}
           {activePage === 'expenses' && <ExpensesPage />}
           {activePage === 'stats' && <StatsPage />}
