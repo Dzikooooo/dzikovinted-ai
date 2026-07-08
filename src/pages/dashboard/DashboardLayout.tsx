@@ -13,7 +13,8 @@ import {
   X,
   Menu,
   Plus,
-  Search
+  Search,
+  Puzzle
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { DashboardPage, AppPage } from '../../lib/types';
@@ -21,6 +22,7 @@ import DashboardHome from './DashboardHome';
 import GeneratorPage from './GeneratorPage';
 import StockPage from './StockPage';
 import ExpensesPage from './ExpensesPage';
+import VintedAccountPage from './VintedAccountPage';
 import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
@@ -35,6 +37,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
   { page: 'opportunities', icon: Search, label: 'Opportunités' },
   { page: 'stock', icon: History, label: 'Stock' },
+  { page: 'vinted-account', icon: Puzzle, label: 'Compte Vinted' },
   { page: 'expenses', icon: Wallet, label: 'Depenses' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
@@ -204,6 +207,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           {activePage === 'generator' && <GeneratorPage />}
           {activePage === 'opportunities' && <Opportunities />}
           {activePage === 'stock' && <StockPage />}
+          {activePage === 'vinted-account' && <VintedAccountPage />}
           {activePage === 'expenses' && <ExpensesPage />}
           {activePage === 'stats' && <StatsPage />}
           {activePage === 'subscription' && <SubscriptionPage />}

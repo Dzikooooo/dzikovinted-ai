@@ -219,7 +219,10 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       </div>
 
       {/* Compte Vinted (extension a venir) */}
-      <div className="bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 mb-8 flex items-center gap-4">
+      <button
+        onClick={() => onNavigate('vinted-account')}
+        className="w-full bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 mb-8 flex items-center gap-4 text-left hover:border-white/10 transition-colors"
+      >
         <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
           <Puzzle className="w-4 h-4 text-gray-500" />
         </div>
@@ -229,7 +232,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             Messages, offres et republications automatiques apparaitront ici une fois l'extension Chrome connectee.
           </p>
         </div>
-      </div>
+      </button>
 
       {/* Recent listings */}
       <div>
