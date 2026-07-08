@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Plus, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useAccounts } from '../../hooks/useAccounts';
 
 export default function SettingsPage() {
   const { profile, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications' | 'api' | 'danger'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger'>('profile');
+  const { accounts, loading: accountsLoading, addAccount, deleteAccount } = useAccounts();
+  const [newAccountName, setNewAccountName] = useState('');
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [email] = useState(profile?.email ?? '');
@@ -45,9 +48,17 @@ export default function SettingsPage() {
     setTimeout(() => setApiSaved(false), 2000);
   };
 
+  const handleAddAccount = async () => {
+    const name = newAccountName.trim();
+    if (!name) return;
+    await addAccount(name);
+    setNewAccountName('');
+  };
+
   const tabs = [
     { key: 'profile', label: 'Profil', icon: User },
     { key: 'security', label: 'Securite', icon: Lock },
+    { key: 'accounts', label: 'Comptes Vinted', icon: Users },
     { key: 'notifications', label: 'Notifications', icon: Bell },
     { key: 'api', label: 'Cles API', icon: Key },
     { key: 'danger', label: 'Danger', icon: Trash2 },
@@ -133,6 +144,59 @@ export default function SettingsPage() {
             <Save className="w-4 h-4" />
             Mettre a jour
           </button>
+        </div>
+      )}
+
+      {activeTab === 'accounts' && (
+        <div className="bg-[#181818] border border-white/5 rounded-2xl p-6 space-y-5">
+          <div>
+            <h2 className="font-bold text-sm">Comptes Vinted</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Gere les comptes Vinted que tu utilises pour revendre.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newAccountName}
+              onChange={(e) => setNewAccountName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddAccount()}
+              placeholder="Nom du compte (ex: Compte principal)"
+              className="flex-1 bg-[#0A0A0A] border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-[#39FF14]/40 transition-all"
+            />
+            <button
+              onClick={handleAddAccount}
+              disabled={!newAccountName.trim()}
+              className="flex items-center gap-2 bg-[#39FF14] text-black font-bold px-4 py-2.5 rounded-xl hover:bg-[#50ff30] transition-all text-sm disabled:opacity-60 flex-shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter
+            </button>
+          </div>
+
+          {accountsLoading ? (
+            <p className="text-gray-500 text-sm">Chargement...</p>
+          ) : accounts.length === 0 ? (
+            <p className="text-sm text-gray-600">Aucun compte enregistre pour l'instant.</p>
+          ) : (
+            <div className="space-y-2">
+              {accounts.map((account) => (
+                <div
+                  key={account.id}
+                  className="flex items-center justify-between px-4 py-3 bg-[#0A0A0A] border border-white/5 rounded-xl"
+                >
+                  <p className="text-sm text-gray-200">{account.name}</p>
+                  <button
+                    onClick={() => deleteAccount(account.id)}
+                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

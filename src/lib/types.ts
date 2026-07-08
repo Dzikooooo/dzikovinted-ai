@@ -5,6 +5,7 @@ export type DashboardPage =
   | 'market'
   | 'opportunities'
   | 'stock'
+  | 'expenses'
   | 'stats'
   | 'subscription'
   | 'settings'

@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Sparkles,
   History,
+  Wallet,
   BarChart2,
   CreditCard,
   Settings,
@@ -20,6 +21,7 @@ import type { DashboardPage, AppPage } from '../../lib/types';
 import DashboardHome from './DashboardHome';
 import GeneratorPage from './GeneratorPage';
 import StockPage from './StockPage';
+import ExpensesPage from './ExpensesPage';
 import StatsPage from './StatsPage';
 import SubscriptionPage from './SubscriptionPage';
 import SettingsPage from './SettingsPage';
@@ -37,6 +39,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'market', icon: TrendingUp, label: 'Marché' },
   { page: 'opportunities', icon: Search, label: 'Opportunités' },
   { page: 'stock', icon: History, label: 'Stock' },
+  { page: 'expenses', icon: Wallet, label: 'Depenses' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
   { page: 'settings', icon: Settings, label: 'Paramètres' },
@@ -208,6 +211,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           {activePage === 'opportunities' && <Opportunities />}
           {activePage === 'new-item' && <NewItemPage />}
           {activePage === 'stock' && <StockPage />}
+          {activePage === 'expenses' && <ExpensesPage />}
           {activePage === 'stats' && <StatsPage />}
           {activePage === 'subscription' && <SubscriptionPage />}
           {activePage === 'settings' && <SettingsPage />}
