@@ -2,54 +2,68 @@ import { chromium } from "playwright";
 import { supabase } from "./supabase";
 import { analyzeMarket } from "./market-engine";
 
+function normalize(str: string) {
+  return str
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function isRelevant(item: any, search: string) {
-  const title = item.title.toLowerCase();
-  const terms = search.toLowerCase().split(" ");
+  const title = normalize(item.title);
+  const terms = normalize(search).split(" ");
 
   return terms.every((term) => title.includes(term));
 }
 
 async function scanSearch(page: any, search: string) {
-  const foundItems: any[] = [];
-
-  const onResponse = async (response: any) => {
-    const url = response.url();
-
-    if (!url.includes("vinted.fr/api/v2/promoted_closets")) return;
-
-    try {
-      const json = await response.json();
-
-      const items =
-        json.promoted_closets?.flatMap((closet: any) =>
-          closet.items.map((item: any) => ({
-            title: item.title,
-            brand: item.brand_title || "Vinted",
-            price: Number(item.price?.amount || 0),
-            image: item.photos?.[0]?.url || "",
-            url: item.url,
-            favourites: item.favourite_count || 0,
-            seller: closet.user?.login,
-          }))
-        ) || [];
-
-      foundItems.push(...items);
-    } catch {}
-  };
-
-  page.on("response", onResponse);
-
   await page.goto(
     `https://www.vinted.fr/catalog?search_text=${encodeURIComponent(search)}`,
     { waitUntil: "networkidle" }
   );
 
-  await page.waitForTimeout(5000);
-  page.off("response", onResponse);
+  await page.waitForTimeout(4000);
+
+  const foundItems = await page.evaluate(() => {
+    const titleEls = document.querySelectorAll('[data-testid$="--description-title"]');
+    const results: any[] = [];
+
+    titleEls.forEach((titleEl) => {
+      const testid = titleEl.getAttribute("data-testid") || "";
+      const prefix = testid.replace(/--description-title$/, "");
+      if (!prefix) return;
+
+      const priceEl = document.querySelector(`[data-testid="${prefix}--price-text"]`);
+      const linkEl = document.querySelector(`[data-testid="${prefix}--overlay-link"]`);
+      const imageEl = document.querySelector(`[data-testid="${prefix}--image--img"]`);
+      const container = document.querySelector(`[data-testid="${prefix}"]`);
+      const favEl = container?.querySelector('[data-testid="favourite-count-text"]');
+
+      const href = linkEl?.getAttribute("href") || "";
+      const priceText = priceEl?.textContent || "";
+      const price = Number(priceText.replace(/[^\d,]/g, "").replace(",", "."));
+      const slugMatch = href.match(/\/items\/\d+-([^?]+)/);
+      const title = slugMatch ? slugMatch[1].replace(/-/g, " ") : "";
+
+      results.push({
+        title,
+        brand: titleEl.textContent?.trim() || "Vinted",
+        price,
+        image: imageEl?.getAttribute("src") || "",
+        url: href,
+        favourites: favEl ? parseInt(favEl.textContent || "0", 10) || 0 : 0,
+      });
+    });
+
+    return results;
+  });
 
   const cleanItems = foundItems.filter(
     (item, index, self) =>
       item.url &&
+      item.title &&
       item.price > 0 &&
       self.findIndex((i) => i.url === item.url) === index
   );
@@ -65,90 +79,92 @@ async function scanSearch(page: any, search: string) {
 
 async function main() {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
 
-  let allItems: any[] = [];
+  try {
+    const page = await browser.newPage();
 
-  await supabase.from("market_opportunities").delete().neq("id", "");
+    let allItems: any[] = [];
 
-  const { data: watchlist, error } = await supabase
-    .from("watchlist")
-    .select("*")
-    .eq("active", true)
-    .order("priority", { ascending: false });
+    await supabase.from("market_opportunities").delete().neq("id", "");
 
-  if (error) {
-    console.error("WATCHLIST ERROR:", error);
-    await browser.close();
-    return;
-  }
+    const { data: watchlist, error } = await supabase
+      .from("watchlist")
+      .select("*")
+      .eq("active", true)
+      .order("priority", { ascending: false });
 
-  console.log(`Watchlist chargée : ${watchlist?.length ?? 0} recherches`);
-
-  for (const watch of watchlist ?? []) {
-    const search = `${watch.brand} ${watch.model}`;
-
-    console.log("\nRecherche :", search);
-
-    const items = await scanSearch(page, search);
-    const comparablePrices = items.map((i) => i.price);
-
-    for (const item of items) {
-      if (item.favourites < 5) continue;
-
-      const analyzedItem = analyzeMarket(
-        { ...item, category: watch.category },
-        comparablePrices
-      );
-
-      if (analyzedItem.profit < watch.min_profit) continue;
-      if (analyzedItem.roi < watch.min_roi) continue;
-
-      allItems.push(analyzedItem);
+    if (error) {
+      console.error("WATCHLIST ERROR:", error);
+      return;
     }
-  }
 
-  const unique = allItems.filter(
-    (item, index, self) =>
-      self.findIndex((i) => i.url === item.url) === index
-  );
+    console.log(`Watchlist chargée : ${watchlist?.length ?? 0} recherches`);
 
-  console.log("");
-  console.log("=======================");
-  console.log("TOTAL OPPORTUNITÉS :", unique.length);
-  console.log("=======================");
+    for (const watch of watchlist ?? []) {
+      const search = `${watch.brand} ${watch.model}`;
 
-  const { error: insertError } = await supabase
-    .from("market_opportunities")
-    .upsert(
-      unique.map((item) => ({
-        title: item.title,
-        brand: item.brand,
-        category: item.category,
-        image: item.image,
+      console.log("\nRecherche :", search);
 
-        price_found: item.price,
-        market_price: item.market_price,
-        profit: item.profit,
-        roi: item.roi,
+      const items = await scanSearch(page, search);
+      const comparablePrices = items.map((i) => i.price);
 
-        score: item.score,
-        confidence: item.confidence,
-        price_source: item.price_source,
+      for (const item of items) {
+        if (item.favourites < 5) continue;
 
-        vinted_url: item.url,
-        status: "live",
-      })),
-      { onConflict: "vinted_url" }
+        const analyzedItem = analyzeMarket(
+          { ...item, category: watch.category },
+          comparablePrices
+        );
+
+        if (analyzedItem.profit < watch.min_profit) continue;
+        if (analyzedItem.roi < watch.min_roi) continue;
+
+        allItems.push(analyzedItem);
+      }
+    }
+
+    const unique = allItems.filter(
+      (item, index, self) =>
+        self.findIndex((i) => i.url === item.url) === index
     );
 
-  if (insertError) {
-    console.error("INSERT ERROR:", insertError);
-  } else {
-    console.log(`${unique.length} opportunités enregistrées dans Supabase.`);
-  }
+    console.log("");
+    console.log("=======================");
+    console.log("TOTAL OPPORTUNITÉS :", unique.length);
+    console.log("=======================");
 
-  await browser.close();
+    const { error: insertError } = await supabase
+      .from("market_opportunities")
+      .upsert(
+        unique.map((item) => ({
+          title: item.title,
+          brand: item.brand,
+          category: item.category,
+          image: item.image,
+
+          price_found: item.price,
+          market_price: item.market_price,
+          profit: item.profit,
+          roi: item.roi,
+
+          score: item.score,
+          confidence: item.confidence,
+          price_source: item.price_source,
+
+          vinted_url: item.url,
+          status: "live",
+        })),
+        { onConflict: "vinted_url" }
+      );
+
+    if (insertError) {
+      console.error("INSERT ERROR:", insertError);
+    } else {
+      console.log(`${unique.length} opportunités enregistrées dans Supabase.`);
+    }
+  } finally {
+    await browser.close();
+  }
 }
 
 main().catch(console.error);
