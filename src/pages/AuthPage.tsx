@@ -78,7 +78,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
           <div className="w-8 h-8 bg-neon-500 rounded-lg flex items-center justify-center">
             <Zap className="w-5 h-5 text-black" />
           </div>
-          <span className="text-xl font-black">Dziko<span className="text-neon-500">Vinted</span></span>
+          <span className="text-xl font-black">Resell<span className="text-neon-500">OS</span></span>
         </div>
 
         <div className="bg-surface border border-white/8 rounded-2xl p-8">

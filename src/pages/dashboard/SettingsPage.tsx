@@ -207,7 +207,7 @@ export default function SettingsPage() {
           <h2 className="font-bold text-sm mb-2">Preferences de notifications</h2>
           {[
             { label: 'Resume hebdomadaire', desc: 'Recois un resume de tes annonces chaque semaine.' },
-            { label: 'Nouvelles fonctionnalites', desc: 'Sois informe des mises a jour DzikoVinted.' },
+            { label: 'Nouvelles fonctionnalites', desc: 'Sois informe des mises a jour de Resell OS.' },
             { label: 'Conseils de vente', desc: 'Astuces pour vendre plus vite sur Vinted.' },
           ].map(({ label, desc }) => (
             <div key={label} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
