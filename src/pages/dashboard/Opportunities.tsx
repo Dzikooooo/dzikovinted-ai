@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, ArrowUpRight, RefreshCw } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import type { MarketOpportunity } from "../../lib/types";
+import { StatCard } from "../../components/ui/StatCard";
 
 type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
 type CategoryFilter = "all" | "Sneakers" | "Jackets" | "Sweat" | "Fleece" | "Jeans" | "Shoes";
@@ -112,10 +113,10 @@ export default function Opportunities() {
       </div>
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Opportunités" value={stats.count} />
-        <StatCard label="Profit moyen" value={`+${stats.avgProfit}€`} />
-        <StatCard label="ROI moyen" value={`+${stats.avgRoi}%`} />
-        <StatCard label="Meilleur deal" value={`+${stats.bestProfit}€`} />
+        <StatCard size="lg" label="Opportunités" value={stats.count} />
+        <StatCard size="lg" label="Profit moyen" value={`+${stats.avgProfit}€`} />
+        <StatCard size="lg" label="ROI moyen" value={`+${stats.avgRoi}%`} />
+        <StatCard size="lg" label="Meilleur deal" value={`+${stats.bestProfit}€`} />
       </div>
 
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
@@ -261,15 +262,6 @@ export default function Opportunities() {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="bg-surface-alt border border-white/10 rounded-2xl p-5">
-      <p className="text-gray-500 text-sm">{label}</p>
-      <h3 className="text-neon-500 text-3xl font-black mt-2">{value}</h3>
     </div>
   );
 }

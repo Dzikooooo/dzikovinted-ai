@@ -3,6 +3,7 @@ import { Search, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
+import { StatCard } from '../../components/ui/StatCard';
 
 export default function StockPage() {
   const { user } = useAuth();
@@ -220,17 +221,6 @@ export default function StockPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="bg-surface border border-white/5 rounded-2xl p-4">
-      <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">{label}</p>
-      <p className={`text-xl font-black ${highlight ? 'text-neon-500' : 'text-gray-100'}`}>
-        {value}
-      </p>
     </div>
   );
 }

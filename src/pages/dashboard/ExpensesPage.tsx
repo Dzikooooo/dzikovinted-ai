@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { useExpenses } from '../../hooks/useExpenses';
+import { StatCard } from '../../components/ui/StatCard';
 
 const CATEGORIES = [
   'Emballage',
@@ -176,17 +177,6 @@ export default function ExpensesPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="bg-surface border border-white/5 rounded-2xl p-4">
-      <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">{label}</p>
-      <p className={`text-xl font-black ${highlight ? 'text-neon-500' : 'text-gray-100'}`}>
-        {value}
-      </p>
     </div>
   );
 }
