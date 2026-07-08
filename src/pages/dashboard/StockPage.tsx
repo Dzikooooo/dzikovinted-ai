@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Sparkles, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
+
+const AGING_STOCK_DAYS = 21;
 
 export default function StockPage() {
   const { user } = useAuth();
@@ -76,6 +78,9 @@ export default function StockPage() {
     0
   );
 
+  const isAging = (item: Listing) =>
+    item.status !== 'vendu' && Date.now() - new Date(item.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000;
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -85,15 +90,24 @@ export default function StockPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Articles en stock" value={stockItems.length.toString()} />
-        <StatCard label="Valeur du stock" value={`${stockValue} €`} />
-        <StatCard label="Investissement" value={`${investment} €`} />
-        <StatCard label="Marge potentielle" value={`${potentialMargin} €`} highlight />
-        <StatCard label="ROI moyen" value={`${averageRoi} %`} highlight />
-        <StatCard label="Articles vendus" value={soldItems.length.toString()} />
-        <StatCard label="Chiffre d'affaires" value={`${revenue} €`} />
-        <StatCard label="Bénéfice" value={`${profit} €`} highlight />
+      <div className="mb-6">
+        <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">Stock actif</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Articles en stock" value={stockItems.length.toString()} />
+          <StatCard label="Valeur du stock" value={`${stockValue} €`} />
+          <StatCard label="Investissement" value={`${investment} €`} />
+          <StatCard label="Marge potentielle" value={`${potentialMargin} €`} highlight />
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">Ventes</h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard label="Articles vendus" value={soldItems.length.toString()} />
+          <StatCard label="Chiffre d'affaires" value={`${revenue} €`} />
+          <StatCard label="Bénéfice" value={`${profit} €`} highlight />
+          <StatCard label="ROI moyen" value={`${averageRoi} %`} highlight />
+        </div>
       </div>
 
       <div className="relative mb-6">
@@ -107,9 +121,12 @@ export default function StockPage() {
       </div>
 
       {loading ? (
-        <p className="text-gray-500 text-sm">Chargement...</p>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-20 bg-surface rounded-2xl animate-pulse" />)}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
+          <Sparkles className="w-8 h-8 text-gray-700 mx-auto mb-3" />
           <p className="text-gray-400 font-semibold mb-2">Aucun article en stock</p>
           <p className="text-sm text-gray-600">Ajoute un article depuis le générateur.</p>
         </div>
@@ -117,6 +134,7 @@ export default function StockPage() {
         <div className="grid grid-cols-1 gap-3">
           {filtered.map((item) => {
             const isSold = item.status === 'vendu';
+            const aging = isAging(item);
             const margin = isSold
               ? Number(item.sold_price || 0) - Number(item.purchase_price || 0) - Number(item.fees || 0)
               : Number(item.price || 0) - Number(item.purchase_price || 0);
@@ -131,18 +149,37 @@ export default function StockPage() {
                 key={item.id}
                 className="bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-semibold text-sm text-gray-100">{item.title}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {item.brand} · {item.category} · {item.size}
-                    </p>
-                    <p className={`text-[10px] mt-2 ${isSold ? 'text-blue-400' : 'text-neon-500'}`}>
-                      {isSold ? 'Vendu' : 'En stock'}
-                    </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {item.image_urls?.[0] ? (
+                      <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-white/10">
+                        <img src={item.image_urls[0]} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Sparkles className="w-4 h-4 text-neon-500/70" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
+                      <p className="text-xs text-gray-500 mt-1 truncate">
+                        {item.brand} · {item.category} · {item.size}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <span className={`text-[10px] ${isSold ? 'text-blue-400' : 'text-neon-500'}`}>
+                          {isSold ? 'Vendu' : item.status === 'draft' ? 'Brouillon' : 'En stock'}
+                        </span>
+                        {aging && (
+                          <span className="flex items-center gap-1 text-[10px] text-amber-400">
+                            <Clock className="w-2.5 h-2.5" />
+                            +{AGING_STOCK_DAYS}j
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-5">
+                  <div className="flex items-center justify-between sm:justify-end gap-5 flex-shrink-0">
                     <div className="grid grid-cols-4 gap-3 text-right">
                       <MiniValue label={isSold ? 'Vente' : 'Valeur'} value={`${isSold ? item.sold_price ?? 0 : item.price ?? 0} €`} />
                       <MiniValue label="Achat" value={`${item.purchase_price ?? 0} €`} />
@@ -157,7 +194,7 @@ export default function StockPage() {
                           setSoldPrice(String(item.price ?? ''));
                           setFees('0');
                         }}
-                        className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 transition-all"
+                        className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 transition-all flex-shrink-0"
                       >
                         Marquer vendu
                       </button>
