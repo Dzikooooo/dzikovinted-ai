@@ -165,22 +165,19 @@ Ces écrans/éléments existent dans l'UI avec un état honnête ("bientôt disp
 - **Compte Vinted (`VintedAccountPage.tsx`)** : placeholder explicite en attente de l'extension Chrome — messages, offres, republication automatique, vues/favoris en temps réel, alertes (voir §8)
 - **Abonnement (`SubscriptionPage.tsx`)** : UI de plans statique, aucune intégration Stripe. Table `subscriptions` déjà en base (scaffolding), pas encore branchée
 - **Suppression de compte (`SettingsPage.tsx`, zone danger)** : bouton désactivé volontairement ("bientôt disponible") — aucune logique de suppression de compte n'existe côté backend, le bouton a été trouvé sans handler lors de l'audit de juillet 2026 et corrigé pour ne pas être une action destructive factice
-- **Multi-marketplace** : mentionné en roadmap sur la landing page ("Bientôt"), aucun code d'abstraction marketplace n'existe (voir §3, ligne Playwright, et ROADMAP.md Phase E)
+- **Multi-marketplace** : mentionné en roadmap sur la landing page ("Bientôt"), aucun code d'abstraction marketplace n'existe et ce n'est pas prévu tant que Vinted reste la seule marketplace gérée (voir §3, ligne Playwright, et [EXTENSION.md](EXTENSION.md) §5 pour pourquoi cette abstraction est explicitement écartée pour l'instant)
 - **Incohérence connue** : `SettingsPage.tsx` référence encore "OpenAI API Key" dans l'UI alors que l'edge function appelle Gemini — reliquat d'un changement de fournisseur IA jamais nettoyé côté libellés, à corriger
 
 ## 8. Points d'extension pour l'extension Chrome
 
-Vinted n'ayant pas d'API publique, toute action qui nécessite d'agir *dans* le compte Vinted de l'utilisateur (publier, republier, répondre à un message, accepter une offre) ne peut pas se faire depuis le backend seul — elle nécessite une extension agissant dans le contexte authentifié du navigateur sur vinted.fr. Prérequis avant de coder l'extension elle-même (Phase E de la ROADMAP, pas commencée) :
+Vinted n'ayant pas d'API publique, toute action qui nécessite d'agir *dans* le compte Vinted de l'utilisateur (publier, republier, répondre à un message, accepter une offre) ne peut pas se faire depuis le backend seul — elle nécessite une extension agissant dans le contexte authentifié du navigateur sur vinted.fr.
 
-1. **Colonne `marketplace` sur `listings`** — aujourd'hui implicite (tout est Vinted), à expliciter avant d'introduire un second canal (même l'extension Chrome elle-même compte comme un second "canal" d'écriture vers `listings`)
-2. **Table `marketplace_connections`** — pour stocker l'état de connexion/synchronisation de l'extension par utilisateur (dernière sync, statut, éventuel token/cookie de session si nécessaire)
-3. **Interface `MarketplaceConnector`** — actuellement inexistante ; le code ne l'abstrait pas car Vinted est la seule marketplace gérée. Ne pas la construire avant que l'extension Chrome (premier vrai second "connecteur", même si toujours Vinted) n'en démontre le besoin concret — voir la note anti-abstraction-prématurée en §2
+**Conception complète dans [EXTENSION.md](EXTENSION.md)** : composants (background/content scripts/popup), appairage à chaud avec la session Supabase déjà ouverte dans l'app web (l'utilisateur ne se reconnecte pas une seconde fois), modèle de données (`accounts` étendu + file `sync_jobs`, sans abstraction multi-marketplace générique — voir §5 de ce document pour pourquoi la note ci-dessous a été révisée), phasage MVP, et garde-fous de sécurité/conformité.
 
-**Points d'ancrage déjà en place côté UI** pour brancher l'extension sans refonte :
+**Points d'ancrage déjà en place côté UI**, détaillés dans EXTENSION.md §11 :
 - `VintedAccountPage.tsx` : écran dédié déjà en place, à remplacer par de vraies données dès que l'extension expose un état de connexion
-- `SettingsPage.tsx` (onglet comptes) : `useAccounts` gère déjà plusieurs comptes Vinted nommés — l'extension devra associer chaque compte à une session Vinted réelle
-- `market_opportunities.vinted_url` : chaque opportunité a déjà l'URL Vinted de l'annonce — point d'ancrage naturel pour une action "ouvrir/acheter via l'extension" future
-- Communication navigateur ↔ extension : aucun mécanisme n'existe encore (`postMessage`, `chrome.runtime` externe, ou API custom) — à concevoir lors de la Phase 2, pas avant
+- `SettingsPage.tsx` (onglet comptes) : `useAccounts` gère déjà plusieurs comptes Vinted nommés
+- `market_opportunities.vinted_url` : chaque opportunité a déjà l'URL Vinted de l'annonce
 
 ## 9. Conventions de développement
 
@@ -200,9 +197,8 @@ Par ordre de priorité réaliste (voir aussi le détail complet dans [ROADMAP.md
 
 1. **Décider du sort de `business_items`/`business_expenses`** — tables orphelines, la première contient 53 lignes de données réelles jamais migrées. Bloquant moralement avant de considérer le schéma "propre"
 2. **Corriger l'incohérence "OpenAI API Key" vs Gemini** dans `SettingsPage.tsx` (§7) — petit fix, confusion utilisateur réelle
-3. **Phase E (préparation extension Chrome)** — colonne `marketplace`, table `marketplace_connections`, avant de coder l'extension elle-même (§8)
+3. **Implémenter le MVP de l'extension Chrome** — appairage, republication, sync vues/favoris — voir le phasage détaillé dans [EXTENSION.md](EXTENSION.md) §10
 4. **Introduire un framework de tests minimal** (Vitest pour la logique pure de `scripts/market-engine.ts`/`market-price.ts` serait le point de départ le plus rentable — logique déterministe, facile à tester, déjà à l'origine d'au moins un bug de calcul corrigé manuellement)
 5. **Terminer la migration vers les classes `.btn-neon`/`.glass-card`/`.input-dark`** sur les pages qui réimplémentent encore leur style en Tailwind brut
 6. **Traiter les items de sécurité/perf restants documentés dans DATABASE.md** : policy storage `listing-images` trop permissive, protection mots de passe compromis désactivée, policies RLS dupliquées, pattern `auth.uid()` non optimisé
 7. **Router applicatif (`react-router`)** — seulement quand l'extension Chrome ou un besoin de deep-link concret l'exige (§3), pas avant
-8. **Interface `MarketplaceConnector`** — seulement quand un second connecteur réel (extension Chrome, puis éventuellement une autre marketplace) en démontre le besoin (§8)

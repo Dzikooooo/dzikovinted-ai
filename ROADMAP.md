@@ -17,7 +17,7 @@ Revue approfondie avant d'attaquer l'extension Chrome. Détail dans l'historique
 
 ### Reste de l'audit — pas encore fait
 
-- **Phase E — Multi-marketplace + extension Chrome (préparation)** : colonne `marketplace` sur `listings`, table `marketplace_connections`, interface `MarketplaceConnector` (Vinted en implémentation, autres en stub). Pas commencé.
+- **Phase E — révisée** : l'idée initiale (colonne `marketplace` générique, table `marketplace_connections`, interface `MarketplaceConnector`) a été abandonnée au profit d'une conception Vinted-only cohérente avec la portée confirmée du projet — voir [EXTENSION.md](EXTENSION.md) pour l'architecture retenue (extension de `accounts`, file `sync_jobs`, pas d'abstraction multi-marketplace).
 - Décider du sort de `business_items` (53 lignes de données réelles orphelines) / `business_expenses` (vide) — voir [DATABASE.md](DATABASE.md)
 - Bucket storage `listing-images` : policy publique trop permissive (liste tous les fichiers)
 - Policies RLS dupliquées sur `profiles`/`listings`/`market_opportunities` (redondantes, pas dangereuses, coût perf mineur)
@@ -26,9 +26,9 @@ Revue approfondie avant d'attaquer l'extension Chrome. Détail dans l'historique
 - Migration des pages restantes (`StockPage`, `SettingsPage`, etc.) vers les classes déjà prêtes dans `src/index.css` (`.btn-neon`, `.glass-card`, `.input-dark`) plutôt que du Tailwind brut dupliqué
 - `SubscriptionPage.tsx` reste une UI statique sans Stripe — pas un bug, juste un chantier à part entière si la facturation devient prioritaire
 
-## Phase 2 — Extension Chrome — pas commencée
+## Phase 2 — Extension Chrome — architecture conçue, implémentation pas commencée
 
-Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messages/offres depuis ResellOS nécessite une extension Chrome qui agit dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr. Prérequis côté backend : la Phase E ci-dessus (colonne `marketplace`, table de connexions marketplace) avant de coder l'extension elle-même.
+Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messages/offres depuis ResellOS nécessite une extension Chrome qui agit dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr. Architecture complète (composants, appairage, modèle de données, phasage MVP/2.1/2.2, sécurité) dans [EXTENSION.md](EXTENSION.md). Prochaine étape concrète : implémenter le MVP (EXTENSION.md §10).
 
 ## Phase 3 — Sourcing intelligent, comptabilité fiscale — pas commencée
 

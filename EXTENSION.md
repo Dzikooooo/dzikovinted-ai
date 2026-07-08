@@ -1,0 +1,209 @@
+# Extension Chrome — Architecture
+
+Document de conception de l'extension Chrome ResellOS. Rien de ce document n'est implémenté à ce jour — c'est un plan à exécuter, pas un état des lieux. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
+
+## 1. Rôle et périmètre
+
+Vinted n'a pas d'API publique. Tout ce qui nécessite d'agir *dans* le compte Vinted d'un utilisateur (republier une annonce, lire ses messages, répondre à une offre) ne peut pas se faire depuis un serveur — il faut agir dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr. C'est le seul rôle de l'extension : **un pont entre la session Vinted réelle de l'utilisateur et les données Supabase de ResellOS**, pas une seconde application avec sa propre logique métier.
+
+Principe directeur (déjà posé lors de la refonte UX du dashboard) : **l'utilisateur ne doit jamais ressentir qu'il utilise deux outils.** Concrètement, ça implique qu'une action déclenchée dans ResellOS (« republier cet article ») doit s'exécuter réellement sur Vinted sans que l'utilisateur ait besoin de retrouver l'annonce lui-même — voir §6.
+
+Ce que l'extension **ne fait pas** : elle n'a pas de logique métier propre (pas de calcul de prix, pas de règles de scoring — ça reste dans `scripts/market-engine.ts` et l'app web), et elle ne contourne aucune protection anti-bot de Vinted (voir §8).
+
+## 2. Vue d'ensemble des composants
+
+Manifest V3 (obligatoire, V2 est déprécié). Quatre surfaces de code :
+
+```
+┌─────────────────────┐         ┌──────────────────────────┐
+│   App web ResellOS   │ appairage (1x)│  Extension Chrome         │
+│  (VintedAccountPage)  │─────────────▶│                            │
+└─────────────────────┘  chrome.runtime │  ┌──────────────────────┐ │
+                          .sendMessage   │  │ Background            │ │
+                          (externally_   │  │ (service worker MV3)  │ │
+                          connectable)   │  │ - session Supabase    │ │
+                                         │  │ - polling sync_jobs   │ │
+                                         │  │ - orchestration onglets│ │
+                                         │  └──────────┬───────────┘ │
+                                         │             │ messages     │
+                                         │  ┌──────────▼───────────┐ │
+                                         │  │ Content scripts        │ │
+                                         │  │ injectés sur vinted.fr │ │
+                                         │  └────────────────────────┘ │
+                                         │  ┌────────────────────────┐ │
+                                         │  │ Popup + Options (React) │ │
+                                         │  └────────────────────────┘ │
+                                         └──────────────┬─────────────┘
+                                                          │ REST (clé anon + JWT utilisateur, RLS)
+                                                          ▼
+                                                    Supabase (même projet que l'app web)
+```
+
+- **Background (service worker)** — le seul composant qui parle à Supabase. Détient la session (via `chrome.storage.local`), interroge périodiquement `sync_jobs` (§5), orchestre l'ouverture d'onglets vinted.fr quand une action doit s'exécuter.
+- **Content scripts** — injectés uniquement sur `*.vinted.fr/*`. Lisent/manipulent le DOM (déjà le cas pour `scripts/vinted-scan.ts` en scraping anonyme — ici avec une vraie session). Ne parlent jamais directement à Supabase, ils passent par `chrome.runtime.sendMessage` vers le background.
+- **Popup** — statut de connexion, dernière synchro, actions rapides. Petite app React, cohérente avec le design system de l'app principale (tokens `neon-*`/`dark-*`).
+- **Options** — préférences (fréquence de sync, autoriser l'ouverture d'onglets en arrière-plan ou non — voir §8).
+
+## 3. Authentification et appairage
+
+Deux options existaient : (a) un compte séparé, connecté indépendamment dans le popup, ou (b) un appairage à chaud avec la session déjà ouverte dans l'app web. **(b) est retenu** — se reconnecter une seconde fois dans l'extension contredirait frontalement le principe du §1.
+
+Flow d'appairage (déclenché depuis `VintedAccountPage.tsx`, bouton « Connecter l'extension ») :
+
+1. La page web vérifie que l'extension est installée : `chrome.runtime.sendMessage(EXTENSION_ID, { type: 'PING' })`, avec un `try/catch`/timeout court (l'API échoue silencieusement si l'extension n'est pas installée).
+2. Si l'extension répond, la page web envoie `{ type: 'PAIR', access_token, refresh_token }` (session Supabase courante de l'utilisateur, déjà en mémoire côté `AuthContext`).
+3. `manifest.json` restreint `externally_connectable.matches` au domaine de prod de ResellOS uniquement (+ `localhost` seulement dans un build de dev jamais publié sur le Chrome Web Store).
+4. Le background stocke les deux tokens dans `chrome.storage.local` et instancie son propre client Supabase avec cette session.
+5. Après le premier échange, l'extension gère **son propre rafraîchissement de session** (`supabase.auth.refreshSession()`) — elle ne dépend plus de l'onglet ResellOS ouvert. Le `refresh_token` Supabase reste valide indépendamment du client qui l'utilise.
+6. Le background écrit `accounts.extension_connected = true` (voir §5) — l'app web voit la connexion confirmée au prochain chargement, sans polling nécessaire côté web (RLS + lecture normale de `accounts`).
+
+Risque assumé : les tokens transitent une fois par le contexte de la page web (`externally_connectable` est exposé à tout script tournant sur cette page). Acceptable tant que l'app ResellOS elle-même n'a pas de faille XSS — mais c'est une raison de plus de ne jamais introduire de rendu HTML non échappé dans le dashboard.
+
+## 4. Communication interne
+
+| De | Vers | Mécanisme | Contenu |
+|---|---|---|---|
+| App web | Background | `chrome.runtime.sendMessage` (`externally_connectable`) | Appairage initial uniquement (§3) |
+| Content script | Background | `chrome.runtime.sendMessage` | Résultat d'une lecture DOM (vues/favoris, statut d'une annonce), confirmation d'une action exécutée |
+| Background | Content script | `chrome.tabs.sendMessage` | Ordre d'exécuter une action précise (« republie l'annonce à cette URL ») |
+| Popup / Options | Background | `chrome.runtime.sendMessage` | Lecture du statut courant, changement de préférences |
+| Background | Supabase | REST (`@supabase/supabase-js`) | Toute lecture/écriture de données (§5) |
+
+Aucun composant autre que le background ne détient de session Supabase — centraliser évite la duplication de logique de refresh et simplifie l'audit de ce qui a accès aux données.
+
+## 5. Modèle de données
+
+**Décision explicite, en écart avec une note antérieure de la ROADMAP** : un audit précédent mentionnait une table `marketplace_connections` générique + une interface `MarketplaceConnector`, pensées pour un futur multi-marketplace. Ce projet reste volontairement Vinted-only (voir la portée confirmée du projet) — construire une abstraction multi-marketplace maintenant serait de l'anticipation non justifiée. La table `accounts` existe déjà et modélise précisément « un compte Vinted de l'utilisateur » : on l'étend plutôt que de créer une hiérarchie parallèle.
+
+### Extension de `accounts`
+
+```sql
+alter table accounts add column extension_connected boolean not null default false;
+alter table accounts add column extension_last_sync_at timestamptz;
+alter table accounts add column vinted_username text;
+```
+
+Pas de RLS supplémentaire nécessaire — `accounts` a déjà `auth.uid() = user_id`, et l'extension s'authentifie comme le même utilisateur (§3), donc les policies existantes suffisent.
+
+### Nouvelle table `sync_jobs`
+
+File d'attente d'actions déclenchées côté web, exécutées par l'extension quand un onglet Vinted est disponible.
+
+```sql
+create table sync_jobs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id),
+  account_id uuid references accounts(id),
+  type text not null,              -- 'republish' | 'sync_stats' | 'sync_inbox' (phase 2.1+)
+  payload jsonb not null default '{}',
+  status text not null default 'pending',  -- 'pending' | 'done' | 'failed'
+  error_message text,
+  created_at timestamptz not null default now(),
+  processed_at timestamptz
+);
+
+alter table sync_jobs enable row level security;
+create policy "sync_jobs_owner" on sync_jobs for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+Pas de `service_role` requis : chaque job est créé par l'utilisateur pour lui-même (insert depuis l'app web), et l'extension le lit/met à jour authentifiée comme ce même utilisateur. Conséquence directe du choix d'appairage du §3 — aucun privilège élevé à distribuer.
+
+## 6. Flux par fonctionnalité
+
+### 6.1 Republication d'une annonce (MVP, §10)
+
+```
+StockPage.tsx (bouton « Republier ») → insert sync_jobs { type: 'republish', payload: { vinted_url } }
+Background (réveillé par chrome.alarms, §7) → lit les sync_jobs pending de l'utilisateur
+  → si aucun onglet vinted.fr ouvert : chrome.tabs.create({ url: vinted_url, active: false })
+  → chrome.tabs.sendMessage au content script : { action: 'republish' }
+  → content script clique le bouton « Réserver en avant » / renouvellement natif de Vinted
+  → confirme au background → update sync_jobs.status = 'done', accounts.extension_last_sync_at = now()
+  → ferme l'onglet si il a été ouvert pour l'occasion
+```
+
+### 6.2 Vues / favoris en temps réel (MVP, §10)
+
+Périodiquement (alarm, §7), le background demande au content script (si un onglet Vinted est ouvert, sinon en ouvre un discret) de lire les compteurs vues/favoris de la page « Mes annonces » de l'utilisateur, puis met à jour `listings` avec les valeurs trouvées. Remplace l'attente d'un scan externe pour cette donnée précise — c'est une lecture, pas une action, donc plus simple et moins risqué que la republication.
+
+### 6.3 Messages / offres (Phase 2.1, pas MVP)
+
+Lecture seule d'abord (synchroniser la liste des messages/offres non lus vers une future table `vinted_messages`, affichée dans `VintedAccountPage.tsx`). Une réponse ou une acceptation d'offre reste **toujours déclenchée explicitement par l'utilisateur** dans ResellOS (crée un `sync_job` de type `reply_message`/`accept_offer`) — jamais d'automatisation silencieuse sur une action qui engage l'utilisateur vis-à-vis d'un acheteur (voir §8).
+
+### 6.4 Scan de marché via session réelle (Phase 2.2, pas MVP)
+
+`scripts/vinted-scan.ts` (Playwright, session anonyme, cron GitHub Actions) continue de tourner tel quel — ne pas le retirer. Une session authentifiée verrait potentiellement des données différentes (favoris personnels, recommandations) et serait moins susceptible d'être bridée par un anti-bot, mais faire cohabiter un scan « à la demande » (extension, un seul utilisateur) avec un scan planifié (cron, tous les utilisateurs) est un vrai sujet de conception à part entière — à traiter seulement une fois le MVP (§10) stable, pas en même temps.
+
+## 7. Cycle de vie MV3 : pourquoi pas de Realtime Supabase
+
+Un service worker Manifest V3 n'est **pas persistant** — Chrome le décharge après ~30 secondes d'inactivité. Une connexion websocket Supabase Realtime ouverte dans le background serait coupée en permanence, avec une logique de reconnexion à réinventer pour un gain marginal.
+
+**Choix retenu : `chrome.alarms`**, qui réveille le service worker à intervalle régulier (ex. toutes les 10-15 minutes, configurable dans Options) même s'il a été déchargé entre-temps. À chaque réveil : lecture des `sync_jobs` pending + éventuel sync vues/favoris (§6.2). C'est du polling, pas du temps réel — assumé, cohérent avec la fréquence déjà en place pour le scan cron (4h) et largement suffisant pour republier une annonce ou rafraîchir des compteurs.
+
+## 8. Sécurité, conformité, contrôle utilisateur
+
+- **Jamais de contournement anti-bot.** Si Vinted présente un CAPTCHA ou bloque la session, le content script le détecte et remonte un état clair (« action requise sur Vinted ») plutôt que de tenter un bypass. C'est une limite dure, pas une optimisation à faire plus tard.
+- **Lecture automatique, écriture toujours sur déclenchement explicite.** Synchroniser des compteurs (§6.2) peut tourner en tâche de fond silencieusement. Republier, répondre à un message, accepter une offre : toujours initié par un clic utilisateur dans ResellOS (crée un `sync_job`), jamais décidé par l'extension elle-même.
+- **Onglets ouverts en arrière-plan** (`chrome.tabs.create({ active: false })`, §6.1) : comportement potentiellement surprenant pour l'utilisateur s'il ne s'y attend pas. Doit être une préférence explicite dans Options (« autoriser l'extension à ouvrir Vinted en arrière-plan pour exécuter mes actions » — activé par défaut mais visible et désactivable), pas un comportement caché.
+- **Rate limiting côté extension** : espacer les actions automatiques (pas de rafale de republications, pas de scan de compteurs plus fréquent que nécessaire) pour rester à une fréquence d'usage humain plausible plutôt que de ressembler à un bot agressif.
+- **Permissions minimales** dans `manifest.json` : `host_permissions` limité à `*://*.vinted.fr/*`, pas de `<all_urls>`. `externally_connectable` limité au domaine de prod ResellOS (§3).
+
+## 9. Stack technique et structure de dossier proposée
+
+Réutilise l'écosystème Vite déjà en place plutôt que d'introduire un nouvel outillage. `@crxjs/vite-plugin` gère le manifest MV3 et le rechargement à chaud en dev.
+
+```
+extension/
+  package.json              paquet indépendant (pas de workspace/monorepo tooling pour l'instant)
+  vite.config.ts
+  manifest.config.ts         manifest MV3 généré via crxjs
+  src/
+    background/
+      index.ts                 point d'entrée service worker : session, alarms, orchestration onglets
+      jobs.ts                   lecture/écriture sync_jobs
+    content/
+      vinted-listing.ts          republication, lecture vues/favoris (§6.1, §6.2)
+      vinted-inbox.ts             messages/offres — phase 2.1, pas au MVP
+      selectors.ts                 data-testid Vinted centralisés dans ce fichier (voir note ci-dessous)
+    popup/
+      Popup.tsx                    statut connexion, dernière synchro, actions rapides (React)
+    options/
+      Options.tsx                   préférences (§8)
+    lib/
+      supabaseClient.ts              storage adapter chrome.storage.local (pas de localStorage en service worker)
+      auth.ts                        appairage + refresh de session
+    types.ts                        types propres à l'extension, dupliqués volontairement depuis src/lib/types.ts
+```
+
+**Duplication de types assumée** entre `src/lib/types.ts` et `extension/src/types.ts` : le projet n'a pas d'outillage monorepo (workspaces/Turborepo) et la surface commune est petite. Introduire un package partagé serait prématuré — à faire seulement si la duplication devient une vraie source de bugs.
+
+**`selectors.ts` centralisé** : Vinted peut changer son DOM/ses `data-testid` sans préavis — c'est déjà arrivé pour `scripts/vinted-scan.ts`. Regrouper tous les sélecteurs DOM dans un seul fichier par surface de code (extension vs script Node, qui restent deux environnements d'exécution distincts et ne peuvent pas littéralement partager le même fichier) limite la casse à un seul endroit à corriger de chaque côté.
+
+## 10. Phasage
+
+**MVP (Phase 2.0)** — le seul objectif est de prouver que le pont fonctionne, avec le risque le plus faible possible :
+1. Appairage (§3) + statut de connexion réel dans `VintedAccountPage.tsx` (remplace le placeholder actuel)
+2. Republication d'une annonce (§6.1) — une seule action d'écriture, bien délimitée, valeur perçue immédiate
+3. Sync vues/favoris (§6.2) — lecture seule, alimente `StatsPage.tsx` avec de vraies données plutôt que les compteurs actuels dérivés uniquement de `listings`
+
+**Phase 2.1** — messages et offres (§6.3), en lecture seule d'abord, puis réponse/acceptation sur déclenchement explicite.
+
+**Phase 2.2** — scan de marché via session authentifiée (§6.4), seulement une fois le MVP stable en production.
+
+Ne pas paralléliser ces phases — chacune dépend de la précédente pour la confiance dans le mécanisme d'appairage et la file `sync_jobs`.
+
+## 11. Ce que ça change dans le code existant
+
+- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `accounts.extension_connected`/`extension_last_sync_at`, plus le bouton d'appairage (§3)
+- `StockPage.tsx` : le bouton « Republier » (à ajouter) crée un `sync_job` plutôt que d'appeler Supabase directement
+- `StatsPage.tsx` : les compteurs vues/favoris cessent d'être absents/dérivés et viennent de `listings` une fois synchronisés par l'extension (§6.2)
+- `SettingsPage.tsx` (onglet comptes) : `useAccounts` gère déjà plusieurs comptes nommés — chaque compte affichera son statut de connexion extension individuellement
+- Aucun changement à `scripts/vinted-scan.ts` ni au cron GitHub Actions (§6.4)
+
+## 12. Risques et inconnues ouvertes
+
+- **Détection anti-bot Vinted côté extension** : une session authentifiée automatisée n'est pas nécessairement moins détectable qu'un scraping anonyme — hypothèse à valider en pratique dès le MVP, pas garantie par design
+- **Publication sur le Chrome Web Store** : revue manuelle par Google, délai incertain, et les permissions `host_permissions`/`externally_connectable` de cette conception seront scrutées — prévoir une justification claire de chaque permission dans la fiche du store
+- **Fragilité aux changements de DOM Vinted** : déjà un risque connu pour le scan existant (§9), qui s'étend maintenant aux actions d'écriture (republication) — une casse silencieuse y est plus grave qu'un scan qui retourne juste moins de résultats
+- **Fréquence des `chrome.alarms`** à calibrer en pratique : trop fréquent = usage ressource/risque de détection, trop rare = latence perçue entre un clic dans ResellOS et son exécution réelle sur Vinted

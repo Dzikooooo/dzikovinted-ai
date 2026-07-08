@@ -50,3 +50,4 @@ Voir [DATABASE.md](DATABASE.md) pour le détail des tables, des policies RLS, et
 - [ARCHITECTURE.md](ARCHITECTURE.md) — structure du code, décisions de conception
 - [DATABASE.md](DATABASE.md) — schéma, RLS, migrations
 - [ROADMAP.md](ROADMAP.md) — état d'avancement et prochaines étapes
+- [EXTENSION.md](EXTENSION.md) — architecture de l'extension Chrome (conçue, pas encore implémentée)
