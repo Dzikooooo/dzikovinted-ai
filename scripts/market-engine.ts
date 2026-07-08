@@ -1,7 +1,7 @@
 import { getMarketPrice } from "./market-price";
 
-export async function analyzeMarket(item: any) {
-  const market = await getMarketPrice(item);
+export function analyzeMarket(item: any, comparablePrices: number[]) {
+  const market = getMarketPrice(item, comparablePrices);
 
   const marketPrice = market.marketPrice;
   const profit = Math.round((marketPrice - item.price) * 100) / 100;

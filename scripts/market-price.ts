@@ -1,39 +1,22 @@
-import { getEbaySoldPrice } from "./ebay-sold";
-export async function getMarketPrice(item: any) {
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
-    const ebay = await getEbaySoldPrice(item.title);
+export function getMarketPrice(item: any, comparablePrices: number[]) {
+  const others = comparablePrices.filter((p) => p !== item.price);
+  const pool = others.length >= 3 ? others : comparablePrices;
 
-    if (ebay.average > 0) {
-        return {
-            marketPrice: ebay.average,
-            confidence: ebay.confidence,
-            source: "eBay Sold"
-        };
-    }
+  if (pool.length < 3) {
+    return { marketPrice: 0, confidence: 0, source: "Donnees insuffisantes" };
+  }
 
-    const title = item.title.toLowerCase();
-
-    let fallbackPrice = item.price * 2;
-    
-    if (title.includes("shox tl")) fallbackPrice = 140;
-    else if (title.includes("tn")) fallbackPrice = 120;
-    else if (title.includes("xt-6")) fallbackPrice = 150;
-    else if (title.includes("2002r")) fallbackPrice = 110;
-    else if (title.includes("samba")) fallbackPrice = 95;
-    else if (title.includes("campus")) fallbackPrice = 90;
-    else if (title.includes("detroit")) fallbackPrice = 180;
-    else if (title.includes("active jacket")) fallbackPrice = 160;
-    else if (title.includes("nuptse")) fallbackPrice = 180;
-    else if (title.includes("stone island")) fallbackPrice = 180;
-    else if (title.includes("cp company")) fallbackPrice = 150;
-    else if (title.includes("zip hoodie")) fallbackPrice = 75;
-    else if (title.includes("stussy")) fallbackPrice = 95;
-    else if (title.includes("501")) fallbackPrice = 50;
-    else if (title.includes("diesel")) fallbackPrice = 70;
-    
-    return {
-      marketPrice: fallbackPrice,
-      confidence: 70,
-      source: "Fallback"
-    };
+  return {
+    marketPrice: Math.round(median(pool)),
+    confidence: Math.min(100, pool.length * 5),
+    source: `Vinted comps (n=${pool.length})`,
+  };
 }

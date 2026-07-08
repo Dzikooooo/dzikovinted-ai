@@ -91,14 +91,15 @@ async function main() {
     console.log("\nRecherche :", search);
 
     const items = await scanSearch(page, search);
+    const comparablePrices = items.map((i) => i.price);
 
     for (const item of items) {
       if (item.favourites < 5) continue;
 
-      const analyzedItem = await analyzeMarket({
-        ...item,
-        category: watch.category,
-      });
+      const analyzedItem = analyzeMarket(
+        { ...item, category: watch.category },
+        comparablePrices
+      );
 
       if (analyzedItem.profit < watch.min_profit) continue;
       if (analyzedItem.roi < watch.min_roi) continue;
