@@ -129,6 +129,8 @@ export interface VintedListing {
   image_url: string | null;
   vinted_url: string;
   status: string;
+  brand: string | null;
+  size: string | null;
   favourites: number | null;
   views: number | null;
   synced_at: string;

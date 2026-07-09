@@ -96,8 +96,8 @@ export async function recordAccountDetected(vintedUserId: string, vintedUsername
 // wardrobeApi.ts) : l'ensemble recu ici EST l'etat complet et actuel du
 // compte Vinted, tous statuts confondus. Miroir complet donc : toute
 // annonce connue en base mais absente de ce scan a ete supprimee ou
-// deplacee sur Vinted, et doit disparaitre ici aussi - pas seulement un
-// upsert des nouvelles/modifiees.
+// deplacee sur Vinted - marquee status='deleted' plutot que supprimee
+// physiquement, pour garder l'historique (ventes passees, statistiques).
 export async function recordListings(
   vintedUserId: string,
   vintedUsername: string,
@@ -125,6 +125,8 @@ export async function recordListings(
       favourites: l.favourites,
       views: l.views,
       status: l.status,
+      brand: l.brand,
+      size: l.size,
       synced_at: new Date().toISOString(),
     }));
 
@@ -141,13 +143,17 @@ export async function recordListings(
 
   const currentItemIds = listings.map((l) => l.vintedItemId);
   await withRetry(async () => {
-    let query = client.from("vinted_listings").delete().eq("vinted_account_id", vintedAccountId);
+    let query = client
+      .from("vinted_listings")
+      .update({ status: "deleted" })
+      .eq("vinted_account_id", vintedAccountId)
+      .neq("status", "deleted");
     if (currentItemIds.length > 0) {
       query = query.not("vinted_item_id", "in", `(${currentItemIds.join(",")})`);
     }
     const { error } = await query;
     if (error) {
-      logger.error("Nettoyage des annonces disparues a echoue", error.message);
+      logger.error("Marquage des annonces disparues a echoue", error.message);
       throw error;
     }
   });

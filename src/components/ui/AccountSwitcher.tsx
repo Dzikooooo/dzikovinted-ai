@@ -2,18 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, Layers, Search, Settings } from 'lucide-react';
 import AccountAvatar from './AccountAvatar';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
-
-function relativeSync(iso: string | null): string {
-  if (!iso) return 'Jamais synchronisé';
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "À l'instant";
-  if (minutes < 60) return `Il y a ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Il y a ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `Il y a ${days}j`;
-}
+import { formatRelativeSync } from '../../lib/formatRelativeTime';
 
 interface AccountSwitcherProps {
   onManageAccounts: () => void;
@@ -122,7 +111,7 @@ export default function AccountSwitcher({ onManageAccounts }: AccountSwitcherPro
                       </p>
                       <p className="text-[10px] text-gray-500 flex items-center gap-1">
                         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${account.connected ? 'bg-neon-500' : 'bg-gray-600'}`} />
-                        {relativeSync(account.last_synced_at)}
+                        {formatRelativeSync(account.last_synced_at)}
                       </p>
                     </div>
                   </button>

@@ -19,6 +19,8 @@ export interface ListingPayload {
   favourites: number | null;
   views: number | null;
   status: string;
+  brand: string | null;
+  size: string | null;
 }
 
 // Popup et content scripts -> background, via chrome.runtime.sendMessage

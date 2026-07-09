@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import type { VintedListing } from '../../lib/types';
 import { isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
 import AccountAvatar from '../../components/ui/AccountAvatar';
+import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 
 const UPCOMING = [
   { icon: MessageSquare, label: 'Messages et reponses rapides' },
@@ -13,27 +14,6 @@ const UPCOMING = [
   { icon: RotateCw, label: 'Republication automatique des annonces' },
   { icon: Bell, label: 'Alertes ventes, offres et annonces expirees' },
 ];
-
-// 'actif' n'affiche pas de badge (etat par defaut, pas besoin d'insister
-// visuellement) - les autres statuts sont mis en evidence pour que l'ecart
-// avec Vinted saute aux yeux immediatement.
-const STATUS_LABELS: Record<string, string> = {
-  vendu: 'Vendu',
-  vendu_non_finalise: 'Vendu (en cours)',
-  reserve: 'Réservé',
-  masque: 'Masqué',
-  brouillon: 'Brouillon',
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const label = STATUS_LABELS[status];
-  if (!label) return null;
-  return (
-    <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
-      {label}
-    </span>
-  );
-}
 
 // L'etat de l'extension (installee/appairee) est independant du compte Vinted
 // selectionne dans le switcher : l'appairage n'est pas specifique a un
@@ -66,6 +46,7 @@ export default function VintedAccountPage() {
       .from('vinted_listings')
       .select('*')
       .eq('vinted_account_id', accountId)
+      .neq('status', 'deleted')
       .order('synced_at', { ascending: false });
     if (!isStale()) setListings((data as VintedListing[] | null) ?? []);
   }, []);
@@ -226,7 +207,7 @@ export default function VintedAccountPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm text-gray-200 truncate">{listing.title}</p>
-                        <StatusBadge status={listing.status} />
+                        <VintedStatusBadge status={listing.status} />
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
                         {listing.views !== null && (

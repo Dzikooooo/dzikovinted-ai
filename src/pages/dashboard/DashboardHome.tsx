@@ -51,13 +51,15 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         const { count } = await supabase
           .from('vinted_listings')
           .select('*', { count: 'exact', head: true })
-          .in('vinted_account_id', accountIds);
+          .in('vinted_account_id', accountIds)
+          .neq('status', 'deleted');
         if (!ignore) setVintedListingsCount(count ?? 0);
       } else {
         const { count } = await supabase
           .from('vinted_listings')
           .select('*', { count: 'exact', head: true })
-          .eq('vinted_account_id', selectedAccountId);
+          .eq('vinted_account_id', selectedAccountId)
+          .neq('status', 'deleted');
         if (!ignore) setVintedListingsCount(count ?? 0);
       }
     })();

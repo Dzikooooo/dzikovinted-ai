@@ -17,6 +17,8 @@ export interface WardrobeItem {
   favourites: number | null;
   views: number | null;
   status: string;
+  brand: string | null;
+  size: string | null;
 }
 
 interface VintedApiItem {
@@ -32,6 +34,8 @@ interface VintedApiItem {
   is_reserved?: boolean;
   is_hidden?: boolean;
   is_processing?: boolean;
+  brand?: string;
+  size?: string;
 }
 
 interface VintedApiResponse {
@@ -44,30 +48,38 @@ const PER_PAGE = 50;
 // Priorite explicite quand plusieurs booleens seraient vrais en meme temps
 // (ex. une annonce fermee ne devrait normalement plus etre "reservee", mais
 // on ne fait pas confiance a l'exhaustivite mutuelle de ces flags cote
-// Vinted). "Vendu" et "brouillon" sont les etats les plus definitifs/exclusifs,
-// donc verifies en premier.
+// Vinted). "sold_completed" et "draft" sont les etats les plus
+// definitifs/exclusifs, donc verifies en premier. "sold_pending" (is_processing)
+// n'a jamais ete observe a true en conditions reelles (verifie sur les deux
+// comptes de test le 2026-07-09) mais le champ existe cote Vinted - conserve
+// au cas ou une transaction en cours le declenche.
 function normalizeStatus(item: VintedApiItem): string {
-  if (item.is_draft) return "brouillon";
-  if (item.is_closed) return "vendu";
-  if (item.is_processing) return "vendu_non_finalise";
-  if (item.is_reserved) return "reserve";
-  if (item.is_hidden) return "masque";
-  return "actif";
+  if (item.is_draft) return "draft";
+  if (item.is_closed) return "sold_completed";
+  if (item.is_processing) return "sold_pending";
+  if (item.is_reserved) return "reserved";
+  if (item.is_hidden) return "hidden";
+  return "online";
 }
 
 function toWardrobeItem(item: VintedApiItem): WardrobeItem | null {
-  if (!item.id || !item.title) return null;
+  if (!item.id) return null; // aucun identifiant exploitable, rien a faire de cet item
   const priceAmount = item.price?.amount ? Number.parseFloat(item.price.amount) : NaN;
 
   return {
     vintedItemId: String(item.id),
-    title: item.title,
+    // Un titre manquant est remonte comme "unknown" plutot que d'etre
+    // silencieusement ignore - l'annonce existe reellement sur Vinted, la
+    // cacher casserait le miroir sans que l'utilisateur le sache.
+    title: item.title || "Titre indisponible",
     price: Number.isNaN(priceAmount) ? null : priceAmount,
     imageUrl: item.photos?.[0]?.url ?? null,
     vintedUrl: item.url ?? `https://www.vinted.fr/items/${item.id}`,
     favourites: item.favourite_count ?? null,
     views: item.view_count ?? null,
-    status: normalizeStatus(item),
+    status: item.title ? normalizeStatus(item) : "unknown",
+    brand: item.brand || null,
+    size: item.size || null,
   };
 }
 
