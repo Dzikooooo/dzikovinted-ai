@@ -21,53 +21,51 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { accounts, selectedAccountId, selectedAccount } = useVintedAccountFilter();
   const [listings, setListings] = useState<Listing[]>([]);
   const [newOpportunities, setNewOpportunities] = useState(0);
-  const [vintedListingsCount, setVintedListingsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
-    (async () => {
-      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [{ data: allListings }, { count: oppCount }] = await Promise.all([
-        supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
-      ]);
-      setListings((allListings ?? []) as Listing[]);
-      setNewOpportunities(oppCount ?? 0);
-      setLoading(false);
-    })();
-  }, [user]);
-
-  useEffect(() => {
     let ignore = false;
 
     (async () => {
-      if (selectedAccountId === 'all') {
-        const accountIds = accounts.map((a) => a.id);
-        if (accountIds.length === 0) {
-          if (!ignore) setVintedListingsCount(0);
-          return;
-        }
-        const { count } = await supabase
-          .from('vinted_listings')
-          .select('*', { count: 'exact', head: true })
-          .in('vinted_account_id', accountIds)
-          .neq('status', 'deleted');
-        if (!ignore) setVintedListingsCount(count ?? 0);
-      } else {
-        const { count } = await supabase
-          .from('vinted_listings')
-          .select('*', { count: 'exact', head: true })
-          .eq('vinted_account_id', selectedAccountId)
-          .neq('status', 'deleted');
-        if (!ignore) setVintedListingsCount(count ?? 0);
+      setLoading(true);
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // `.or(...)` plutot qu'un simple `.neq('vinted_status','deleted')` :
+      // un neq seul exclurait aussi les articles jamais lies a Vinted
+      // (vinted_status null), pas seulement les annonces reellement
+      // supprimees - voir StockPage.tsx pour la meme regle.
+      let listingsQuery = supabase
+        .from('listings')
+        .select('*')
+        .eq('user_id', user.id)
+        .or('vinted_status.neq.deleted,vinted_status.is.null')
+        .order('created_at', { ascending: false });
+      if (selectedAccountId !== 'all') {
+        listingsQuery = listingsQuery.eq('vinted_account_id', selectedAccountId);
+      }
+
+      const [{ data: allListings }, { count: oppCount }] = await Promise.all([
+        listingsQuery,
+        supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
+      ]);
+      if (!ignore) {
+        setListings((allListings ?? []) as Listing[]);
+        setNewOpportunities(oppCount ?? 0);
+        setLoading(false);
       }
     })();
 
     return () => {
       ignore = true;
     };
-  }, [accounts, selectedAccountId]);
+  }, [user, selectedAccountId]);
+
+  // `listings` porte deja les articles lies a Vinted (fusion 2026-07-09) :
+  // le compteur se derive directement, plus besoin d'une seconde requete.
+  const vintedListingsCount = useMemo(
+    () => listings.filter((l) => l.vinted_item_id !== null).length,
+    [listings]
+  );
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;

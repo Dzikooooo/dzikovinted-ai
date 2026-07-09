@@ -1,22 +1,29 @@
 import { useEffect, useState } from 'react';
 import { BarChart2, TrendingUp, Tag, Sparkles, DollarSign, Star, Layers } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 
 export default function StatsPage() {
   const { user } = useAuth();
+  const { selectedAccountId } = useVintedAccountFilter();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data } = await supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+      setLoading(true);
+      let query = supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+      if (selectedAccountId !== 'all') {
+        query = query.eq('vinted_account_id', selectedAccountId);
+      }
+      const { data } = await query;
       setListings((data ?? []) as Listing[]);
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, selectedAccountId]);
 
   const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 

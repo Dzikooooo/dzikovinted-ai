@@ -3,7 +3,7 @@ import { Puzzle, MessageSquare, Tag, RotateCw, Bell, Loader2, Eye, Heart, ArrowR
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
-import type { VintedListing } from '../../lib/types';
+import type { Listing } from '../../lib/types';
 import { isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
@@ -25,7 +25,7 @@ type ExtensionState = 'checking' | 'not-installed' | 'ready';
 export default function VintedAccountPage() {
   const { session } = useAuth();
   const { accounts, loading: accountsLoading, selectedAccountId, selectedAccount, selectAccount, refresh } = useVintedAccountFilter();
-  const [listings, setListings] = useState<VintedListing[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
   const [extensionState, setExtensionState] = useState<ExtensionState>('checking');
   const [pairing, setPairing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +43,13 @@ export default function VintedAccountPage() {
 
   const loadListings = useCallback(async (accountId: string, isStale: () => boolean): Promise<void> => {
     const { data } = await supabase
-      .from('vinted_listings')
+      .from('listings')
       .select('*')
       .eq('vinted_account_id', accountId)
-      .neq('status', 'deleted')
+      .not('vinted_item_id', 'is', null)
+      .neq('vinted_status', 'deleted')
       .order('synced_at', { ascending: false });
-    if (!isStale()) setListings((data as VintedListing[] | null) ?? []);
+    if (!isStale()) setListings((data as Listing[] | null) ?? []);
   }, []);
 
   useEffect(() => {
@@ -199,15 +200,15 @@ export default function VintedAccountPage() {
                     key={listing.id}
                     className="flex items-center gap-3 bg-surface border border-white/5 rounded-xl px-4 py-3"
                   >
-                    {listing.image_url ? (
-                      <img src={listing.image_url} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                    {listing.image_urls?.[0] ? (
+                      <img src={listing.image_urls[0]} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                     ) : (
                       <div className="w-10 h-10 rounded-lg bg-white/5 flex-shrink-0" />
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm text-gray-200 truncate">{listing.title}</p>
-                        <VintedStatusBadge status={listing.status} />
+                        {listing.vinted_status && <VintedStatusBadge status={listing.vinted_status} />}
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
                         {listing.views !== null && (

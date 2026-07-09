@@ -64,6 +64,18 @@ fees: number;
 
   is_favorite: boolean;
   created_at: string;
+
+  // Rattachement Vinted (2026-07-09) : null tant que l'article n'a jamais
+  // ete lie a une annonce Vinted reelle (brouillon Generateur pur).
+  // vinted_status est un axe distinct de `status` : etat reel observe sur
+  // Vinted, gere par la synchro, jamais par l'utilisateur directement.
+  vinted_account_id: string | null;
+  vinted_item_id: string | null;
+  vinted_url: string | null;
+  vinted_status: string | null;
+  favourites: number | null;
+  views: number | null;
+  synced_at: string | null;
 }
 export interface GeneratedListing {
   title: string;
@@ -118,22 +130,6 @@ export interface VintedAccount {
   last_error: string | null;
   is_default: boolean;
   created_at: string;
-}
-
-export interface VintedListing {
-  id: string;
-  vinted_account_id: string;
-  vinted_item_id: string;
-  title: string;
-  price: number | null;
-  image_url: string | null;
-  vinted_url: string;
-  status: string;
-  brand: string | null;
-  size: string | null;
-  favourites: number | null;
-  views: number | null;
-  synced_at: string;
 }
 
 export interface Subscription {

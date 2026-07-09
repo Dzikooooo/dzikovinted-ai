@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Info } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
@@ -18,6 +19,7 @@ type Period = 'month' | 'all';
 
 export default function AccountingPage() {
   const { user } = useAuth();
+  const { selectedAccountId } = useVintedAccountFilter();
   const [listings, setListings] = useState<Listing[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,15 +28,20 @@ export default function AccountingPage() {
   useEffect(() => {
     if (!user) return;
     (async () => {
+      setLoading(true);
+      let listingsQuery = supabase.from('listings').select('*').eq('user_id', user.id);
+      if (selectedAccountId !== 'all') {
+        listingsQuery = listingsQuery.eq('vinted_account_id', selectedAccountId);
+      }
       const [{ data: l }, { data: e }] = await Promise.all([
-        supabase.from('listings').select('*').eq('user_id', user.id),
+        listingsQuery,
         supabase.from('expenses').select('category, amount, expense_date'),
       ]);
       setListings((l ?? []) as Listing[]);
       setExpenses((e ?? []) as ExpenseRow[]);
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, selectedAccountId]);
 
   const monthStart = useMemo(() => {
     const d = new Date();

@@ -91,13 +91,35 @@ export async function recordAccountDetected(vintedUserId: string, vintedUsername
   logger.info("Compte Vinted detecte", { vintedUsername });
 }
 
-// Le content script recupere desormais la totalite des annonces d'un
-// compte a chaque visite du profil (pagination Vinted epuisee cote
-// wardrobeApi.ts) : l'ensemble recu ici EST l'etat complet et actuel du
-// compte Vinted, tous statuts confondus. Miroir complet donc : toute
-// annonce connue en base mais absente de ce scan a ete supprimee ou
-// deplacee sur Vinted - marquee status='deleted' plutot que supprimee
-// physiquement, pour garder l'historique (ventes passees, statistiques).
+interface ExistingLinkedListing {
+  id: string;
+  vinted_item_id: string;
+  status: string;
+  vinted_status: string | null;
+  sold_price: number | null;
+}
+
+function deriveResellOsStatus(vintedStatus: string): "draft" | "en_stock" | "vendu" {
+  if (vintedStatus === "sold_completed") return "vendu";
+  if (vintedStatus === "draft") return "draft";
+  return "en_stock";
+}
+
+// `listings` est desormais l'unique source de verite (fusion avec l'ancienne
+// vinted_listings, 2026-07-09) : une annonce Vinted EST la meme ligne que
+// l'article ResellOS correspondant. Deux categories de champs sur une meme
+// ligne, avec des regles d'ecriture differentes :
+// - toujours rafraichis a chaque synchro : price/vinted_status/favourites/
+//   views/synced_at/vinted_url ;
+// - fixes uniquement a la creation, jamais reecrits ensuite : title/brand/
+//   size/image_urls/purchase_price - protege les retouches faites cote
+//   ResellOS (Generateur, edition manuelle) d'un ecrasement silencieux par
+//   la synchro.
+// Le content script recupere la totalite des annonces d'un compte a chaque
+// visite du profil (pagination Vinted epuisee, voir wardrobeApi.ts) :
+// l'ensemble recu ici EST l'etat complet et actuel du compte Vinted, tous
+// statuts confondus - toute ligne liee absente du scan est marquee
+// vinted_status='deleted' (jamais de DELETE physique, garde l'historique).
 export async function recordListings(
   vintedUserId: string,
   vintedUsername: string,
@@ -114,40 +136,108 @@ export async function recordListings(
     resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername)
   );
 
-  if (listings.length > 0) {
-    const rows = listings.map((l) => ({
-      vinted_account_id: vintedAccountId,
-      vinted_item_id: l.vintedItemId,
-      title: l.title,
-      price: l.price,
-      image_url: l.imageUrl,
-      vinted_url: l.vintedUrl,
-      favourites: l.favourites,
-      views: l.views,
-      status: l.status,
-      brand: l.brand,
-      size: l.size,
-      synced_at: new Date().toISOString(),
-    }));
+  const currentItemIds = listings.map((l) => l.vintedItemId);
 
-    await withRetry(async () => {
-      const { error } = await client
-        .from("vinted_listings")
-        .upsert(rows, { onConflict: "vinted_account_id,vinted_item_id" });
-      if (error) {
-        logger.error("upsert vinted_listings a echoue", error.message);
-        throw error;
-      }
+  if (currentItemIds.length > 0) {
+    const existingRows = await withRetry(async () => {
+      const { data, error } = await client
+        .from("listings")
+        .select("id, vinted_item_id, status, vinted_status, sold_price")
+        .eq("vinted_account_id", vintedAccountId)
+        .in("vinted_item_id", currentItemIds);
+      if (error) throw error;
+      return (data ?? []) as ExistingLinkedListing[];
     });
+
+    const existingByItemId = new Map(existingRows.map((r) => [r.vinted_item_id, r]));
+    const syncedAt = new Date().toISOString();
+
+    const toInsert: Record<string, unknown>[] = [];
+    const toUpdate: { id: string; payload: Record<string, unknown> }[] = [];
+
+    for (const l of listings) {
+      const existing = existingByItemId.get(l.vintedItemId);
+
+      if (!existing) {
+        toInsert.push({
+          user_id: valid.userId,
+          vinted_account_id: vintedAccountId,
+          vinted_item_id: l.vintedItemId,
+          title: l.title,
+          brand: l.brand,
+          size: l.size,
+          price: l.price,
+          image_urls: l.imageUrl ? [l.imageUrl] : [],
+          vinted_url: l.vintedUrl,
+          vinted_status: l.status,
+          favourites: l.favourites,
+          views: l.views,
+          synced_at: syncedAt,
+          purchase_price: null,
+          status: deriveResellOsStatus(l.status),
+          sold_date: l.status === "sold_completed" ? syncedAt.slice(0, 10) : null,
+          sold_price: l.status === "sold_completed" ? l.price : null,
+          fees: 0,
+          is_favorite: false,
+        });
+        continue;
+      }
+
+      const payload: Record<string, unknown> = {
+        price: l.price,
+        vinted_status: l.status,
+        favourites: l.favourites,
+        views: l.views,
+        synced_at: syncedAt,
+        vinted_url: l.vintedUrl,
+      };
+
+      // Auto-comptabilite : une annonce qui vient de passer a sold_completed
+      // met a jour le statut ResellOS, sans jamais ecraser un prix de vente
+      // deja saisi manuellement par l'utilisateur.
+      const justSold = l.status === "sold_completed" && existing.vinted_status !== "sold_completed";
+      if (justSold) {
+        payload.status = "vendu";
+        if (existing.sold_price === null) {
+          payload.sold_price = l.price;
+          payload.sold_date = syncedAt.slice(0, 10);
+        }
+      }
+
+      toUpdate.push({ id: existing.id, payload });
+    }
+
+    if (toInsert.length > 0) {
+      await withRetry(async () => {
+        const { error } = await client.from("listings").insert(toInsert);
+        if (error) {
+          logger.error("Creation d'articles lies a Vinted a echoue", error.message);
+          throw error;
+        }
+      });
+    }
+
+    if (toUpdate.length > 0) {
+      await withRetry(async () => {
+        const results = await Promise.all(
+          toUpdate.map(({ id, payload }) => client.from("listings").update(payload).eq("id", id))
+        );
+        const failed = results.find((r) => r.error);
+        if (failed?.error) {
+          logger.error("Mise a jour d'articles lies a Vinted a echoue", failed.error.message);
+          throw failed.error;
+        }
+      });
+    }
   }
 
-  const currentItemIds = listings.map((l) => l.vintedItemId);
   await withRetry(async () => {
     let query = client
-      .from("vinted_listings")
-      .update({ status: "deleted" })
+      .from("listings")
+      .update({ vinted_status: "deleted" })
       .eq("vinted_account_id", vintedAccountId)
-      .neq("status", "deleted");
+      .not("vinted_item_id", "is", null)
+      .neq("vinted_status", "deleted");
     if (currentItemIds.length > 0) {
       query = query.not("vinted_item_id", "in", `(${currentItemIds.join(",")})`);
     }
