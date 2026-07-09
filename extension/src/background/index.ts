@@ -65,7 +65,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "LISTINGS_DETECTED") {
-    recordListings(message.listings)
+    recordListings(message.vintedUserId, message.vintedUsername, message.listings)
       .then(() => sendResponse({ ok: true } satisfies ExternalResponse))
       .catch((err: unknown) => {
         logger.error("LISTINGS_DETECTED a echoue", errorMessage(err));

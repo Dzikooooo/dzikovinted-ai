@@ -26,7 +26,7 @@ export type InternalMessage =
   | { type: "GET_STATUS" }
   | { type: "UNPAIR" }
   | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string }
-  | { type: "LISTINGS_DETECTED"; listings: ListingPayload[] };
+  | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] };
 
 export interface StatusResponse {
   paired: boolean;

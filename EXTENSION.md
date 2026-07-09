@@ -2,7 +2,7 @@
 
 Document de conception de l'extension Chrome ResellOS. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
 
-**État d'implémentation** : la Phase 1 complète (1.1 appairage, 1.2 détection du compte, 1.3 synchronisation des annonces) est codée **et validée en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, compte Vinted réel, 20 annonces réelles synchronisées avec succès). Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
+**État d'implémentation** : la Phase 1 complète (1.1 appairage, 1.2 détection du compte, 1.3 synchronisation des annonces) est codée **et validée en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, compte Vinted réel, 20 annonces réelles synchronisées avec succès). La refonte multi-comptes est ensuite lancée : **Phase A (fondation schéma `vinted_accounts`) faite et validée**, sans régression visible. Phases B (interface multi-comptes) et C (rattachement des données métier — Stock, Comptabilité, Statistiques, Générateur, Dépenses...) à venir — voir `ROADMAP.md`. Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
 
 **Sélecteurs DOM Vinted (étapes 1.2/1.3)** : découverts en direct le 2026-07-09 en naviguant sur `https://www.vinted.fr/member/<id>` avec un compte réel (voir `extension/src/content/selectors.ts` pour le détail exact, code = source de vérité). Points notables : la présence de `[data-testid="closet-seller-filters-active"]` distingue "c'est mon propre profil" de "je regarde le profil de quelqu'un d'autre" — testé positivement sur son propre profil et négativement sur le profil d'un autre utilisateur (`clementk61`), aucune détection erronée. Sur cette page précise, `--description-title`/`--description-subtitle` affichent les stats vendeur (vues/favoris) plutôt que le titre de l'annonce — le vrai titre vient de l'attribut `title` du lien overlay.
 
@@ -83,38 +83,54 @@ Aucun composant autre que le background ne détient de session Supabase — cent
 
 ## 5. Modèle de données
 
-**Première décision, en écart avec une note antérieure de la ROADMAP** : un audit précédent mentionnait une table `marketplace_connections` générique + une interface `MarketplaceConnector`, pensées pour un futur multi-marketplace. Ce projet reste volontairement Vinted-only (voir la portée confirmée du projet) — construire une abstraction multi-marketplace maintenant serait de l'anticipation non justifiée.
+**Refonte multi-comptes (2026-07-09)** : ce projet reste volontairement Vinted-only (pas de multi-marketplace), mais un même utilisateur ResellOS peut désormais gérer **plusieurs comptes Vinted** (principal, secondaire, boutique, test...). Le "Compte Vinted" est l'entité centrale du produit — voir `ARCHITECTURE.md` et `ROADMAP.md` pour le contexte produit complet. Historique de cette section : une première version envisageait d'étendre `accounts` (carnet d'étiquettes hérité de BusinessOS, 0 ligne, jamais câblé — écarté), puis une table `vinted_connection` à une ligne par utilisateur (implémentée à l'étape 1.1, mais limitée à un seul compte Vinted par utilisateur). **`vinted_accounts` remplace `vinted_connection`** depuis la Phase A de la refonte multi-comptes.
 
-**Deuxième décision, révisée par rapport à une première version de ce document** : ce document proposait initialement d'étendre `accounts` (colonnes `extension_connected`/`extension_last_sync_at`/`vinted_username`). Vérification directe du schéma au moment de l'implémentation : `accounts` est une table `id, user_id, name` complètement déconnectée du reste du schéma, héritée de l'ancien module BusinessOS, jamais référencée ailleurs (ni par `listings`, ni par rien) — un simple carnet d'étiquettes libres que l'utilisateur peut créer/nommer arbitrairement, pas une entité technique représentant une session Vinted réelle. Y greffer l'état de connexion de l'extension aurait créé une ambiguïté produit non résolue : si l'utilisateur a créé plusieurs lignes `accounts` (ou zéro), laquelle l'extension doit-elle mettre à jour ? **Décision retenue : nouvelle table dédiée `vinted_connection`**, une ligne par utilisateur, qui représente la session Vinted réelle détectée par l'extension.
-
-### `vinted_connection` (implémentée, étape 1.1)
+### `vinted_accounts` — entité centrale (implémentée)
 
 ```sql
-create table vinted_connection (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+create table vinted_accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  label text not null,
+  vinted_user_id text not null,
+  vinted_username text not null,
   connected boolean not null default false,
-  vinted_user_id text,
-  vinted_username text,
   last_synced_at timestamptz,
   last_error text,
+  is_default boolean not null default false,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  unique (user_id, vinted_user_id)
 );
 
-alter table vinted_connection enable row level security;
-create policy "select_own_vinted_connection" on vinted_connection for select
+alter table vinted_accounts enable row level security;
+create policy "select_own_vinted_accounts" on vinted_accounts for select
   to authenticated using (auth.uid() = user_id);
-create policy "insert_own_vinted_connection" on vinted_connection for insert
+create policy "insert_own_vinted_accounts" on vinted_accounts for insert
   to authenticated with check (auth.uid() = user_id);
-create policy "update_own_vinted_connection" on vinted_connection for update
+create policy "update_own_vinted_accounts" on vinted_accounts for update
   to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "delete_own_vinted_accounts" on vinted_accounts for delete
+  to authenticated using (auth.uid() = user_id);
 ```
 
-Pas de RLS élevée nécessaire — l'extension s'authentifie comme le même utilisateur (§3), donc les policies `auth.uid() = user_id` standard suffisent.
+**Règle de conception non négociable** : une ligne `vinted_accounts` ne peut être créée que par une **détection réelle** de l'extension (upsert sur `(user_id, vinted_user_id)` au moment où le content script détecte un compte connecté) — jamais par saisie manuelle vide. Ça garantit qu'il ne peut exister aucun compte "fantôme" non rattaché à une identité Vinted réelle, condition explicite de l'utilisateur pour "aucune confusion possible entre deux comptes". `label` (renommable par l'utilisateur, Phase B) n'est jamais écrasé par une détection ultérieure — seuls `connected`/`vinted_username`/`last_synced_at`/`last_error` sont mis à jour sur une ligne existante. `is_default` est positionné automatiquement sur le premier compte détecté pour un utilisateur.
 
-### `vinted_listings` (implémentée, étape 1.3)
+### RLS des tables scopées par compte — écart volontaire par rapport à la convention `auth.uid() = user_id`
 
-Les annonces synchronisées depuis Vinted ne vont **pas** dans la table `listings` existante : `listings` modélise des annonces *créées dans ResellOS* (générées par IA, avec prix d'achat/frais/statut de vente — des champs qu'une annonce Vinted brute scrapée n'a pas). Les mélanger risquerait des doublons silencieux si l'utilisateur a déjà un brouillon ResellOS pour un article qui existe aussi sur Vinted. `vinted_listings` est un miroir en lecture seule de ce qui est réellement en ligne sur Vinted (`vinted_item_id`, `title`, `price`, `image_url`, `vinted_url`, `status` fixé à `'actif'` pour ce MVP, `favourites`, `views`), réécrit (upsert sur `(user_id, vinted_item_id)`) à chaque visite du profil. Validé avec 20 annonces réelles, aucun doublon après plusieurs synchronisations successives. Le rapprochement/import vers `listings` reste un sujet distinct, hors périmètre de la Phase 1.
+Pour les tables strictement rattachées à un seul compte Vinted (`vinted_listings`, futures `vinted_messages`/`vinted_offers`/`vinted_notifications`), **pas de `user_id` dupliqué** : la RLS dérive la propriété uniquement via `vinted_account_id` :
+
+```sql
+using (vinted_account_id in (select id from vinted_accounts where user_id = auth.uid()))
+```
+
+Écart assumé par rapport à la convention utilisée partout ailleurs dans le schéma (`auth.uid() = user_id` direct) — justifié par l'exigence explicite de l'utilisateur ("aucune fuite de données possible") : avec `user_id` dupliqué en plus de `vinted_account_id`, rien n'empêcherait techniquement qu'une ligne ait un `user_id` correct mais un `vinted_account_id` appartenant à un autre utilisateur. En supprimant `user_id` de ces tables, `vinted_account_id` devient l'unique source de vérité de propriété.
+
+**`expenses` reste une exception assumée** (décision produit) : garde son `user_id` (dépenses globales possibles, ex. abonnement logiciel) et reçoit un `vinted_account_id` **nullable** (dépense optionnellement rattachée à un compte précis) — sujet de la Phase C, pas encore implémenté.
+
+### `vinted_listings` (implémentée, étape 1.3 puis migrée en Phase A)
+
+Les annonces synchronisées depuis Vinted ne vont **pas** dans la table `listings` existante : `listings` modélise des annonces *créées dans ResellOS* (générées par IA, avec prix d'achat/frais/statut de vente — des champs qu'une annonce Vinted brute scrapée n'a pas). `vinted_listings` est un miroir en lecture seule de ce qui est réellement en ligne sur Vinted (`vinted_account_id`, `vinted_item_id`, `title`, `price`, `image_url`, `vinted_url`, `status` fixé à `'actif'` pour ce MVP, `favourites`, `views`), réécrit (upsert sur `(vinted_account_id, vinted_item_id)`) à chaque visite du profil. Validé avec 20 annonces réelles migrées sans perte lors du passage à `vinted_account_id`, aucun doublon après plusieurs synchronisations successives.
 
 ### Nouvelle table `sync_jobs` (Phase 2+, pas encore implémentée)
 
@@ -227,12 +243,12 @@ Ne pas paralléliser ces phases — chacune dépend de la précédente pour la c
 
 ## 11. Ce que ça change dans le code existant
 
-- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `vinted_connection`, plus le bouton d'appairage (§3) et la liste des `vinted_listings` synchronisées (titre, prix, vues, favoris) — **fait, étapes 1.1/1.2/1.3**
+- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `vinted_accounts` (le compte par défaut, Phase A), plus le bouton d'appairage (§3) et la liste des `vinted_listings` synchronisées (titre, prix, vues, favoris) — **fait, étapes 1.1/1.2/1.3 + Phase A**
 - `src/lib/extensionBridge.ts` (nouveau) : encapsule `chrome.runtime.sendMessage` vers l'extension (PING/PAIR) depuis l'app web — **fait, étape 1.1**
-- `DashboardHome.tsx` : le bloc "Synchronisation Vinted" reflète l'état réel (connecté/pseudo/nombre d'annonces/dernière synchro) une fois `vinted_connection.connected = true` — **fait, étape 1.3**
-- `StockPage.tsx` : le bouton « Republier » (à ajouter) crée un `sync_job` plutôt que d'appeler Supabase directement — Phase 2
-- `StatsPage.tsx` : pas encore branché sur `vinted_listings` — resterait à faire si on veut y agréger les vues/favoris, pas dans le périmètre de la Phase 1
-- `SettingsPage.tsx` (onglet comptes) : non concerné — `accounts` reste un carnet d'étiquettes indépendant de `vinted_connection` (voir §5)
+- `DashboardHome.tsx` : le bloc "Synchronisation Vinted" reflète l'état réel (connecté/pseudo/nombre d'annonces/dernière synchro) une fois `vinted_accounts.connected = true` — **fait, étape 1.3 + Phase A**
+- `SettingsPage.tsx` (onglet "Comptes Vinted") : l'ancien `useAccounts`/table `accounts` (carnet d'étiquettes mort) est supprimé — remplacé par un état honnête "gestion complète bientôt disponible" en attendant la Phase B (sélection/renommage/multi-comptes) — **fait, Phase A**
+- `StockPage.tsx`, `AccountingPage.tsx`, `StatsPage.tsx`, `GeneratorPage.tsx`, `ExpensesPage.tsx` : pas encore rattachés à `vinted_account_id` — Phase C de la refonte multi-comptes, pas dans ce document
+- `StockPage.tsx` (bouton « Republier », à ajouter) : créera un `sync_job` plutôt que d'appeler Supabase directement — Phase 2
 - Aucun changement à `scripts/vinted-scan.ts` ni au cron GitHub Actions (§6.4)
 
 ## 12. Risques et inconnues ouvertes

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Puzzle, MessageSquare, Tag, RotateCw, Bell, Loader2, Eye, Heart } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import type { VintedConnection, VintedListing } from '../../lib/types';
+import type { VintedAccount, VintedListing } from '../../lib/types';
 import { isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
 
 const UPCOMING = [
@@ -12,37 +12,45 @@ const UPCOMING = [
   { icon: Bell, label: 'Alertes ventes, offres et annonces expirees' },
 ];
 
-type ConnectionState = 'checking' | 'not-installed' | 'not-paired' | 'paired' | 'connected';
+// Phase A de la refonte multi-comptes : un seul compte affiche ici (le
+// compte par defaut). La selection/gestion multi-comptes arrive en Phase B.
+// Une ligne vinted_accounts ne peut exister que si un compte Vinted reel a
+// deja ete detecte par l'extension (voir EXTENSION.md) - il n'y a donc plus
+// de distinction "appaire mais pas encore detecte" a afficher separement :
+// l'appairage lui-meme n'a plus d'effet visible en base.
+type ConnectionState = 'checking' | 'not-installed' | 'not-connected' | 'connected';
 
 export default function VintedAccountPage() {
   const { session } = useAuth();
-  const [connection, setConnection] = useState<VintedConnection | null>(null);
+  const [account, setAccount] = useState<VintedAccount | null>(null);
   const [listings, setListings] = useState<VintedListing[]>([]);
   const [state, setState] = useState<ConnectionState>('checking');
   const [pairing, setPairing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadConnection = useCallback(async (): Promise<VintedConnection | null> => {
+  const loadAccount = useCallback(async (): Promise<VintedAccount | null> => {
     if (!session?.user.id) return null;
     const { data } = await supabase
-      .from('vinted_connection')
+      .from('vinted_accounts')
       .select('*')
       .eq('user_id', session.user.id)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle();
-    const row = (data as VintedConnection | null) ?? null;
-    setConnection(row);
+    const row = (data as VintedAccount | null) ?? null;
+    setAccount(row);
     return row;
   }, [session?.user.id]);
 
-  const loadListings = useCallback(async (): Promise<void> => {
-    if (!session?.user.id) return;
+  const loadListings = useCallback(async (accountId: string): Promise<void> => {
     const { data } = await supabase
       .from('vinted_listings')
       .select('*')
-      .eq('user_id', session.user.id)
+      .eq('vinted_account_id', accountId)
       .order('synced_at', { ascending: false });
     setListings((data as VintedListing[] | null) ?? []);
-  }, [session?.user.id]);
+  }, []);
 
   useEffect(() => {
     if (!session?.user.id) return;
@@ -53,20 +61,18 @@ export default function VintedAccountPage() {
         return;
       }
 
-      const [installed, existing] = await Promise.all([pingExtension(), loadConnection()]);
+      const [installed, existing] = await Promise.all([pingExtension(), loadAccount()]);
 
       if (!installed) {
         setState('not-installed');
-      } else if (!existing) {
-        setState('not-paired');
-      } else if (existing.connected) {
+      } else if (existing?.connected) {
         setState('connected');
-        void loadListings();
+        void loadListings(existing.id);
       } else {
-        setState('paired');
+        setState('not-connected');
       }
     })();
-  }, [session?.user.id, loadConnection, loadListings]);
+  }, [session?.user.id, loadAccount, loadListings]);
 
   const handleConnect = async () => {
     if (!session) return;
@@ -92,8 +98,13 @@ export default function VintedAccountPage() {
       return;
     }
 
-    const existing = await loadConnection();
-    setState(existing?.connected ? 'connected' : 'paired');
+    const existing = await loadAccount();
+    if (existing?.connected) {
+      setState('connected');
+      void loadListings(existing.id);
+    } else {
+      setState('not-connected');
+    }
   };
 
   return (
@@ -126,11 +137,11 @@ export default function VintedAccountPage() {
           </>
         )}
 
-        {state === 'not-paired' && (
+        {state === 'not-connected' && (
           <>
             <h2 className="font-bold text-sm mb-1">Extension détectée</h2>
             <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">
-              Connecte l'extension à ton compte ResellOS en un clic — aucune reconnexion nécessaire.
+              Connecte l'extension à ton compte ResellOS, puis ouvre ton profil Vinted dans un onglet pour synchroniser ton compte.
             </p>
             <button
               onClick={handleConnect}
@@ -143,25 +154,14 @@ export default function VintedAccountPage() {
           </>
         )}
 
-        {state === 'paired' && (
-          <>
-            <h2 className="font-bold text-sm mb-1">Extension appairée</h2>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto mb-3">
-              Ouvre vinted.fr dans un onglet pour terminer la synchronisation de ton compte.
-            </p>
-            <ReconnectLink pairing={pairing} onClick={handleConnect} />
-            {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
-          </>
-        )}
-
-        {state === 'connected' && connection && (
+        {state === 'connected' && account && (
           <>
             <h2 className="font-bold text-sm mb-1">
-              Connecté{connection.vinted_username ? ` — ${connection.vinted_username}` : ''}
+              Connecté — {account.label}
             </h2>
             <p className="text-xs text-gray-500 max-w-sm mx-auto mb-3">
-              {connection.last_synced_at
-                ? `Dernière synchro : ${new Date(connection.last_synced_at).toLocaleString('fr-FR')}`
+              {account.last_synced_at
+                ? `Dernière synchro : ${new Date(account.last_synced_at).toLocaleString('fr-FR')}`
                 : 'Synchronisation en cours...'}
             </p>
             <ReconnectLink pairing={pairing} onClick={handleConnect} />
@@ -240,9 +240,9 @@ export default function VintedAccountPage() {
   );
 }
 
-// Toujours disponible tant que l'extension est installée, même une fois "paired"/"connected" :
-// une ligne vinted_connection en base ne garantit pas que l'extension a encore une session
-// locale valide (dissociation, réinstallation, données de navigateur effacées...). Sans ce
+// Toujours disponible, même une fois "connected" : une ligne vinted_accounts
+// en base ne garantit pas que l'extension a encore une session locale valide
+// (dissociation, réinstallation, données de navigateur effacées...). Sans ce
 // bouton de secours, un utilisateur dans cet état serait bloqué sans aucun moyen de ré-appairer.
 function ReconnectLink({ pairing, onClick }: { pairing: boolean; onClick: () => void }) {
   return (

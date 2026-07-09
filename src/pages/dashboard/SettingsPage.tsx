@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Plus, Users } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Puzzle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { useAccounts } from '../../hooks/useAccounts';
 
 export default function SettingsPage() {
   const { profile, refreshProfile } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger'>('profile');
-  const { accounts, loading: accountsLoading, addAccount, deleteAccount } = useAccounts();
-  const [newAccountName, setNewAccountName] = useState('');
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [email] = useState(profile?.email ?? '');
@@ -46,13 +43,6 @@ export default function SettingsPage() {
     }
     setApiSaved(true);
     setTimeout(() => setApiSaved(false), 2000);
-  };
-
-  const handleAddAccount = async () => {
-    const name = newAccountName.trim();
-    if (!name) return;
-    await addAccount(name);
-    setNewAccountName('');
   };
 
   const tabs = [
@@ -148,58 +138,16 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'accounts' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="bg-surface border border-white/5 rounded-2xl p-10 text-center space-y-3">
+          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mx-auto">
+            <Puzzle className="w-5 h-5 text-gray-500" />
+          </div>
           <div>
-            <h2 className="font-bold text-sm">Comptes Vinted</h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Gere les comptes Vinted que tu utilises pour revendre.
+            <h2 className="font-bold text-sm">Gestion des comptes Vinted</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+              La gestion complète de tes comptes Vinted (renommage, plusieurs comptes, connexion) arrive bientôt. En attendant, retrouve le statut de ta connexion dans « Compte Vinted ».
             </p>
           </div>
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newAccountName}
-              onChange={(e) => setNewAccountName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddAccount()}
-              placeholder="Nom du compte (ex: Compte principal)"
-              className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
-            />
-            <button
-              onClick={handleAddAccount}
-              disabled={!newAccountName.trim()}
-              className="flex items-center gap-2 bg-neon-500 text-black font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm disabled:opacity-60 flex-shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              Ajouter
-            </button>
-          </div>
-
-          {accountsLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-11 bg-dark-400 rounded-xl animate-pulse" />)}
-            </div>
-          ) : accounts.length === 0 ? (
-            <p className="text-sm text-gray-600">Aucun compte enregistre pour l'instant.</p>
-          ) : (
-            <div className="space-y-2">
-              {accounts.map((account) => (
-                <div
-                  key={account.id}
-                  className="flex items-center justify-between px-4 py-3 bg-dark-400 border border-white/5 rounded-xl"
-                >
-                  <p className="text-sm text-gray-200">{account.name}</p>
-                  <button
-                    onClick={() => deleteAccount(account.id)}
-                    aria-label={`Supprimer le compte ${account.name}`}
-                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

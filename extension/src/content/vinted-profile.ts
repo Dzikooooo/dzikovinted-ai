@@ -25,7 +25,7 @@ function detectAndReport(): void {
 
   const listings = extractListingCards(document);
   if (listings.length > 0) {
-    const listingsMessage: InternalMessage = { type: "LISTINGS_DETECTED", listings };
+    const listingsMessage: InternalMessage = { type: "LISTINGS_DETECTED", vintedUserId, vintedUsername, listings };
     chrome.runtime.sendMessage(listingsMessage);
   }
 }

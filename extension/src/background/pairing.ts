@@ -1,6 +1,5 @@
 import { supabase, supabaseWithToken } from "./supabaseClient";
 import { logger } from "./logger";
-import { withRetry } from "./retry";
 import { getValidAccessToken, writeStoredSession, clearStoredSession, decodeJwtExpiry } from "./session";
 import type { StatusResponse } from "../lib/messages";
 
@@ -16,22 +15,12 @@ export async function pair(accessToken: string, refreshToken: string): Promise<v
 
   const userId = userData.user.id;
 
-  // Ligne vinted_connection creee/mise a jour, mais connected reste tel quel -
-  // l'appairage avec ResellOS et la detection d'une session Vinted reelle sont
-  // deux etats distincts (voir etape 1.2 du plan). On ne force pas connected a
-  // false a chaque appairage pour ne pas ecraser un etat deja detecte par une
-  // synchro precedente.
-  const client = supabaseWithToken(accessToken);
-  await withRetry(async () => {
-    const { error: upsertError } = await client
-      .from("vinted_connection")
-      .upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true });
-    if (upsertError) {
-      logger.error("upsert vinted_connection a echoue", upsertError.message);
-      throw upsertError;
-    }
-  });
-
+  // Aucune ecriture Supabase ici : l'appairage (extension <-> ResellOS) et la
+  // detection d'un compte Vinted reel sont deux etats totalement distincts
+  // depuis la refonte multi-comptes. Une ligne vinted_accounts ne peut etre
+  // creee que par une vraie detection (voir sync.ts) - jamais par
+  // l'appairage seul, pour qu'aucun compte "fantome" non rattache a une
+  // identite Vinted reelle ne puisse exister.
   const expiresAt = decodeJwtExpiry(accessToken) ?? Math.floor(Date.now() / 1000) + 3600;
   await writeStoredSession({ access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, user_id: userId });
 
@@ -53,15 +42,21 @@ export async function getStatus(): Promise<StatusResponse> {
     return { paired: false, vintedConnected: false, lastSyncedAt: null, lastError: null };
   }
 
+  // Phase A : un seul compte visible dans le popup (le compte par defaut,
+  // ou le premier cree). La vraie selection multi-comptes arrive en Phase B
+  // - voir EXTENSION.md.
   const client = supabaseWithToken(valid.accessToken);
   const { data: row, error: rowError } = await client
-    .from("vinted_connection")
+    .from("vinted_accounts")
     .select("connected, last_synced_at, last_error")
     .eq("user_id", valid.userId)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (rowError) {
-    logger.warn("Lecture de vinted_connection impossible", rowError.message);
+    logger.warn("Lecture de vinted_accounts impossible", rowError.message);
     return { paired: true, vintedConnected: false, lastSyncedAt: null, lastError: rowError.message };
   }
 

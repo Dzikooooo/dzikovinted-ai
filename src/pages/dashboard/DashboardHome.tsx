@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import type { DashboardPage, Listing, VintedConnection } from '../../lib/types';
+import type { DashboardPage, Listing, VintedAccount } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 
 interface DashboardHomeProps {
@@ -19,7 +19,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
   const [newOpportunities, setNewOpportunities] = useState(0);
-  const [vintedConnection, setVintedConnection] = useState<VintedConnection | null>(null);
+  const [vintedAccount, setVintedAccount] = useState<VintedAccount | null>(null);
   const [vintedListingsCount, setVintedListingsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -27,16 +27,29 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     if (!user) return;
     (async () => {
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [{ data: allListings }, { count: oppCount }, { data: connection }, { count: vintedCount }] = await Promise.all([
+      const [{ data: allListings }, { count: oppCount }, { data: account }] = await Promise.all([
         supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
-        supabase.from('vinted_connection').select('*').eq('user_id', user.id).maybeSingle(),
-        supabase.from('vinted_listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase
+          .from('vinted_accounts')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('is_default', { ascending: false })
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle(),
       ]);
       setListings((allListings ?? []) as Listing[]);
       setNewOpportunities(oppCount ?? 0);
-      setVintedConnection((connection as VintedConnection | null) ?? null);
-      setVintedListingsCount(vintedCount ?? 0);
+      setVintedAccount((account as VintedAccount | null) ?? null);
+
+      if (account) {
+        const { count: vintedCount } = await supabase
+          .from('vinted_listings')
+          .select('*', { count: 'exact', head: true })
+          .eq('vinted_account_id', account.id);
+        setVintedListingsCount(vintedCount ?? 0);
+      }
       setLoading(false);
     })();
   }, [user]);
@@ -233,15 +246,15 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           <Puzzle className="w-4 h-4 text-gray-500" />
         </div>
         <div>
-          {vintedConnection?.connected ? (
+          {vintedAccount?.connected ? (
             <>
               <p className="text-sm font-semibold text-gray-300">
-                Connecté — {vintedConnection.vinted_username}
+                Connecté — {vintedAccount.label}
                 {vintedListingsCount > 0 && ` · ${vintedListingsCount} annonce${vintedListingsCount > 1 ? 's' : ''} synchronisée${vintedListingsCount > 1 ? 's' : ''}`}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                {vintedConnection.last_synced_at
-                  ? `Dernière synchro : ${new Date(vintedConnection.last_synced_at).toLocaleString('fr-FR')}`
+                {vintedAccount.last_synced_at
+                  ? `Dernière synchro : ${new Date(vintedAccount.last_synced_at).toLocaleString('fr-FR')}`
                   : 'Synchronisation en cours...'}
               </p>
             </>
