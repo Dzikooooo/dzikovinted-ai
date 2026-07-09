@@ -42,6 +42,19 @@ Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messag
 - **Fusion `listings` ↔ `vinted_listings` (2026-07-09)** : ✅ demande explicite de l'utilisateur pour supprimer la séparation entre Stock ResellOS et annonces Vinted synchronisées — `listings` devient l'unique source de vérité (une annonce Vinted synchronisée EST la même ligne que l'article ResellOS). Fusion automatique pour le nouveau uniquement (les brouillons Générateur pré-existants, jamais publiés, restent séparés faute d'identifiant commun — lien manuel différé). Auto-comptabilité sur vente détectée (`status='vendu'`, `sold_price` pré-rempli, jamais d'écrasement d'une saisie manuelle). CA/bénéfice/ROI calculés uniquement sur les lignes au prix d'achat connu (jamais de chiffre fabriqué). `StockPage.tsx` redevient une vue unique (l'onglet "Vinted" séparé, introduit une itération plus tôt, est retiré). `AccountingPage`/`StatsPage`/`DashboardHome` rattachés au compte Vinted actif. Validé en conditions réelles : migration sans perte (alexisdzk 44, matleshop 15 lignes), resynchronisation vérifiée idempotente (aucun doublon), auto-comptabilité vérifiée sur les ventes détectées. `vinted_listings` renommée `vinted_listings_deprecated_20260709` (pas droppée, filet de sécurité temporaire).
 - **Reste hors scope** : lien manuel entre un brouillon Générateur pré-existant et son annonce Vinted réelle une fois publiée ; `vinted_account_id` sur `expenses` (nullable, dépenses globales possibles) ; futures tables Messages/Offres/Favoris/Notifications conçues account-first dès le départ.
 
+## Roadmap produit à 8 phases (communiquée par l'utilisateur, 2026-07-09)
+
+⚠️ Numérotation distincte des sections "Phase 1/2/3" ci-dessus (qui suivent l'historique technique du projet) et du phasage interne de [EXTENSION.md](EXTENSION.md) §10 (capacités d'écriture de l'extension). Celle-ci est la trajectoire produit voulue par l'utilisateur pour transformer ResellOS en copilote du revendeur Vinted :
+
+1. **Lecture** — ✅ terminée : extension, synchro, multi-comptes, Dashboard/Stock/Comptabilité/Statistiques, `listings` comme source unique de vérité, synchro ventes/statuts.
+2. **Intelligence métier** — ✅ terminée (2026-07-09) : moteur `src/lib/insights/` (scores, recommandations, alertes, priorités du jour, narrations Dashboard), table d'historique `listing_metric_snapshots` pour les signaux de tendance. Détail architecture dans [ARCHITECTURE.md](ARCHITECTURE.md) §4.5, schéma dans [DATABASE.md](DATABASE.md). Hors scope explicite de cette phase, documenté volontairement plutôt que caché : pas de centre d'alertes dédié (les alertes remontent via Dashboard + badges Stock uniquement) ; signaux de tendance inertes tant que l'historique de snapshots est insuffisant ; aucune action d'écriture sur Vinted.
+3. **Écriture sur Vinted** — pas commencée : publier/modifier une annonce (prix, photos, titre, description, caractéristiques) depuis ResellOS, toujours explicite, jamais silencieux.
+4. **Republication** — pas commencée : moteur de republication piloté par les recommandations produites en Phase 2 (ex. "12 annonces prioritaires à republier"), validation utilisateur puis exécution par l'extension.
+5. **Messages** — pas commencée : conversations Vinted visibles dans ResellOS, réponses proposées, jamais envoyées automatiquement.
+6. **Offres** — pas commencée : recevoir/accepter/refuser/contre-proposer, toujours validé par l'utilisateur.
+7. **Notifications** — pas commencée : nouveau favori/offre/message/vente/réservation, perte de visibilité, annonce inactive, republication recommandée.
+8. **Automatisations assistées** — pas commencée : détection + proposition d'action, jamais d'action silencieuse.
+
 ## Phase 3 — Sourcing intelligent, comptabilité fiscale — pas commencée
 
 Étude de marché automatisée plus poussée, comptabilité fiscale adaptée au régime de vente d'occasion (TVA sur la marge, déclarations URSSAF pour les vendeurs pro).

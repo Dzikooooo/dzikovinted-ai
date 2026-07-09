@@ -207,14 +207,23 @@ export async function recordListings(
       toUpdate.push({ id: existing.id, payload });
     }
 
+    // Utilise pour l'historique (listing_metric_snapshots) ci-dessous : il
+    // faut l'id `listings` de chaque annonce synchronisee, connu d'avance
+    // pour les mises a jour, renvoye par Supabase pour les creations.
+    const listingIdByItemId = new Map(existingRows.map((r) => [r.vinted_item_id, r.id]));
+
     if (toInsert.length > 0) {
-      await withRetry(async () => {
-        const { error } = await client.from("listings").insert(toInsert);
+      const inserted = await withRetry(async () => {
+        const { data, error } = await client.from("listings").insert(toInsert).select("id, vinted_item_id");
         if (error) {
           logger.error("Creation d'articles lies a Vinted a echoue", error.message);
           throw error;
         }
+        return (data ?? []) as { id: string; vinted_item_id: string | null }[];
       });
+      for (const row of inserted) {
+        if (row.vinted_item_id) listingIdByItemId.set(row.vinted_item_id, row.id);
+      }
     }
 
     if (toUpdate.length > 0) {
@@ -226,6 +235,35 @@ export async function recordListings(
         if (failed?.error) {
           logger.error("Mise a jour d'articles lies a Vinted a echoue", failed.error.message);
           throw failed.error;
+        }
+      });
+    }
+
+    // Historique (Phase 2, moteur d'intelligence metier) : un instantane par
+    // annonce synchronisee, y compris la toute premiere fois (sert de point
+    // de depart aux futures comparaisons de tendance). Journal append-only,
+    // aucun impact sur les colonnes "vivantes" de `listings`.
+    const snapshotRows = listings
+      .map((l) => {
+        const listingId = listingIdByItemId.get(l.vintedItemId);
+        if (!listingId) return null;
+        return {
+          listing_id: listingId,
+          views: l.views,
+          favourites: l.favourites,
+          price: l.price,
+          vinted_status: l.status,
+          captured_at: syncedAt,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    if (snapshotRows.length > 0) {
+      await withRetry(async () => {
+        const { error } = await client.from("listing_metric_snapshots").insert(snapshotRows);
+        if (error) {
+          logger.error("Enregistrement de l'historique a echoue", error.message);
+          throw error;
         }
       });
     }

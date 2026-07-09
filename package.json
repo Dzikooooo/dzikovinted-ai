@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test": "vitest run",
     "scan": "tsx scripts/vinted-scan.ts",
     "audit:schema": "node scripts/audit-project.mjs",
     "audit:deadcode": "ts-prune -p tsconfig.audit.json",
@@ -39,6 +40,7 @@
     "tsx": "^4.22.4",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.63.0",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "vitest": "^4.1.10"
   }
 }

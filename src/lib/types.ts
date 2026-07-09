@@ -51,7 +51,11 @@ export interface Listing {
   vinted_filters: VintedFilter[];
   image_urls: string[];
 
-  purchase_price: number;
+  // number | null (pas number) depuis la fusion avec vinted_listings
+  // (2026-07-09) : un article decouvert par la synchro Vinted n'a pas de
+  // prix d'achat connu, la colonne est reellement NULL en base pour ces
+  // lignes - voir extension/src/background/sync.ts.
+  purchase_price: number | null;
 purchase_date: string | null;
 purchase_location: string | null;
 
@@ -130,6 +134,16 @@ export interface VintedAccount {
   last_error: string | null;
   is_default: boolean;
   created_at: string;
+}
+
+export interface ListingMetricSnapshot {
+  id: string;
+  listing_id: string;
+  views: number | null;
+  favourites: number | null;
+  price: number | null;
+  vinted_status: string | null;
+  captured_at: string;
 }
 
 export interface Subscription {

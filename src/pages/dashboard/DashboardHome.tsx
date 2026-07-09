@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers } from 'lucide-react';
+import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers, Lightbulb } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
+import { useInsights } from '../../hooks/useInsights';
 import { supabase } from '../../lib/supabase';
 import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
+import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 
 interface DashboardHomeProps {
   onNavigate: (page: DashboardPage) => void;
 }
-
-const AGING_STOCK_DAYS = 21;
 
 function profitOf(l: Listing) {
   return Number(l.sold_price || 0) - Number(l.purchase_price || 0) - Number(l.fees || 0);
@@ -19,6 +19,7 @@ function profitOf(l: Listing) {
 export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
   const { accounts, selectedAccountId, selectedAccount } = useVintedAccountFilter();
+  const { report: insights } = useInsights();
   const [listings, setListings] = useState<Listing[]>([]);
   const [newOpportunities, setNewOpportunities] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -208,6 +209,44 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Copilote */}
+      {insights && (insights.narratives.length > 0 || insights.priorities.length > 0) && (
+        <div className="mb-8 bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-neon-500/20 rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Lightbulb className="w-4 h-4 text-neon-500" />
+            <h2 className="font-bold text-sm text-gray-200">Copilote</h2>
+          </div>
+
+          {insights.narratives.length > 0 && (
+            <div className="space-y-1.5 mb-4">
+              {insights.narratives.map((n, i) => (
+                <p key={i} className="text-sm text-gray-300">{n.message}</p>
+              ))}
+            </div>
+          )}
+
+          {insights.priorities.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-2">Priorités du jour</p>
+              <div className="space-y-1.5">
+                {insights.priorities.map((p, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onNavigate('stock')}
+                    className="w-full flex items-center gap-2.5 text-left text-xs text-gray-400 hover:text-gray-200 transition-colors py-1"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-neon-500/10 text-neon-500 font-bold flex items-center justify-center flex-shrink-0 text-[10px]">
+                      {i + 1}
+                    </span>
+                    {p.message}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

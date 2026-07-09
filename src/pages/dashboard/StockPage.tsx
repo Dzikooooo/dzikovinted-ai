@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, X, Sparkles, Clock, RefreshCw, Eye, Heart } from 'lucide-react';
+import { Search, X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
+import { useInsights } from '../../hooks/useInsights';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
@@ -9,8 +10,7 @@ import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 import { isExtensionConfigured, pingExtension } from '../../lib/extensionBridge';
 import { formatRelativeSync } from '../../lib/formatRelativeTime';
-
-const AGING_STOCK_DAYS = 21;
+import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 
 type StatusFilter = 'all' | 'online' | 'reserved' | 'sold_pending' | 'sold_completed' | 'draft' | 'hidden' | 'unknown';
 
@@ -40,6 +40,7 @@ export default function StockPage() {
     selectedAccount,
     refresh: refreshAccounts,
   } = useVintedAccountFilter();
+  const { report: insights } = useInsights();
 
   const [items, setItems] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -318,6 +319,8 @@ export default function StockPage() {
               ? Number(item.sold_price || 0) - Number(item.purchase_price || 0) - Number(item.fees || 0)
               : Number(item.price || 0) - Number(item.purchase_price || 0);
             const roi = hasCost && Number(item.purchase_price) > 0 ? Math.round((margin / Number(item.purchase_price)) * 100) : 0;
+            const score = insights?.scores.get(item.id)?.score ?? null;
+            const recommendation = insights?.recommendations.find((r) => r.listingId === item.id) ?? null;
 
             return (
               <div
@@ -369,7 +372,27 @@ export default function StockPage() {
                             <Heart className="w-2.5 h-2.5" /> {item.favourites}
                           </span>
                         )}
+                        {recommendation && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md">
+                            <Lightbulb className="w-2.5 h-2.5" />
+                            {recommendation.message}
+                          </span>
+                        )}
                       </div>
+                      {score !== null && (
+                        <div className="mt-2 max-w-[160px]">
+                          <div className="flex items-center justify-between text-[10px] text-gray-600 mb-1">
+                            <span>Score IA</span>
+                            <span>{score}/100</span>
+                          </div>
+                          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-neon-500 rounded-full transition-all duration-500"
+                              style={{ width: `${score}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

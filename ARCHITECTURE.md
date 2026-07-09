@@ -34,13 +34,19 @@ src/
       SubscriptionPage.tsx       UI de plan/abonnement, aucune intégration Stripe réelle (voir §7)
       SettingsPage.tsx            profil, mot de passe, comptes Vinted multiples, clé API, notifications, zone danger
 
-  components/ui/          composants réutilisables sans état métier propre (StatCard, CopyBtn, FieldCard)
-  hooks/                   logique Supabase réutilisable (useAccounts, useExpenses)
-  contexts/                AuthContext : session, profil, credits, actions d'authentification
+  components/ui/          composants réutilisables sans état métier propre (StatCard, AccountAvatar, VintedStatusBadge)
+  hooks/                   logique Supabase réutilisable (useExpenses, useInsights)
+  contexts/                AuthContext (session/profil), VintedAccountFilterContext (compte Vinted actif)
   lib/
     supabase.ts              client Supabase (clé anon, protégé par RLS)
     aiService.ts               appelle l'edge function analyze-clothing
     types.ts                    tous les types partagés du frontend (Profile, Listing, MarketOpportunity...)
+    insights/                   moteur d'intelligence métier (2026-07-09), voir §4.5
+      types.ts / constants.ts / math.ts    contrats, seuils nommés, helpers purs
+      context.ts                            buildContext() : agrégats précalculés une fois
+      scoring.ts / recommendations.ts / alerts.ts / trends.ts / narrative.ts / priorities.ts
+      engine.ts                             computeInsights() : point d'entrée unique
+      __tests__/                            tests Vitest (fixtures synthétiques, aucun mock Supabase)
 
 scripts/                  hors bundle frontend, exécuté par Node/tsx
   vinted-scan.ts             scraping Playwright + orchestration du scan
@@ -71,7 +77,7 @@ supabase/
 | Playwright (scraping) plutôt qu'API tierce | API Vinted publique, agrégateur eBay | Vinted n'a pas d'API publique ; eBay a été essayé comme source de prix de comparaison et bloque systématiquement le scraping automatisé (403) — abandonné au profit d'une médiane des prix Vinted eux-mêmes |
 | Cron GitHub Actions pour le scan | Cron Supabase / serveur dédié | Gratuit, déjà dans l'écosystème du repo, suffisant pour une fréquence de 4h |
 | Google Gemini pour l'analyse photo | OpenAI GPT-4 Vision | Choix historique du projet ; `SettingsPage.tsx` permet à l'utilisateur de fournir sa propre clé, mais le code/l'UI mentionnent encore "OpenAI API Key" par endroits — **incohérence connue à corriger**, l'edge function `analyze-clothing` appelle bien Gemini (voir §9) |
-| Pas de framework de tests | Vitest/Playwright Test | Aucun test automatisé n'existe à ce jour. Toute vérification passe par `typecheck`/`lint`/`build` + inspection manuelle en navigateur. Vrai manque, voir §10 |
+| Vitest (2026-07-09) | Playwright Test, pas de tests | Introduit pour le moteur d'intelligence métier (`src/lib/insights/`) : code déterministe, sans effet de bord, sans dépendance Supabase — le cas d'usage qui justifie enfin le coût d'un premier framework de tests. 23 tests unitaires (`src/lib/insights/__tests__/`), `npm run test`. Config isolée (`vitest.config.ts`, environnement `node`) pour ne pas toucher `vite.config.ts`. Le reste de l'app (UI, hooks Supabase) reste vérifié par `typecheck`/`lint`/`build` + inspection manuelle en navigateur — pas encore de tests de composants |
 
 ## 4. Flux de données
 
@@ -136,6 +142,47 @@ listings (status: draft → en_stock → vendu ; vinted_status: online/reserved/
 Aucune de ces pages ne fait de calcul côté base (pas de vue SQL ni de RPC) — tout est recalculé côté client à partir des lignes brutes à chaque chargement. Acceptable au volume actuel (un utilisateur = quelques centaines de lignes maximum), à revisiter si la volumétrie grossit.
 
 **`listings` et `vinted_listings` ont fusionné (2026-07-09)**, sur demande explicite de l'utilisateur ("une annonce Vinted doit représenter le même objet que celui présent dans mon Stock ResellOS"). `listings` est l'unique source de vérité : une annonce découverte par la synchro Vinted devient directement une ligne `listings` (prix d'achat inconnu tant qu'il n'est pas saisi), une vente détectée met à jour `status`/`sold_price`/`sold_date` automatiquement (sans jamais écraser une valeur déjà saisie manuellement). `StockPage.tsx` est redevenue une vue unique (l'onglet "Vinted" séparé, introduit une itération plus tôt, a été retiré — il recréait la même séparation logique que l'utilisateur venait de demander de supprimer). CA/bénéfice/ROI ne sont calculés que sur les lignes au prix d'achat connu, pour ne jamais fabriquer un chiffre à partir d'une donnée manquante. Détail complet (règles de propriété des champs, auto-comptabilité, migration) dans [EXTENSION.md](EXTENSION.md) §5.
+
+### 4.5 Moteur d'intelligence métier (`src/lib/insights/`, 2026-07-09)
+
+Couche d'analyse au-dessus de `listings` : scores, recommandations, alertes, priorités du jour et narrations texte pour le Dashboard. C'est la "Phase 2" de la roadmap produit à 8 phases communiquée par l'utilisateur (lecture/analyse — à distinguer du phasage interne de `EXTENSION.md` §10 qui numérote les capacités d'écriture de l'extension). Les phases suivantes (republication, messages, offres — Phases 3+) consommeront les recommandations produites ici, d'où le soin porté à l'extensibilité.
+
+```
+listings + vinted_accounts + listing_metric_snapshots (chargés par useInsights.ts)
+  → context.ts::buildContext()      agrégats précalculés une seule fois :
+                                       moyennes ROI/vues/favoris par marque/catégorie/compte,
+                                       calculées UNIQUEMENT à partir de ventes réelles complètes
+                                       (prix d'achat + prix de vente connus), null si échantillon
+                                       trop petit (< MIN_SAMPLE_SIZE_FOR_COMPARISON) — jamais de
+                                       moyenne fabriquée à partir de données insuffisantes
+  → scoring.ts::computeScores()      score 0-100 par annonce, additif et transparent (base 50 +
+                                       deltas nommés : vues/favoris vs médiane active, âge, ROI,
+                                       performance marque/catégorie relative) — même philosophie
+                                       que scripts/market-engine.ts::calculateScore(), appliquée
+                                       à l'inventaire possédé plutôt qu'aux opportunités d'achat
+  → recommendations.ts / alerts.ts    registres de règles : chaque règle est une fonction pure
+                                       nommée (listing, ctx) => Résultat | null, collectées dans
+                                       un tableau et exécutées génériquement — ajouter une règle
+                                       n'implique de toucher à aucune règle existante (pas de
+                                       if/else monolithique)
+  → trends.ts                        signaux basés sur l'historique (listing_metric_snapshots) ;
+                                       ne produit rien tant que l'historique est insuffisant
+                                       (< 2 instantanés espacés de MIN_TREND_INTERVAL_DAYS)
+  → narrative.ts                      phrases texte générées par interpolation de gabarits sur
+                                       les agrégats réels — aucun appel LLM, donc aucun risque
+                                       d'invention (voir §7 pour l'unique usage de Gemini)
+  → priorities.ts                     fusionne alertes + recommandations en un top 5 classé
+  → engine.ts::computeInsights()      orchestrateur pur, point d'entrée unique
+→ hooks/useInsights.ts                 pont Supabase : fetch listings/comptes/snapshots (scopé
+                                       par VintedAccountFilterContext), appelle computeInsights()
+                                       deux fois (dataset complet pour narrations/comparaisons
+                                       inter-comptes, dataset filtré pour scores/recommandations/
+                                       alertes/priorités affichés à l'écran)
+→ DashboardHome.tsx ("Copilote")       narrations + priorités du jour cliquables
+→ StockPage.tsx                        badge de recommandation + barre "Score IA X/100" par carte
+```
+
+Aucun appel Supabase à l'intérieur de `src/lib/insights/` — uniquement des fonctions pures testées par Vitest (voir §3), ce qui garde la séparation données/recommandations explicitement demandée par l'utilisateur.
 
 ## 5. Interactions avec Supabase
 
