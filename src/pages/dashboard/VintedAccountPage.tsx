@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Puzzle, MessageSquare, Tag, RotateCw, Bell, Loader2, Eye, Heart, ArrowRight } from 'lucide-react';
+import { Puzzle, MessageSquare, Tag, RotateCw, Bell, Loader2, Eye, Heart, ArrowRight, UserPlus, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
@@ -220,6 +220,28 @@ export default function VintedAccountPage() {
             )}
           </div>
         </>
+      )}
+
+      {extensionState === 'ready' && !accountsLoading && hasAnyAccount && (
+        <div className="mt-6 bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 flex items-start gap-4">
+          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
+            <UserPlus className="w-4 h-4 text-gray-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-300">Ajouter un autre compte Vinted</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Connecte-toi à un autre compte Vinted dans ce navigateur, puis ouvre ta page de profil Vinted. Le nouveau compte est détecté et ajouté automatiquement ici et dans le sélecteur — aucune action supplémentaire n'est nécessaire côté ResellOS.
+            </p>
+            <a
+              href="https://www.vinted.fr"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-neon-500 hover:underline mt-3"
+            >
+              Ouvrir Vinted <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
       )}
 
       <div className="mt-6">
