@@ -26,9 +26,12 @@ Revue approfondie avant d'attaquer l'extension Chrome. Détail dans l'historique
 - Migration des pages restantes (`StockPage`, `SettingsPage`, etc.) vers les classes déjà prêtes dans `src/index.css` (`.btn-neon`, `.glass-card`, `.input-dark`) plutôt que du Tailwind brut dupliqué
 - `SubscriptionPage.tsx` reste une UI statique sans Stripe — pas un bug, juste un chantier à part entière si la facturation devient prioritaire
 
-## Phase 2 — Extension Chrome — architecture conçue, implémentation pas commencée
+## Phase 2 — Extension Chrome — étape 1.1 validée en direct
 
-Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messages/offres depuis ResellOS nécessite une extension Chrome qui agit dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr. Architecture complète (composants, appairage, modèle de données, phasage MVP/2.1/2.2, sécurité) dans [EXTENSION.md](EXTENSION.md). Prochaine étape concrète : implémenter le MVP (EXTENSION.md §10).
+Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messages/offres depuis ResellOS nécessite une extension Chrome qui agit dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr. Architecture complète (composants, appairage, modèle de données, phasage MVP/2.1/2.2, sécurité) dans [EXTENSION.md](EXTENSION.md).
+
+- **Étape 1.1 (scaffold + appairage)** : ✅ codée et validée en conditions réelles (navigateur Chrome connecté, extension chargée non empaquetée, cycle appairage/dissociation/ré-appairage rejoué avec succès). Deux bugs réels trouvés et corrigés en test live — détail dans EXTENSION.md §3.
+- **Étape 1.2 (détection de compte Vinted)** et **1.3 (sync des annonces)** : pas commencées — nécessitent d'observer le DOM réel de vinted.fr connecté avant d'écrire les sélecteurs des content scripts.
 
 ## Phase 3 — Sourcing intelligent, comptabilité fiscale — pas commencée
 
