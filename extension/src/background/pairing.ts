@@ -1,80 +1,8 @@
 import { supabase, supabaseWithToken } from "./supabaseClient";
 import { logger } from "./logger";
 import { withRetry } from "./retry";
+import { getValidAccessToken, writeStoredSession, clearStoredSession, decodeJwtExpiry } from "./session";
 import type { StatusResponse } from "../lib/messages";
-
-// Gestion de session explicite et self-managed plutot que de compter sur
-// supabase.auth.setSession()/getSession() (gestion "ambiante" de
-// GoTrueClient). Constate en test live : setSession() echoue par
-// intermittence avec "Auth session missing!" dans ce contexte service worker
-// MV3 (module re-instancie a chaque reveil, storage adapter async), meme
-// avec des tokens valides et non expires - un comportement non fiable et
-// difficile a diagnostiquer sans acces direct aux DevTools du service
-// worker. On stocke donc nous-memes {access_token, refresh_token,
-// expires_at} sous une cle dediee, et on valide/rafraichit explicitement
-// plutot que de dependre de l'etat interne du client.
-
-const SESSION_KEY = "resellos_extension_session";
-
-interface StoredSession {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number; // epoch secondes
-  user_id: string;
-}
-
-async function readStoredSession(): Promise<StoredSession | null> {
-  const result = await chrome.storage.local.get(SESSION_KEY);
-  return (result[SESSION_KEY] as StoredSession | undefined) ?? null;
-}
-
-async function writeStoredSession(session: StoredSession): Promise<void> {
-  await chrome.storage.local.set({ [SESSION_KEY]: session });
-}
-
-async function clearStoredSession(): Promise<void> {
-  await chrome.storage.local.remove(SESSION_KEY);
-}
-
-function decodeJwtExpiry(token: string): number | null {
-  try {
-    const payload = token.split(".")[1];
-    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    const parsed = JSON.parse(json) as { exp?: number };
-    return typeof parsed.exp === "number" ? parsed.exp : null;
-  } catch {
-    return null;
-  }
-}
-
-// Access token valide (rafraichi si besoin), ou null si aucune session
-// stockee / rafraichissement impossible (l'utilisateur doit re-appairer).
-async function getValidAccessToken(): Promise<{ accessToken: string; userId: string } | null> {
-  const stored = await readStoredSession();
-  if (!stored) return null;
-
-  const now = Math.floor(Date.now() / 1000);
-  if (stored.expires_at > now + 30) {
-    return { accessToken: stored.access_token, userId: stored.user_id };
-  }
-
-  logger.debug("Token expire, rafraichissement");
-  const { data, error } = await supabase.auth.refreshSession({ refresh_token: stored.refresh_token });
-  if (error || !data.session) {
-    logger.warn("Rafraichissement du token echoue", error?.message);
-    await clearStoredSession();
-    return null;
-  }
-
-  const expiresAt = data.session.expires_at ?? now + 3600;
-  await writeStoredSession({
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
-    expires_at: expiresAt,
-    user_id: data.session.user.id,
-  });
-  return { accessToken: data.session.access_token, userId: data.session.user.id };
-}
 
 // Recoit la session Supabase deja ouverte dans l'app web (voir EXTENSION.md §3) -
 // jamais de nouvelle authentification demandee a l'utilisateur ici.

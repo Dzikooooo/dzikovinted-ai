@@ -1,9 +1,10 @@
 import { defineManifest } from "@crxjs/vite-plugin";
 import pkg from "./package.json";
 
-// Portee volontairement minimale (etape 1.1 du plan Phase 1 - appairage uniquement) :
-// pas de permission "tabs" (rien n'ouvre d'onglet), host_permissions limite a vinted.fr,
-// externally_connectable limite a l'app en dev (localhost:5173, app pas encore deployee).
+// Portee volontairement minimale : pas de permission "tabs" (rien n'ouvre
+// d'onglet, la sync se declenche par la visite naturelle de la page),
+// host_permissions limite a vinted.fr, externally_connectable limite a
+// l'app en dev (localhost:5173, app pas encore deployee).
 export default defineManifest({
   manifest_version: 3,
   name: "ResellOS pour Vinted",
@@ -26,4 +27,11 @@ export default defineManifest({
   externally_connectable: {
     matches: ["http://localhost:5173/*"],
   },
+  content_scripts: [
+    {
+      matches: ["https://www.vinted.fr/member/*"],
+      js: ["src/content/vinted-profile.ts"],
+      run_at: "document_idle",
+    },
+  ],
 });

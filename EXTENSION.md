@@ -2,7 +2,9 @@
 
 Document de conception de l'extension Chrome ResellOS. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
 
-**État d'implémentation** : l'étape 1.1 (scaffold `extension/` + appairage à chaud avec la session web) est codée **et validée en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, cycle complet appairage → dissociation → ré-appairage rejoué avec succès, données vérifiées en base à chaque étape). Les étapes 1.2 (détection de compte) et 1.3 (sync des annonces) restent à faire — elles nécessitent d'observer en direct le DOM réel de vinted.fr connecté avant d'écrire les sélecteurs, ce que ce document ne peut pas anticiper avec certitude (voir §6.2/§9). Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
+**État d'implémentation** : étapes 1.1 (scaffold + appairage) et 1.2 (détection du compte Vinted) codées **et validées en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, compte Vinted réel). Étape 1.3 (sync des annonces) en cours. Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
+
+**Sélecteurs DOM Vinted (étape 1.2)** : découverts en direct le 2026-07-09 en naviguant sur `https://www.vinted.fr/member/<id>` avec un compte réel (voir `extension/src/content/selectors.ts` pour le détail exact, code = source de vérité). Point notable : la présence de `[data-testid="closet-seller-filters-active"]` est le signal utilisé pour distinguer "c'est mon propre profil" de "je regarde le profil de quelqu'un d'autre" — testé positivement sur son propre profil et négativement sur le profil d'un autre utilisateur (`clementk61`), aucune détection erronée.
 
 ## 1. Rôle et périmètre
 
