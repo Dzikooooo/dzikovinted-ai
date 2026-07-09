@@ -40,21 +40,27 @@ export default function VintedAccountPage() {
     })();
   }, []);
 
-  const loadListings = useCallback(async (accountId: string): Promise<void> => {
+  const loadListings = useCallback(async (accountId: string, isStale: () => boolean): Promise<void> => {
     const { data } = await supabase
       .from('vinted_listings')
       .select('*')
       .eq('vinted_account_id', accountId)
       .order('synced_at', { ascending: false });
-    setListings((data as VintedListing[] | null) ?? []);
+    if (!isStale()) setListings((data as VintedListing[] | null) ?? []);
   }, []);
 
   useEffect(() => {
+    let ignore = false;
+
     if (selectedAccountId !== 'all' && selectedAccount) {
-      void loadListings(selectedAccount.id);
+      void loadListings(selectedAccount.id, () => ignore);
     } else {
       setListings([]);
     }
+
+    return () => {
+      ignore = true;
+    };
   }, [selectedAccountId, selectedAccount, loadListings]);
 
   const handleConnect = async () => {

@@ -39,26 +39,32 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   }, [user]);
 
   useEffect(() => {
+    let ignore = false;
+
     (async () => {
       if (selectedAccountId === 'all') {
         const accountIds = accounts.map((a) => a.id);
         if (accountIds.length === 0) {
-          setVintedListingsCount(0);
+          if (!ignore) setVintedListingsCount(0);
           return;
         }
         const { count } = await supabase
           .from('vinted_listings')
           .select('*', { count: 'exact', head: true })
           .in('vinted_account_id', accountIds);
-        setVintedListingsCount(count ?? 0);
+        if (!ignore) setVintedListingsCount(count ?? 0);
       } else {
         const { count } = await supabase
           .from('vinted_listings')
           .select('*', { count: 'exact', head: true })
           .eq('vinted_account_id', selectedAccountId);
-        setVintedListingsCount(count ?? 0);
+        if (!ignore) setVintedListingsCount(count ?? 0);
       }
     })();
+
+    return () => {
+      ignore = true;
+    };
   }, [accounts, selectedAccountId]);
 
   const plan = profile?.plan ?? 'free';
