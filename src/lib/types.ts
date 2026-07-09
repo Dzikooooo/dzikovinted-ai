@@ -106,6 +106,15 @@ export interface MarketOpportunity {
   created_at: string;
 }
 
+export interface VintedConnection {
+  user_id: string;
+  connected: boolean;
+  vinted_user_id: string | null;
+  vinted_username: string | null;
+  last_synced_at: string | null;
+  last_error: string | null;
+}
+
 export interface Subscription {
   id: string;
   user_id: string;

@@ -1,6 +1,8 @@
 # Extension Chrome — Architecture
 
-Document de conception de l'extension Chrome ResellOS. Rien de ce document n'est implémenté à ce jour — c'est un plan à exécuter, pas un état des lieux. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
+Document de conception de l'extension Chrome ResellOS. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
+
+**État d'implémentation** : l'étape 1.1 (scaffold `extension/` + appairage à chaud avec la session web) est codée **et validée en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, cycle complet appairage → dissociation → ré-appairage rejoué avec succès, données vérifiées en base à chaque étape). Les étapes 1.2 (détection de compte) et 1.3 (sync des annonces) restent à faire — elles nécessitent d'observer en direct le DOM réel de vinted.fr connecté avant d'écrire les sélecteurs, ce que ce document ne peut pas anticiper avec certitude (voir §6.2/§9). Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
 
 ## 1. Rôle et périmètre
 
@@ -53,9 +55,15 @@ Flow d'appairage (déclenché depuis `VintedAccountPage.tsx`, bouton « Connecte
 1. La page web vérifie que l'extension est installée : `chrome.runtime.sendMessage(EXTENSION_ID, { type: 'PING' })`, avec un `try/catch`/timeout court (l'API échoue silencieusement si l'extension n'est pas installée).
 2. Si l'extension répond, la page web envoie `{ type: 'PAIR', access_token, refresh_token }` (session Supabase courante de l'utilisateur, déjà en mémoire côté `AuthContext`).
 3. `manifest.json` restreint `externally_connectable.matches` au domaine de prod de ResellOS uniquement (+ `localhost` seulement dans un build de dev jamais publié sur le Chrome Web Store).
-4. Le background stocke les deux tokens dans `chrome.storage.local` et instancie son propre client Supabase avec cette session.
-5. Après le premier échange, l'extension gère **son propre rafraîchissement de session** (`supabase.auth.refreshSession()`) — elle ne dépend plus de l'onglet ResellOS ouvert. Le `refresh_token` Supabase reste valide indépendamment du client qui l'utilise.
-6. Le background écrit `accounts.extension_connected = true` (voir §5) — l'app web voit la connexion confirmée au prochain chargement, sans polling nécessaire côté web (RLS + lecture normale de `accounts`).
+4. Le background valide le token (`supabase.auth.getUser(accessToken)`) puis stocke `{access_token, refresh_token, expires_at, user_id}` dans `chrome.storage.local` sous une clé dédiée à ResellOS.
+5. Après le premier échange, l'extension gère **son propre rafraîchissement de session**, explicitement (`supabase.auth.refreshSession({refresh_token})` quand le token stocké approche l'expiration) — elle ne dépend plus de l'onglet ResellOS ouvert. Le `refresh_token` Supabase reste valide indépendamment du client qui l'utilise.
+6. Le background écrit une ligne dans `vinted_connection` (voir §5) — l'app web voit la connexion confirmée au prochain chargement, sans polling nécessaire côté web (RLS + lecture normale de la table). Important : l'appairage (extension ↔ ResellOS) et la détection d'une session Vinted réelle (`connected = true`, étape 1.2) sont deux états distincts — l'appairage seul ne met pas `connected` à `true`.
+
+**Révision importante, découverte en test live (étape 1.1)** : la conception initiale prévoyait d'utiliser `supabase.auth.setSession()`/`getSession()` (gestion de session « ambiante » du SDK) côté extension, avec `supabase.auth.signOut()` pour la dissociation. Deux problèmes réels rencontrés :
+- `signOut()` sans option explicite révoque la session **côté serveur** en portée `global` par défaut — un « Se dissocier » dans l'extension invalidait alors le refresh token de la session, ce qui pouvait finir par casser aussi la session de l'app web (les deux partagent la même session d'origine, voir point 2 ci-dessus). Une session de test a été « empoisonnée » ainsi pendant le développement, résolue uniquement par une reconnexion complète côté web.
+- `setSession()` s'est montré peu fiable dans le contexte service worker MV3 (module ré-instancié à chaque réveil), échouant par intermittence avec `Auth session missing!` même avec des tokens valides et non expirés — cause précise non confirmée (soupçon : initialisation interne du client pas totalement réglée avant l'appel), mais reproductible.
+
+**Décision retenue** : l'extension ne gère plus de session ambiante GoTrue. `pair()` valide le token via l'appel stateless `getUser(accessToken)`, écrit dans Supabase via un client à portée de requête (`createClient` avec un header `Authorization: Bearer <token>` explicite — même pattern que `supabase/functions/analyze-clothing/index.ts`), puis persiste `{access_token, refresh_token, expires_at}` elle-même dans `chrome.storage.local`. `unpair()` se contente d'effacer cette clé locale — **aucun appel à `signOut()`**, donc aucun risque de toucher à la session de l'app web. Voir `extension/src/background/pairing.ts` et `extension/src/background/supabaseClient.ts` (fonction `supabaseWithToken`).
 
 Risque assumé : les tokens transitent une fois par le contexte de la page web (`externally_connectable` est exposé à tout script tournant sur cette page). Acceptable tant que l'app ResellOS elle-même n'a pas de faille XSS — mais c'est une raison de plus de ne jamais introduire de rendu HTML non échappé dans le dashboard.
 
@@ -73,19 +81,40 @@ Aucun composant autre que le background ne détient de session Supabase — cent
 
 ## 5. Modèle de données
 
-**Décision explicite, en écart avec une note antérieure de la ROADMAP** : un audit précédent mentionnait une table `marketplace_connections` générique + une interface `MarketplaceConnector`, pensées pour un futur multi-marketplace. Ce projet reste volontairement Vinted-only (voir la portée confirmée du projet) — construire une abstraction multi-marketplace maintenant serait de l'anticipation non justifiée. La table `accounts` existe déjà et modélise précisément « un compte Vinted de l'utilisateur » : on l'étend plutôt que de créer une hiérarchie parallèle.
+**Première décision, en écart avec une note antérieure de la ROADMAP** : un audit précédent mentionnait une table `marketplace_connections` générique + une interface `MarketplaceConnector`, pensées pour un futur multi-marketplace. Ce projet reste volontairement Vinted-only (voir la portée confirmée du projet) — construire une abstraction multi-marketplace maintenant serait de l'anticipation non justifiée.
 
-### Extension de `accounts`
+**Deuxième décision, révisée par rapport à une première version de ce document** : ce document proposait initialement d'étendre `accounts` (colonnes `extension_connected`/`extension_last_sync_at`/`vinted_username`). Vérification directe du schéma au moment de l'implémentation : `accounts` est une table `id, user_id, name` complètement déconnectée du reste du schéma, héritée de l'ancien module BusinessOS, jamais référencée ailleurs (ni par `listings`, ni par rien) — un simple carnet d'étiquettes libres que l'utilisateur peut créer/nommer arbitrairement, pas une entité technique représentant une session Vinted réelle. Y greffer l'état de connexion de l'extension aurait créé une ambiguïté produit non résolue : si l'utilisateur a créé plusieurs lignes `accounts` (ou zéro), laquelle l'extension doit-elle mettre à jour ? **Décision retenue : nouvelle table dédiée `vinted_connection`**, une ligne par utilisateur, qui représente la session Vinted réelle détectée par l'extension.
+
+### `vinted_connection` (implémentée, étape 1.1)
 
 ```sql
-alter table accounts add column extension_connected boolean not null default false;
-alter table accounts add column extension_last_sync_at timestamptz;
-alter table accounts add column vinted_username text;
+create table vinted_connection (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  connected boolean not null default false,
+  vinted_user_id text,
+  vinted_username text,
+  last_synced_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table vinted_connection enable row level security;
+create policy "select_own_vinted_connection" on vinted_connection for select
+  to authenticated using (auth.uid() = user_id);
+create policy "insert_own_vinted_connection" on vinted_connection for insert
+  to authenticated with check (auth.uid() = user_id);
+create policy "update_own_vinted_connection" on vinted_connection for update
+  to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
-Pas de RLS supplémentaire nécessaire — `accounts` a déjà `auth.uid() = user_id`, et l'extension s'authentifie comme le même utilisateur (§3), donc les policies existantes suffisent.
+Pas de RLS élevée nécessaire — l'extension s'authentifie comme le même utilisateur (§3), donc les policies `auth.uid() = user_id` standard suffisent.
 
-### Nouvelle table `sync_jobs`
+### `vinted_listings` (étape 1.3, pas encore implémentée)
+
+Les annonces synchronisées depuis Vinted ne vont **pas** dans la table `listings` existante : `listings` modélise des annonces *créées dans ResellOS* (générées par IA, avec prix d'achat/frais/statut de vente — des champs qu'une annonce Vinted brute scrapée n'a pas). Les mélanger risquerait des doublons silencieux si l'utilisateur a déjà un brouillon ResellOS pour un article qui existe aussi sur Vinted. `vinted_listings` est un miroir en lecture seule de ce qui est réellement en ligne sur Vinted, réécrit (upsert sur `(user_id, vinted_item_id)`) à chaque sync. Le rapprochement/import vers `listings` reste un sujet distinct, hors du périmètre de l'étape 1.3.
+
+### Nouvelle table `sync_jobs` (Phase 2+, pas encore implémentée)
 
 File d'attente d'actions déclenchées côté web, exécutées par l'extension quand un onglet Vinted est disponible.
 
@@ -93,7 +122,6 @@ File d'attente d'actions déclenchées côté web, exécutées par l'extension q
 create table sync_jobs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id),
-  account_id uuid references accounts(id),
   type text not null,              -- 'republish' | 'sync_stats' | 'sync_inbox' (phase 2.1+)
   payload jsonb not null default '{}',
   status text not null default 'pending',  -- 'pending' | 'done' | 'failed'
@@ -119,7 +147,7 @@ Background (réveillé par chrome.alarms, §7) → lit les sync_jobs pending de 
   → si aucun onglet vinted.fr ouvert : chrome.tabs.create({ url: vinted_url, active: false })
   → chrome.tabs.sendMessage au content script : { action: 'republish' }
   → content script clique le bouton « Réserver en avant » / renouvellement natif de Vinted
-  → confirme au background → update sync_jobs.status = 'done', accounts.extension_last_sync_at = now()
+  → confirme au background → update sync_jobs.status = 'done', vinted_connection.last_synced_at = now()
   → ferme l'onglet si il a été ouvert pour l'occasion
 ```
 
@@ -159,21 +187,23 @@ extension/
   vite.config.ts
   manifest.config.ts         manifest MV3 généré via crxjs
   src/
-    background/
-      index.ts                 point d'entrée service worker : session, alarms, orchestration onglets
-      jobs.ts                   lecture/écriture sync_jobs
-    content/
+    background/               [réalisé, étape 1.1]
+      index.ts                  point d'entrée service worker : routeur de messages (externes + internes)
+      supabaseClient.ts          storage adapter chrome.storage.local + supabaseWithToken() (client a portee de requete)
+      pairing.ts                  pair/unpair/getStatus, gestion de session self-managed (voir §3)
+      logger.ts                    logger leve + ring buffer persiste (50 dernieres entrees)
+      retry.ts                      backoff exponentiel
+    content/                   [pas encore fait, etape 1.2]
       vinted-listing.ts          republication, lecture vues/favoris (§6.1, §6.2)
       vinted-inbox.ts             messages/offres — phase 2.1, pas au MVP
       selectors.ts                 data-testid Vinted centralisés dans ce fichier (voir note ci-dessous)
-    popup/
-      Popup.tsx                    statut connexion, dernière synchro, actions rapides (React)
-    options/
+    popup/                     [réalisé, étape 1.1]
+      Popup.tsx                    statut connexion, journal (React, styles inline)
+    options/                   [pas encore fait]
       Options.tsx                   préférences (§8)
-    lib/
-      supabaseClient.ts              storage adapter chrome.storage.local (pas de localStorage en service worker)
-      auth.ts                        appairage + refresh de session
-    types.ts                        types propres à l'extension, dupliqués volontairement depuis src/lib/types.ts
+    lib/                       [réalisé, étape 1.1]
+      messages.ts                    contrat de messages partagé (types + type guards)
+      env.ts                          lecture des variables Vite
 ```
 
 **Duplication de types assumée** entre `src/lib/types.ts` et `extension/src/types.ts` : le projet n'a pas d'outillage monorepo (workspaces/Turborepo) et la surface commune est petite. Introduire un package partagé serait prématuré — à faire seulement si la duplication devient une vraie source de bugs.
@@ -195,10 +225,11 @@ Ne pas paralléliser ces phases — chacune dépend de la précédente pour la c
 
 ## 11. Ce que ça change dans le code existant
 
-- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `accounts.extension_connected`/`extension_last_sync_at`, plus le bouton d'appairage (§3)
-- `StockPage.tsx` : le bouton « Republier » (à ajouter) crée un `sync_job` plutôt que d'appeler Supabase directement
-- `StatsPage.tsx` : les compteurs vues/favoris cessent d'être absents/dérivés et viennent de `listings` une fois synchronisés par l'extension (§6.2)
-- `SettingsPage.tsx` (onglet comptes) : `useAccounts` gère déjà plusieurs comptes nommés — chaque compte affichera son statut de connexion extension individuellement
+- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `vinted_connection`, plus le bouton d'appairage (§3) — **fait, étape 1.1**
+- `src/lib/extensionBridge.ts` (nouveau) : encapsule `chrome.runtime.sendMessage` vers l'extension (PING/PAIR) depuis l'app web — **fait, étape 1.1**
+- `StockPage.tsx` : le bouton « Republier » (à ajouter) crée un `sync_job` plutôt que d'appeler Supabase directement — Phase 2
+- `StatsPage.tsx` : les compteurs vues/favoris cessent d'être absents/dérivés et viennent de `vinted_listings` une fois synchronisés par l'extension (§6.2) — étape 1.3
+- `SettingsPage.tsx` (onglet comptes) : non concerné — `accounts` reste un carnet d'étiquettes indépendant de `vinted_connection` (voir §5)
 - Aucun changement à `scripts/vinted-scan.ts` ni au cron GitHub Actions (§6.4)
 
 ## 12. Risques et inconnues ouvertes
