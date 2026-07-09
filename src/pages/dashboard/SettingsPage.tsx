@@ -1,11 +1,18 @@
 import { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Puzzle } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Pencil, Star, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
+import AccountAvatar from '../../components/ui/AccountAvatar';
+import type { SettingsTab, VintedAccount } from '../../lib/types';
 
-export default function SettingsPage() {
+interface SettingsPageProps {
+  initialTab?: SettingsTab;
+}
+
+export default function SettingsPage({ initialTab }: SettingsPageProps) {
   const { profile, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger'>('profile');
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'profile');
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [email] = useState(profile?.email ?? '');
@@ -137,19 +144,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {activeTab === 'accounts' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-10 text-center space-y-3">
-          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mx-auto">
-            <Puzzle className="w-5 h-5 text-gray-500" />
-          </div>
-          <div>
-            <h2 className="font-bold text-sm">Gestion des comptes Vinted</h2>
-            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-              La gestion complète de tes comptes Vinted (renommage, plusieurs comptes, connexion) arrive bientôt. En attendant, retrouve le statut de ta connexion dans « Compte Vinted ».
-            </p>
-          </div>
-        </div>
-      )}
+      {activeTab === 'accounts' && <AccountsManager />}
 
       {activeTab === 'notifications' && (
         <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-4">
@@ -207,6 +202,209 @@ export default function SettingsPage() {
               <Trash2 className="w-4 h-4" />
               Supprimer mon compte (bientot disponible)
             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountsManager() {
+  const { accounts, loading, refresh } = useVintedAccountFilter();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VintedAccount | null>(null);
+  const [deleteListingsCount, setDeleteListingsCount] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEdit = (account: VintedAccount) => {
+    setEditingId(account.id);
+    setEditValue(account.label);
+  };
+
+  const commitRename = async (account: VintedAccount) => {
+    const label = editValue.trim();
+    if (!label || label === account.label) {
+      setEditingId(null);
+      return;
+    }
+    setSavingId(account.id);
+    const { error: updateError } = await supabase.from('vinted_accounts').update({ label }).eq('id', account.id);
+    setSavingId(null);
+    setEditingId(null);
+    if (updateError) setError('Le renommage a échoué.');
+    else await refresh();
+  };
+
+  const setDefault = async (account: VintedAccount) => {
+    setSavingId(account.id);
+    const { error: rpcError } = await supabase.rpc('set_default_vinted_account', { target_account_id: account.id });
+    setSavingId(null);
+    if (rpcError) setError('Impossible de définir ce compte par défaut.');
+    else await refresh();
+  };
+
+  const openDeleteConfirm = async (account: VintedAccount) => {
+    setDeleteTarget(account);
+    setDeleteListingsCount(null);
+    const { count } = await supabase
+      .from('vinted_listings')
+      .select('*', { count: 'exact', head: true })
+      .eq('vinted_account_id', account.id);
+    setDeleteListingsCount(count ?? 0);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error: deleteError } = await supabase.from('vinted_accounts').delete().eq('id', deleteTarget.id);
+    setDeleting(false);
+    setDeleteTarget(null);
+    if (deleteError) setError('La suppression a échoué.');
+    else await refresh();
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl border text-sm bg-red-500/10 border-red-500/20 text-red-400">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-16 bg-surface rounded-2xl animate-pulse" />)}
+        </div>
+      ) : accounts.length === 0 ? (
+        <div className="bg-surface border border-white/5 rounded-2xl p-10 text-center space-y-3">
+          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mx-auto">
+            <Users className="w-5 h-5 text-gray-500" />
+          </div>
+          <div>
+            <h2 className="font-bold text-sm">Aucun compte Vinted connecté</h2>
+            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+              Connecte l'extension ResellOS depuis « Compte Vinted » pour qu'un compte apparaisse ici automatiquement.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-surface border border-white/5 rounded-2xl divide-y divide-white/5">
+          {accounts.map((account) => (
+            <div key={account.id} className="flex items-center gap-3 p-4">
+              <AccountAvatar label={account.label} size="md" />
+
+              <div className="flex-1 min-w-0">
+                {editingId === account.id ? (
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={() => commitRename(account)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitRename(account);
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                    className="w-full max-w-xs bg-dark-400 border border-white/10 rounded-lg px-2.5 py-1 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-200 truncate">{account.label}</p>
+                    {account.is_default && (
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                        <Star className="w-2.5 h-2.5 fill-neon-500" /> Défaut
+                      </span>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${account.connected ? 'bg-neon-500' : 'bg-gray-600'}`} />
+                  {account.connected ? 'Connecté' : 'Déconnecté'}
+                  {' · '}
+                  {account.last_synced_at
+                    ? `Synchro : ${new Date(account.last_synced_at).toLocaleString('fr-FR')}`
+                    : 'Jamais synchronisé'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {!account.is_default && (
+                  <button
+                    onClick={() => setDefault(account)}
+                    disabled={savingId === account.id}
+                    title="Définir par défaut"
+                    className="p-2 rounded-lg text-gray-500 hover:text-neon-500 hover:bg-white/5 transition-colors disabled:opacity-50"
+                  >
+                    <Star className="w-4 h-4" />
+                  </button>
+                )}
+                <button
+                  onClick={() => startEdit(account)}
+                  title="Renommer"
+                  className="p-2 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/5 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => openDeleteConfirm(account)}
+                  title="Supprimer"
+                  className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/5 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-gray-600 px-1">
+        Un compte n'apparaît ici qu'après une connexion réelle via l'extension Chrome, depuis « Compte Vinted ».
+      </p>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md bg-surface border border-white/10 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-lg font-black">Supprimer ce compte ?</h2>
+                <p className="text-xs text-gray-500 mt-1">{deleteTarget.label}</p>
+              </div>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                aria-label="Fermer"
+                className="p-1.5 rounded-lg hover:bg-white/5"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-400 mb-5">
+              {deleteListingsCount === null
+                ? 'Vérification des annonces synchronisées...'
+                : deleteListingsCount > 0
+                  ? `Cette action supprimera aussi les ${deleteListingsCount} annonce${deleteListingsCount > 1 ? 's' : ''} synchronisée${deleteListingsCount > 1 ? 's' : ''} de ce compte. Cette action est irréversible.`
+                  : 'Cette action est irréversible.'}
+            </p>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 bg-white/5 text-gray-300 font-medium py-2.5 rounded-xl hover:bg-white/10 transition-all text-sm"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting || deleteListingsCount === null}
+                className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 font-bold py-2.5 rounded-xl hover:bg-red-500/20 transition-all text-sm disabled:opacity-50"
+              >
+                {deleting ? 'Suppression...' : 'Supprimer'}
+              </button>
+            </div>
           </div>
         </div>
       )}

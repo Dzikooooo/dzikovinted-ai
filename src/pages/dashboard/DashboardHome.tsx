@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle } from 'lucide-react';
+import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
-import type { DashboardPage, Listing, VintedAccount } from '../../lib/types';
+import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 
 interface DashboardHomeProps {
@@ -17,9 +18,9 @@ function profitOf(l: Listing) {
 
 export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
+  const { accounts, selectedAccountId, selectedAccount } = useVintedAccountFilter();
   const [listings, setListings] = useState<Listing[]>([]);
   const [newOpportunities, setNewOpportunities] = useState(0);
-  const [vintedAccount, setVintedAccount] = useState<VintedAccount | null>(null);
   const [vintedListingsCount, setVintedListingsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -27,32 +28,38 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     if (!user) return;
     (async () => {
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [{ data: allListings }, { count: oppCount }, { data: account }] = await Promise.all([
+      const [{ data: allListings }, { count: oppCount }] = await Promise.all([
         supabase.from('listings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
-        supabase
-          .from('vinted_accounts')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('is_default', { ascending: false })
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle(),
       ]);
       setListings((allListings ?? []) as Listing[]);
       setNewOpportunities(oppCount ?? 0);
-      setVintedAccount((account as VintedAccount | null) ?? null);
-
-      if (account) {
-        const { count: vintedCount } = await supabase
-          .from('vinted_listings')
-          .select('*', { count: 'exact', head: true })
-          .eq('vinted_account_id', account.id);
-        setVintedListingsCount(vintedCount ?? 0);
-      }
       setLoading(false);
     })();
   }, [user]);
+
+  useEffect(() => {
+    (async () => {
+      if (selectedAccountId === 'all') {
+        const accountIds = accounts.map((a) => a.id);
+        if (accountIds.length === 0) {
+          setVintedListingsCount(0);
+          return;
+        }
+        const { count } = await supabase
+          .from('vinted_listings')
+          .select('*', { count: 'exact', head: true })
+          .in('vinted_account_id', accountIds);
+        setVintedListingsCount(count ?? 0);
+      } else {
+        const { count } = await supabase
+          .from('vinted_listings')
+          .select('*', { count: 'exact', head: true })
+          .eq('vinted_account_id', selectedAccountId);
+        setVintedListingsCount(count ?? 0);
+      }
+    })();
+  }, [accounts, selectedAccountId]);
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
@@ -134,9 +141,17 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black">
-            {greeting()}, <span className="text-neon-500">{firstName}</span>
-          </h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-black">
+              {greeting()}, <span className="text-neon-500">{firstName}</span>
+            </h1>
+            {accounts.length > 0 && (
+              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-white/5 px-2.5 py-1 rounded-full">
+                <Layers className="w-3 h-3" />
+                Vue : {selectedAccountId === 'all' ? 'Tous les comptes' : selectedAccount?.label}
+              </span>
+            )}
+          </div>
           <p className="text-gray-400 text-sm mt-1">Voici ce qui demande ton attention aujourd'hui.</p>
         </div>
         <button
@@ -246,24 +261,37 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           <Puzzle className="w-4 h-4 text-gray-500" />
         </div>
         <div>
-          {vintedAccount?.connected ? (
-            <>
-              <p className="text-sm font-semibold text-gray-300">
-                Connecté — {vintedAccount.label}
-                {vintedListingsCount > 0 && ` · ${vintedListingsCount} annonce${vintedListingsCount > 1 ? 's' : ''} synchronisée${vintedListingsCount > 1 ? 's' : ''}`}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {vintedAccount.last_synced_at
-                  ? `Dernière synchro : ${new Date(vintedAccount.last_synced_at).toLocaleString('fr-FR')}`
-                  : 'Synchronisation en cours...'}
-              </p>
-            </>
-          ) : (
+          {accounts.length === 0 ? (
             <>
               <p className="text-sm font-semibold text-gray-300">Synchronisation Vinted</p>
               <p className="text-xs text-gray-500 mt-0.5">
                 Messages, offres et republications automatiques apparaitront ici une fois l'extension Chrome connectee.
               </p>
+            </>
+          ) : selectedAccountId === 'all' ? (
+            <>
+              <p className="text-sm font-semibold text-gray-300">
+                {accounts.filter((a) => a.connected).length} compte{accounts.filter((a) => a.connected).length > 1 ? 's' : ''} connecté{accounts.filter((a) => a.connected).length > 1 ? 's' : ''}
+                {vintedListingsCount > 0 && ` · ${vintedListingsCount} annonce${vintedListingsCount > 1 ? 's' : ''} synchronisée${vintedListingsCount > 1 ? 's' : ''} au total`}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Vue cumulée de tous tes comptes Vinted.</p>
+            </>
+          ) : selectedAccount?.connected ? (
+            <>
+              <p className="text-sm font-semibold text-gray-300">
+                Connecté — {selectedAccount.label}
+                {vintedListingsCount > 0 && ` · ${vintedListingsCount} annonce${vintedListingsCount > 1 ? 's' : ''} synchronisée${vintedListingsCount > 1 ? 's' : ''}`}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {selectedAccount.last_synced_at
+                  ? `Dernière synchro : ${new Date(selectedAccount.last_synced_at).toLocaleString('fr-FR')}`
+                  : 'Synchronisation en cours...'}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-gray-300">{selectedAccount?.label} — déconnecté</p>
+              <p className="text-xs text-gray-500 mt-0.5">Ré-appaire l'extension pour relancer la synchronisation.</p>
             </>
           )}
         </div>

@@ -11,6 +11,7 @@ export type DashboardPage =
   | 'subscription'
   | 'settings';
   export type AppPage = "landing" | "auth" | "dashboard";
+export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger';
 export type AuthMode = 'login' | 'register' | 'forgot';
 
 export interface Profile {
