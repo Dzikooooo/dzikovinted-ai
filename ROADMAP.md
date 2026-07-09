@@ -32,7 +32,7 @@ Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messag
 
 - **Étape 1.1 (scaffold + appairage)** : ✅ codée et validée en conditions réelles. Deux bugs réels trouvés et corrigés en test live — détail dans EXTENSION.md §3.
 - **Étape 1.2 (détection de compte Vinted)** : ✅ codée et validée avec un compte réel, y compris un test négatif (pas de fausse détection sur le profil d'un autre utilisateur).
-- **Étape 1.3 (synchronisation des annonces)** : ✅ codée et validée — 20 annonces réelles synchronisées, données vérifiées (titre/prix/vues/favoris), pas de duplication sur re-synchronisation.
+- **Étape 1.3 (synchronisation des annonces)** : ✅ codée et validée initialement — 20 annonces réelles synchronisées, données vérifiées (titre/prix/vues/favoris), pas de duplication sur re-synchronisation. **Synchronisation incomplète découverte et corrigée le 2026-07-09** (remontée par l'utilisateur en validant la Phase B) : la lecture DOM ne captait que le premier lot chargé par le défilement infini de Vinted, et aucun statut réel n'était distingué. Remplacée par l'API `wardrobe/items` paginée de Vinted lui-même, avec statuts réels et miroir complet (suppressions détectées) — détail dans EXTENSION.md §5.
 
 ### Refonte multi-comptes Vinted (demande explicite de l'utilisateur, "Compte Vinted" devient l'entité centrale du produit)
 

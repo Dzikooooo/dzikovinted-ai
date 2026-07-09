@@ -18,6 +18,7 @@ export interface ListingPayload {
   vintedUrl: string;
   favourites: number | null;
   views: number | null;
+  status: string;
 }
 
 // Popup et content scripts -> background, via chrome.runtime.sendMessage

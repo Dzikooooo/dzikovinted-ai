@@ -1,19 +1,15 @@
 // Injecte sur https://www.vinted.fr/member/* (voir manifest.config.ts).
 // Lecture seule : detecte si la page affichee est le propre profil vendeur
-// de l'utilisateur, et remonte son identite + ses annonces visibles (onglet
-// "Actifs" par defaut) au background. Aucune ecriture sur Vinted, aucune
-// interaction avec la page - lecture automatique autorisee (voir
-// EXTENSION.md §8).
+// de l'utilisateur, et remonte son identite + la totalite de ses annonces
+// (tous statuts) au background via l'API wardrobe de Vinted (voir
+// wardrobeApi.ts). Aucune ecriture sur Vinted, aucune interaction avec la
+// page - lecture automatique autorisee (voir EXTENSION.md §8).
 
-import {
-  OWN_PROFILE_MARKER_SELECTOR,
-  USERNAME_SELECTOR,
-  extractVintedUserIdFromUrl,
-  extractListingCards,
-} from "./selectors";
+import { OWN_PROFILE_MARKER_SELECTOR, USERNAME_SELECTOR, extractVintedUserIdFromUrl } from "./selectors";
+import { fetchAllWardrobeItems } from "./wardrobeApi";
 import type { InternalMessage } from "../lib/messages";
 
-function detectAndReport(): void {
+async function detectAndReport(): Promise<void> {
   const vintedUserId = extractVintedUserIdFromUrl(location.href);
   const usernameEl = document.querySelector(USERNAME_SELECTOR);
   const vintedUsername = usernameEl?.textContent?.trim();
@@ -23,10 +19,16 @@ function detectAndReport(): void {
   const accountMessage: InternalMessage = { type: "ACCOUNT_DETECTED", vintedUserId, vintedUsername };
   chrome.runtime.sendMessage(accountMessage);
 
-  const listings = extractListingCards(document);
-  if (listings.length > 0) {
+  try {
+    const listings = await fetchAllWardrobeItems(vintedUserId);
+    // Envoye meme si vide : une liste vide est une information a part
+    // entiere (miroir complet, voir sync.ts) - seule une erreur reseau doit
+    // empecher l'envoi, pas un compte sans annonce.
     const listingsMessage: InternalMessage = { type: "LISTINGS_DETECTED", vintedUserId, vintedUsername, listings };
     chrome.runtime.sendMessage(listingsMessage);
+  } catch {
+    // Echec de recuperation : on n'envoie rien plutot qu'une liste vide qui
+    // effacerait a tort les annonces deja connues en base.
   }
 }
 
@@ -36,7 +38,7 @@ function detectAndReport(): void {
 function waitAndDetect(attemptsLeft = 10): void {
   const marker = document.querySelector(OWN_PROFILE_MARKER_SELECTOR);
   if (marker) {
-    detectAndReport();
+    void detectAndReport();
     return;
   }
   if (attemptsLeft <= 0) return; // pas le profil de l'utilisateur (ou pas de vue vendeur) - ne rien envoyer

@@ -91,13 +91,18 @@ export async function recordAccountDetected(vintedUserId: string, vintedUsername
   logger.info("Compte Vinted detecte", { vintedUsername });
 }
 
+// Le content script recupere desormais la totalite des annonces d'un
+// compte a chaque visite du profil (pagination Vinted epuisee cote
+// wardrobeApi.ts) : l'ensemble recu ici EST l'etat complet et actuel du
+// compte Vinted, tous statuts confondus. Miroir complet donc : toute
+// annonce connue en base mais absente de ce scan a ete supprimee ou
+// deplacee sur Vinted, et doit disparaitre ici aussi - pas seulement un
+// upsert des nouvelles/modifiees.
 export async function recordListings(
   vintedUserId: string,
   vintedUsername: string,
   listings: ListingPayload[]
 ): Promise<void> {
-  if (listings.length === 0) return;
-
   const valid = await getValidAccessToken();
   if (!valid) {
     logger.warn("Annonces detectees mais extension non appairee, ignore");
@@ -109,27 +114,43 @@ export async function recordListings(
     resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername)
   );
 
-  const rows = listings.map((l) => ({
-    vinted_account_id: vintedAccountId,
-    vinted_item_id: l.vintedItemId,
-    title: l.title,
-    price: l.price,
-    image_url: l.imageUrl,
-    vinted_url: l.vintedUrl,
-    favourites: l.favourites,
-    views: l.views,
-    synced_at: new Date().toISOString(),
-  }));
+  if (listings.length > 0) {
+    const rows = listings.map((l) => ({
+      vinted_account_id: vintedAccountId,
+      vinted_item_id: l.vintedItemId,
+      title: l.title,
+      price: l.price,
+      image_url: l.imageUrl,
+      vinted_url: l.vintedUrl,
+      favourites: l.favourites,
+      views: l.views,
+      status: l.status,
+      synced_at: new Date().toISOString(),
+    }));
 
+    await withRetry(async () => {
+      const { error } = await client
+        .from("vinted_listings")
+        .upsert(rows, { onConflict: "vinted_account_id,vinted_item_id" });
+      if (error) {
+        logger.error("upsert vinted_listings a echoue", error.message);
+        throw error;
+      }
+    });
+  }
+
+  const currentItemIds = listings.map((l) => l.vintedItemId);
   await withRetry(async () => {
-    const { error } = await client
-      .from("vinted_listings")
-      .upsert(rows, { onConflict: "vinted_account_id,vinted_item_id" });
+    let query = client.from("vinted_listings").delete().eq("vinted_account_id", vintedAccountId);
+    if (currentItemIds.length > 0) {
+      query = query.not("vinted_item_id", "in", `(${currentItemIds.join(",")})`);
+    }
+    const { error } = await query;
     if (error) {
-      logger.error("upsert vinted_listings a echoue", error.message);
+      logger.error("Nettoyage des annonces disparues a echoue", error.message);
       throw error;
     }
   });
 
-  logger.info("Annonces synchronisees", { count: rows.length });
+  logger.info("Annonces synchronisees", { count: listings.length });
 }
