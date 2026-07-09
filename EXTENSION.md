@@ -2,9 +2,9 @@
 
 Document de conception de l'extension Chrome ResellOS. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
 
-**État d'implémentation** : étapes 1.1 (scaffold + appairage) et 1.2 (détection du compte Vinted) codées **et validées en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, compte Vinted réel). Étape 1.3 (sync des annonces) en cours. Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
+**État d'implémentation** : la Phase 1 complète (1.1 appairage, 1.2 détection du compte, 1.3 synchronisation des annonces) est codée **et validée en conditions réelles** (extension chargée non empaquetée, navigateur Chrome connecté, compte Vinted réel, 20 annonces réelles synchronisées avec succès). Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, une après un bug réel découvert en test live (§3) — marquées explicitement.
 
-**Sélecteurs DOM Vinted (étape 1.2)** : découverts en direct le 2026-07-09 en naviguant sur `https://www.vinted.fr/member/<id>` avec un compte réel (voir `extension/src/content/selectors.ts` pour le détail exact, code = source de vérité). Point notable : la présence de `[data-testid="closet-seller-filters-active"]` est le signal utilisé pour distinguer "c'est mon propre profil" de "je regarde le profil de quelqu'un d'autre" — testé positivement sur son propre profil et négativement sur le profil d'un autre utilisateur (`clementk61`), aucune détection erronée.
+**Sélecteurs DOM Vinted (étapes 1.2/1.3)** : découverts en direct le 2026-07-09 en naviguant sur `https://www.vinted.fr/member/<id>` avec un compte réel (voir `extension/src/content/selectors.ts` pour le détail exact, code = source de vérité). Points notables : la présence de `[data-testid="closet-seller-filters-active"]` distingue "c'est mon propre profil" de "je regarde le profil de quelqu'un d'autre" — testé positivement sur son propre profil et négativement sur le profil d'un autre utilisateur (`clementk61`), aucune détection erronée. Sur cette page précise, `--description-title`/`--description-subtitle` affichent les stats vendeur (vues/favoris) plutôt que le titre de l'annonce — le vrai titre vient de l'attribut `title` du lien overlay.
 
 ## 1. Rôle et périmètre
 
@@ -112,9 +112,9 @@ create policy "update_own_vinted_connection" on vinted_connection for update
 
 Pas de RLS élevée nécessaire — l'extension s'authentifie comme le même utilisateur (§3), donc les policies `auth.uid() = user_id` standard suffisent.
 
-### `vinted_listings` (étape 1.3, pas encore implémentée)
+### `vinted_listings` (implémentée, étape 1.3)
 
-Les annonces synchronisées depuis Vinted ne vont **pas** dans la table `listings` existante : `listings` modélise des annonces *créées dans ResellOS* (générées par IA, avec prix d'achat/frais/statut de vente — des champs qu'une annonce Vinted brute scrapée n'a pas). Les mélanger risquerait des doublons silencieux si l'utilisateur a déjà un brouillon ResellOS pour un article qui existe aussi sur Vinted. `vinted_listings` est un miroir en lecture seule de ce qui est réellement en ligne sur Vinted, réécrit (upsert sur `(user_id, vinted_item_id)`) à chaque sync. Le rapprochement/import vers `listings` reste un sujet distinct, hors du périmètre de l'étape 1.3.
+Les annonces synchronisées depuis Vinted ne vont **pas** dans la table `listings` existante : `listings` modélise des annonces *créées dans ResellOS* (générées par IA, avec prix d'achat/frais/statut de vente — des champs qu'une annonce Vinted brute scrapée n'a pas). Les mélanger risquerait des doublons silencieux si l'utilisateur a déjà un brouillon ResellOS pour un article qui existe aussi sur Vinted. `vinted_listings` est un miroir en lecture seule de ce qui est réellement en ligne sur Vinted (`vinted_item_id`, `title`, `price`, `image_url`, `vinted_url`, `status` fixé à `'actif'` pour ce MVP, `favourites`, `views`), réécrit (upsert sur `(user_id, vinted_item_id)`) à chaque visite du profil. Validé avec 20 annonces réelles, aucun doublon après plusieurs synchronisations successives. Le rapprochement/import vers `listings` reste un sujet distinct, hors périmètre de la Phase 1.
 
 ### Nouvelle table `sync_jobs` (Phase 2+, pas encore implémentée)
 
@@ -227,10 +227,11 @@ Ne pas paralléliser ces phases — chacune dépend de la précédente pour la c
 
 ## 11. Ce que ça change dans le code existant
 
-- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `vinted_connection`, plus le bouton d'appairage (§3) — **fait, étape 1.1**
+- `VintedAccountPage.tsx` : le placeholder « Extension Chrome non connectée » est remplacé par un vrai statut lu depuis `vinted_connection`, plus le bouton d'appairage (§3) et la liste des `vinted_listings` synchronisées (titre, prix, vues, favoris) — **fait, étapes 1.1/1.2/1.3**
 - `src/lib/extensionBridge.ts` (nouveau) : encapsule `chrome.runtime.sendMessage` vers l'extension (PING/PAIR) depuis l'app web — **fait, étape 1.1**
+- `DashboardHome.tsx` : le bloc "Synchronisation Vinted" reflète l'état réel (connecté/pseudo/nombre d'annonces/dernière synchro) une fois `vinted_connection.connected = true` — **fait, étape 1.3**
 - `StockPage.tsx` : le bouton « Republier » (à ajouter) crée un `sync_job` plutôt que d'appeler Supabase directement — Phase 2
-- `StatsPage.tsx` : les compteurs vues/favoris cessent d'être absents/dérivés et viennent de `vinted_listings` une fois synchronisés par l'extension (§6.2) — étape 1.3
+- `StatsPage.tsx` : pas encore branché sur `vinted_listings` — resterait à faire si on veut y agréger les vues/favoris, pas dans le périmètre de la Phase 1
 - `SettingsPage.tsx` (onglet comptes) : non concerné — `accounts` reste un carnet d'étiquettes indépendant de `vinted_connection` (voir §5)
 - Aucun changement à `scripts/vinted-scan.ts` ni au cron GitHub Actions (§6.4)
 

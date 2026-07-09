@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Puzzle, MessageSquare, Tag, Eye, RotateCw, Bell, Loader2 } from 'lucide-react';
+import { Puzzle, MessageSquare, Tag, RotateCw, Bell, Loader2, Eye, Heart } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import type { VintedConnection } from '../../lib/types';
+import type { VintedConnection, VintedListing } from '../../lib/types';
 import { isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
 
 const UPCOMING = [
   { icon: MessageSquare, label: 'Messages et reponses rapides' },
   { icon: Tag, label: 'Offres et contre-offres recues' },
   { icon: RotateCw, label: 'Republication automatique des annonces' },
-  { icon: Eye, label: 'Vues, favoris et visibilite en temps reel' },
   { icon: Bell, label: 'Alertes ventes, offres et annonces expirees' },
 ];
 
@@ -18,6 +17,7 @@ type ConnectionState = 'checking' | 'not-installed' | 'not-paired' | 'paired' | 
 export default function VintedAccountPage() {
   const { session } = useAuth();
   const [connection, setConnection] = useState<VintedConnection | null>(null);
+  const [listings, setListings] = useState<VintedListing[]>([]);
   const [state, setState] = useState<ConnectionState>('checking');
   const [pairing, setPairing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +32,16 @@ export default function VintedAccountPage() {
     const row = (data as VintedConnection | null) ?? null;
     setConnection(row);
     return row;
+  }, [session?.user.id]);
+
+  const loadListings = useCallback(async (): Promise<void> => {
+    if (!session?.user.id) return;
+    const { data } = await supabase
+      .from('vinted_listings')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('synced_at', { ascending: false });
+    setListings((data as VintedListing[] | null) ?? []);
   }, [session?.user.id]);
 
   useEffect(() => {
@@ -51,11 +61,12 @@ export default function VintedAccountPage() {
         setState('not-paired');
       } else if (existing.connected) {
         setState('connected');
+        void loadListings();
       } else {
         setState('paired');
       }
     })();
-  }, [session?.user.id, loadConnection]);
+  }, [session?.user.id, loadConnection, loadListings]);
 
   const handleConnect = async () => {
     if (!session) return;
@@ -158,6 +169,54 @@ export default function VintedAccountPage() {
           </>
         )}
       </div>
+
+      {state === 'connected' && (
+        <div className="mt-6">
+          <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">
+            Annonces synchronisées {listings.length > 0 && `(${listings.length})`}
+          </h2>
+          {listings.length === 0 ? (
+            <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-8 text-center">
+              <p className="text-sm text-gray-500">
+                Aucune annonce synchronisée pour l'instant. Ouvre ton profil Vinted dans un onglet pour lancer la synchronisation.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2">
+              {listings.map((listing) => (
+                <div
+                  key={listing.id}
+                  className="flex items-center gap-3 bg-surface border border-white/5 rounded-xl px-4 py-3"
+                >
+                  {listing.image_url ? (
+                    <img src={listing.image_url} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-white/5 flex-shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-200 truncate">{listing.title}</p>
+                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
+                      {listing.views !== null && (
+                        <span className="flex items-center gap-1">
+                          <Eye className="w-3 h-3" /> {listing.views}
+                        </span>
+                      )}
+                      {listing.favourites !== null && (
+                        <span className="flex items-center gap-1">
+                          <Heart className="w-3 h-3" /> {listing.favourites}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {listing.price !== null && (
+                    <p className="text-sm font-bold text-neon-500 flex-shrink-0">{listing.price.toFixed(2)} €</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-6">
         <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">

@@ -10,12 +10,23 @@ export type ExternalMessage =
 
 export type ExternalResponse = { ok: true } | { ok: false; error: string };
 
+export interface ListingPayload {
+  vintedItemId: string;
+  title: string;
+  price: number | null;
+  imageUrl: string | null;
+  vintedUrl: string;
+  favourites: number | null;
+  views: number | null;
+}
+
 // Popup et content scripts -> background, via chrome.runtime.sendMessage
 // (sans id, meme extension - capte par onMessage, pas onMessageExternal).
 export type InternalMessage =
   | { type: "GET_STATUS" }
   | { type: "UNPAIR" }
-  | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string };
+  | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string }
+  | { type: "LISTINGS_DETECTED"; listings: ListingPayload[] };
 
 export interface StatusResponse {
   paired: boolean;
@@ -35,5 +46,5 @@ export function isExternalMessage(msg: unknown): msg is ExternalMessage {
 export function isInternalMessage(msg: unknown): msg is InternalMessage {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "GET_STATUS" || type === "UNPAIR" || type === "ACCOUNT_DETECTED";
+  return type === "GET_STATUS" || type === "UNPAIR" || type === "ACCOUNT_DETECTED" || type === "LISTINGS_DETECTED";
 }

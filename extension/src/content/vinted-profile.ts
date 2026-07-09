@@ -1,10 +1,16 @@
 // Injecte sur https://www.vinted.fr/member/* (voir manifest.config.ts).
 // Lecture seule : detecte si la page affichee est le propre profil vendeur
-// de l'utilisateur, et remonte son identite Vinted au background. Aucune
-// ecriture sur Vinted, aucune interaction avec la page - lecture automatique
-// autorisee (voir EXTENSION.md §8).
+// de l'utilisateur, et remonte son identite + ses annonces visibles (onglet
+// "Actifs" par defaut) au background. Aucune ecriture sur Vinted, aucune
+// interaction avec la page - lecture automatique autorisee (voir
+// EXTENSION.md §8).
 
-import { OWN_PROFILE_MARKER_SELECTOR, USERNAME_SELECTOR, extractVintedUserIdFromUrl } from "./selectors";
+import {
+  OWN_PROFILE_MARKER_SELECTOR,
+  USERNAME_SELECTOR,
+  extractVintedUserIdFromUrl,
+  extractListingCards,
+} from "./selectors";
 import type { InternalMessage } from "../lib/messages";
 
 function detectAndReport(): void {
@@ -14,8 +20,14 @@ function detectAndReport(): void {
 
   if (!vintedUserId || !vintedUsername) return;
 
-  const message: InternalMessage = { type: "ACCOUNT_DETECTED", vintedUserId, vintedUsername };
-  chrome.runtime.sendMessage(message);
+  const accountMessage: InternalMessage = { type: "ACCOUNT_DETECTED", vintedUserId, vintedUsername };
+  chrome.runtime.sendMessage(accountMessage);
+
+  const listings = extractListingCards(document);
+  if (listings.length > 0) {
+    const listingsMessage: InternalMessage = { type: "LISTINGS_DETECTED", listings };
+    chrome.runtime.sendMessage(listingsMessage);
+  }
 }
 
 // Vinted est une SPA Next.js : le contenu peut s'hydrater/se rendre apres le

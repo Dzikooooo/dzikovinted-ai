@@ -115,6 +115,19 @@ export interface VintedConnection {
   last_error: string | null;
 }
 
+export interface VintedListing {
+  id: string;
+  vinted_item_id: string;
+  title: string;
+  price: number | null;
+  image_url: string | null;
+  vinted_url: string;
+  status: string;
+  favourites: number | null;
+  views: number | null;
+  synced_at: string;
+}
+
 export interface Subscription {
   id: string;
   user_id: string;

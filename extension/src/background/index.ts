@@ -4,7 +4,7 @@
 
 import { isExternalMessage, isInternalMessage, type ExternalResponse } from "../lib/messages";
 import { pair, unpair, getStatus } from "./pairing";
-import { recordAccountDetected } from "./sync";
+import { recordAccountDetected, recordListings } from "./sync";
 import { logger } from "./logger";
 
 function errorMessage(err: unknown): string {
@@ -59,6 +59,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then(() => sendResponse({ ok: true } satisfies ExternalResponse))
       .catch((err: unknown) => {
         logger.error("ACCOUNT_DETECTED a echoue", errorMessage(err));
+        sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse);
+      });
+    return true;
+  }
+
+  if (message.type === "LISTINGS_DETECTED") {
+    recordListings(message.listings)
+      .then(() => sendResponse({ ok: true } satisfies ExternalResponse))
+      .catch((err: unknown) => {
+        logger.error("LISTINGS_DETECTED a echoue", errorMessage(err));
         sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse);
       });
     return true;

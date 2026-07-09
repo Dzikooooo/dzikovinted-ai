@@ -1,6 +1,6 @@
 # Extension Chrome ResellOS
 
-Étapes 1.1 (scaffold + appairage) et 1.2 (détection du compte Vinted) du plan Phase 1 (voir [../EXTENSION.md](../EXTENSION.md)). **Les deux validées en conditions réelles** avec un compte Vinted réel : appairage → dissociation → ré-appairage, puis détection automatique du compte au chargement de `vinted.fr/member/<id>`, avec test négatif confirmé sur le profil d'un autre utilisateur (aucune fausse détection). Étape 1.3 (synchronisation des annonces) en cours.
+Phase 1 complète (voir [../EXTENSION.md](../EXTENSION.md)) : 1.1 (scaffold + appairage), 1.2 (détection du compte Vinted), 1.3 (synchronisation des annonces). **Les trois validées en conditions réelles** avec un compte Vinted réel : appairage → dissociation → ré-appairage, détection automatique du compte au chargement de `vinted.fr/member/<id>` (avec test négatif confirmé sur le profil d'un autre utilisateur), puis synchronisation de 20 annonces réelles avec vérification de non-duplication sur re-synchronisation.
 
 **Piège rencontré en test live, à connaître avant de toucher à `pairing.ts`** : ne jamais utiliser `supabase.auth.setSession()`/`getSession()`/`signOut()` sans option explicite dans ce fichier — `setSession()` s'est montré peu fiable dans le contexte service worker MV3, et `signOut()` sans `{ scope: 'local' }` révoque la session côté serveur pour tous les clients qui la partagent, y compris l'app web. La gestion de session est volontairement self-managed (validation stateless + persistance manuelle dans `chrome.storage.local`) — voir EXTENSION.md §3 pour le détail complet de cette décision et du bug qui l'a motivée.
 
@@ -30,7 +30,7 @@ npm run lint
 npm run build
 ```
 
-## Structure (étapes 1.1 + 1.2)
+## Structure (Phase 1 complète)
 
 ```
 src/
@@ -43,7 +43,7 @@ src/
     logger.ts         logger leve + ring buffer persiste (50 dernieres entrees)
     retry.ts           backoff exponentiel pour les ecritures Supabase
   content/
-    vinted-profile.ts  injecte sur vinted.fr/member/* - detecte le propre profil, remonte l'identite
+    vinted-profile.ts  injecte sur vinted.fr/member/* - detecte le propre profil + les annonces visibles
     selectors.ts         selecteurs DOM Vinted centralises (verifies en direct, voir EXTENSION.md)
   popup/          UI (statut connexion, journal) - styles inline, pas de Tailwind ici
   lib/

@@ -26,12 +26,14 @@ Revue approfondie avant d'attaquer l'extension Chrome. Détail dans l'historique
 - Migration des pages restantes (`StockPage`, `SettingsPage`, etc.) vers les classes déjà prêtes dans `src/index.css` (`.btn-neon`, `.glass-card`, `.input-dark`) plutôt que du Tailwind brut dupliqué
 - `SubscriptionPage.tsx` reste une UI statique sans Stripe — pas un bug, juste un chantier à part entière si la facturation devient prioritaire
 
-## Phase 2 — Extension Chrome — étape 1.1 validée en direct
+## Phase 2 — Extension Chrome — Phase 1 (mono-compte) terminée et validée en direct
 
 Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messages/offres depuis ResellOS nécessite une extension Chrome qui agit dans le contexte authentifié du navigateur de l'utilisateur sur vinted.fr. Architecture complète (composants, appairage, modèle de données, phasage MVP/2.1/2.2, sécurité) dans [EXTENSION.md](EXTENSION.md).
 
-- **Étape 1.1 (scaffold + appairage)** : ✅ codée et validée en conditions réelles (navigateur Chrome connecté, extension chargée non empaquetée, cycle appairage/dissociation/ré-appairage rejoué avec succès). Deux bugs réels trouvés et corrigés en test live — détail dans EXTENSION.md §3.
-- **Étape 1.2 (détection de compte Vinted)** et **1.3 (sync des annonces)** : pas commencées — nécessitent d'observer le DOM réel de vinted.fr connecté avant d'écrire les sélecteurs des content scripts.
+- **Étape 1.1 (scaffold + appairage)** : ✅ codée et validée en conditions réelles. Deux bugs réels trouvés et corrigés en test live — détail dans EXTENSION.md §3.
+- **Étape 1.2 (détection de compte Vinted)** : ✅ codée et validée avec un compte réel, y compris un test négatif (pas de fausse détection sur le profil d'un autre utilisateur).
+- **Étape 1.3 (synchronisation des annonces)** : ✅ codée et validée — 20 annonces réelles synchronisées, données vérifiées (titre/prix/vues/favoris), pas de duplication sur re-synchronisation.
+- **Prochaine étape (demandée explicitement par l'utilisateur, pas encore commencée)** : refonte de l'architecture pour supporter plusieurs comptes Vinted par utilisateur — à faire seulement maintenant que le flux mono-compte est stable, sans casser les fondations actuelles (`vinted_connection`/`vinted_listings` sont aujourd'hui conçues pour un seul compte par utilisateur, voir EXTENSION.md §5).
 
 ## Phase 3 — Sourcing intelligent, comptabilité fiscale — pas commencée
 
