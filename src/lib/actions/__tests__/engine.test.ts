@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActionEngine } from '../engine';
 import { ACTION_DEFINITIONS } from '../handlers';
 import { checkAuthenticated, checkExtensionConnected } from '../checks';
@@ -6,18 +6,26 @@ import { makeActionContext, makeCheckDeps, makeFakeDeps } from './fixtures';
 import type { ActionDefinition, ActionRequest } from '../types';
 
 // engine.ts consulte le registre via findActionDefinition(), qui lit
-// ACTION_DEFINITIONS (tableau exporté par handlers/index.ts). On y pousse
-// temporairement des définitions de test, puis on restaure un tableau vide
-// après chaque test pour ne jamais faire fuiter d'état entre les tests
-// (et ne jamais casser registry.test.ts, qui vérifie que le registre réel
-// est vide en Phase 3).
-function registerTestDefinition(definition: ActionDefinition): void {
-  ACTION_DEFINITIONS.push(definition);
-}
+// ACTION_DEFINITIONS (tableau exporté par handlers/index.ts, qui contient
+// déjà les vraies actions enregistrées, ex. publish_listing). On y pousse
+// temporairement des définitions de test (kind 'republish_listing', pas
+// encore réel) puis on restaure exactement le contenu d'origine après
+// chaque test - jamais un tableau vide, pour ne pas faire disparaître les
+// vraies actions pour le reste de la suite (voir registry.test.ts).
+let originalDefinitions: ActionDefinition[];
+
+beforeEach(() => {
+  originalDefinitions = [...ACTION_DEFINITIONS];
+});
 
 afterEach(() => {
   ACTION_DEFINITIONS.length = 0;
+  ACTION_DEFINITIONS.push(...originalDefinitions);
 });
+
+function registerTestDefinition(definition: ActionDefinition): void {
+  ACTION_DEFINITIONS.push(definition);
+}
 
 const request: ActionRequest = {
   kind: 'republish_listing',
@@ -126,7 +134,7 @@ describe('createActionEngine().confirm', () => {
     expect(runViaExtension).not.toHaveBeenCalled();
     expect(result.outcome).toEqual({ status: 'success', resultPayload: { ok: true } });
     expect(resyncAffectedData).toHaveBeenCalledTimes(1);
-    expect(resyncAffectedData).toHaveBeenCalledWith(request);
+    expect(resyncAffectedData).toHaveBeenCalledWith(request, { status: 'success', resultPayload: { ok: true } });
   });
 
   it('does not call resyncAffectedData on an error outcome', async () => {

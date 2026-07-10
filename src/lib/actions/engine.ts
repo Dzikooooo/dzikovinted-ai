@@ -60,7 +60,7 @@ export function createActionEngine(deps: ActionEngineDeps): ActionEngine {
     await deps.updateHistoryRow(prepared.id, buildHistoryTerminalPatch(outcome, completedAt, durationMs));
 
     if (outcome.status === 'success') {
-      await deps.resyncAffectedData(prepared.request);
+      await deps.resyncAffectedData(prepared.request, outcome);
     }
 
     return { historyId: prepared.id, outcome, durationMs };

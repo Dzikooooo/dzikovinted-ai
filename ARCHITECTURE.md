@@ -184,9 +184,9 @@ listings + vinted_accounts + listing_metric_snapshots (chargés par useInsights.
 
 Aucun appel Supabase à l'intérieur de `src/lib/insights/` — uniquement des fonctions pures testées par Vitest (voir §3), ce qui garde la séparation données/recommandations explicitement demandée par l'utilisateur.
 
-### 4.6 Action Engine (`src/lib/actions/`, préparation Phase 3, 2026-07-10)
+### 4.6 Action Engine (`src/lib/actions/`) et première action réelle : `publish_listing`
 
-Couche d'abstraction unique par laquelle passeront toutes les futures actions d'écriture sur Vinted (publier, republier, modifier une annonce/un prix/des photos, répondre à un message, accepter une offre, contre-offrir, supprimer, mettre en pause, réactiver — voir ROADMAP.md, sous-phases 3.1 à 3.7). **Zéro écriture Vinted cette phase** : le registre d'exécuteurs côté extension est intentionnellement vide, toute action résout systématiquement en `not_implemented`. Cette phase construit uniquement la mécanique — checks → préparation → validation utilisateur → exécution → résultat → resynchronisation → historique — de façon générique, pour que chaque action future (3.1+) n'ajoute qu'une entrée de données au registre plutôt qu'un nouveau fichier avec sa propre logique de cycle de vie.
+Couche d'abstraction unique par laquelle passent toutes les actions d'écriture sur Vinted (publier, republier, modifier une annonce/un prix/des photos, répondre à un message, accepter une offre, contre-offrir, supprimer, mettre en pause, réactiver — voir ROADMAP.md, sous-phases 3.1 à 3.7). Le socle générique (checks → préparation → validation utilisateur → exécution → résultat → resynchronisation → historique) a été construit en Phase 3 (préparation, registre vide) ; **la Phase 3.1 (2026-07-10) ajoute `publish_listing`, la première action réelle** — publier sur Vinted une annonce ResellOS jamais encore liée à un compte (typiquement un brouillon du Générateur). Détail complet du remplissage de formulaire, des sélecteurs DOM et de la gestion d'erreurs dans [EXTENSION.md](EXTENSION.md) §5/§6.
 
 ```
 src/lib/actions/
@@ -199,7 +199,10 @@ src/lib/actions/
   registry.ts      findActionDefinition() — lookup pur sur handlers/index.ts::ACTION_DEFINITIONS
   handlers/        Registre de handlers spécialisés : un objet ActionDefinition (données pures :
     index.ts       label, checks, buildPreview, execute?) par ActionKind, jamais de logique de
-                   cycle de vie dupliquée (qui reste 100% dans engine.ts). VIDE en Phase 3.
+    publishListing.ts  cycle de vie dupliquée (qui reste 100% dans engine.ts). publish_listing
+                   (Phase 3.1) est la première entrée réelle — checks + buildPreview seulement,
+                   toujours pas d'execute() : passe par deps.runViaExtension() comme le prévoyait
+                   déjà le contrat Phase 3.
   history.ts       Construction pure des lignes insert/update de `action_log` (aucun import Supabase)
   engine.ts        createActionEngine(deps): { prepare, confirm, cancel } — l'orchestrateur
 
@@ -208,23 +211,34 @@ prepare(request, ctx, checkDeps)   étapes 1-2 : cherche la définition, exécut
                                      structurelle qu'une exécution ne peut jamais sauter la
                                      validation), construit la preview, insère action_log en
                                      'pending_confirmation', retourne un PreparedAction
-confirm(prepared)                   étapes 3-7 : l'appel lui-même EST la validation utilisateur
+confirm(prepared, onProgress?)      étapes 3-7 : l'appel lui-même EST la validation utilisateur
                                      (pas de flag séparé - un jeton n'existe que si prepare() a
                                      réussi) ; exécute definition.execute?.() ou, par défaut,
                                      deps.runViaExtension() (→ RUN_ACTION, voir EXTENSION.md) ;
                                      mesure la durée ; met à jour action_log en statut terminal ;
-                                     si succès uniquement, appelle deps.resyncAffectedData()
-                                     (no-op réel cette phase, contrat posé pour la Phase 3.1+)
+                                     si succès, appelle deps.resyncAffectedData(request, outcome)
+                                     — reçoit l'outcome complet (pas seulement la requête) depuis
+                                     la Phase 3.1 : une action réussie porte souvent l'info utile
+                                     à la resync dans son resultPayload (ex. vintedItemId/vintedUrl)
 cancel(prepared)                    écrit 'cancelled', n'appelle ni l'extension ni la resync
 → hooks/useActionEngine.ts          pont Supabase + extension (même rôle que useInsights.ts) :
                                      câble action_log (insert/update) et extensionBridge.runAction()
-                                     dans ActionEngineDeps. Aucune page n'appelle ce hook en
-                                     production cette phase (pas d'action réelle avant 3.1)
+                                     dans ActionEngineDeps. Sur succès de publish_listing, met à
+                                     jour `listings` (vinted_account_id/item_id/url/status) avec
+                                     les mêmes règles de propriété des champs que sync.ts. La
+                                     progression (onProgress) est câblée via une Map<historyId,
+                                     callback> au niveau du hook — engine.ts reste générique, ne
+                                     connaît pas ce concept.
+→ StockPage.tsx                      bouton "Publier sur Vinted" (annonces jamais liées à un
+                                     compte) → PublishConfirmationModal (résumé + taille de
+                                     colis) → PublishProgressModal (étapes en direct)
 ```
 
-Répartition des responsabilités imposée par l'architecture existante (§8, EXTENSION.md §1) : seule l'extension peut agir dans le contexte authentifié Vinted. `src/lib/actions/` définit CE QU'est une action (checks, preview, libellé, orchestration) ; `extension/src/background/runAction.ts` est le registre d'exécuteurs réels côté extension (vide cette phase) — voir EXTENSION.md pour le détail du canal `RUN_ACTION` et la table `action_log`.
+Répartition des responsabilités imposée par l'architecture existante (§8, EXTENSION.md §1) : seule l'extension peut agir dans le contexte authentifié Vinted. `src/lib/actions/` définit CE QU'est une action (checks, preview, libellé, orchestration) ; `extension/src/background/runAction.ts` est le registre d'exécuteurs réels côté extension — `publish_listing` y est désormais implémenté (`handlers/publishListing.ts`, ouvre un onglet `vinted.fr/items/new`, délègue au content script `vinted-publish.ts`) — voir EXTENSION.md pour le détail complet (sélecteurs DOM, technique d'upload photo, canal de progression).
 
-Tests Vitest complets (`src/lib/actions/__tests__/`) : cycle de vie complet du moteur avec dépendances injectées factices (aucun appel Supabase/extension réel dans les tests), y compris un test de garde qui échoue volontairement dès qu'une première action réelle est enregistrée sans mise à jour du test.
+**Progression en direct** (étape 10 du workflow demandé) : le canal `RUN_ACTION` (sendMessage/callback) ne porte que la réponse terminale — un second canal, un port persistant (`chrome.runtime.connect`, nom `action-progress`), relaie les étapes intermédiaires rapportées par le content script (`preparing`/`connecting`/`uploading_photos`/`filling_form`/`publishing`/`syncing`) jusqu'à `extensionBridge.ts::runAction()` puis au hook. Pattern générique, réutilisable par toute action future assez longue pour justifier une progression affichée.
+
+Tests Vitest complets (`src/lib/actions/__tests__/`) : cycle de vie complet du moteur avec dépendances injectées factices (aucun appel Supabase/extension réel dans les tests), un test de garde qui échoue volontairement si un `ActionKind` est enregistré deux fois ou sans mise à jour du test de registre, et des tests dédiés à `publishListingDefinition` (checks, preview). Côté extension : `domWait.test.ts` (jsdom, première introduction de `MutationObserver` dans ce projet), `matchOption.test.ts` (jamais de correspondance inventée). Aucun test automatisé ne simule la manipulation réelle du DOM Vinted (impossible à reproduire fidèlement) — compensé par un test live obligatoire avant toute utilisation en production.
 
 ## 5. Interactions avec Supabase
 
@@ -258,7 +272,7 @@ Fonctionnel de bout en bout, avec de vraies données (pas de mock) :
 
 Ces écrans/éléments existent dans l'UI avec un état honnête ("bientôt disponible", vide, désactivé) plutôt qu'avec de fausses données — ne jamais les faire *paraître* fonctionnels sans l'être réellement :
 
-- **Compte Vinted (`VintedAccountPage.tsx`, `StockPage.tsx`)** : la connexion et la synchronisation des annonces (statut, marque, taille, vues, favoris) sont réelles depuis l'extension Chrome (voir [EXTENSION.md](EXTENSION.md)). Restent à venir : messages, offres, republication automatique, alertes (voir §8). Le socle générique qui portera ces écritures (`src/lib/actions/`, §4.6) existe déjà mais n'exécute encore aucune action réelle — aucun bouton de production ne l'appelle pour l'instant
+- **Compte Vinted (`VintedAccountPage.tsx`, `StockPage.tsx`)** : la connexion et la synchronisation des annonces (statut, marque, taille, vues, favoris) sont réelles depuis l'extension Chrome (voir [EXTENSION.md](EXTENSION.md)). La publication d'une annonce (`publish_listing`, §4.6) est implémentée (bouton "Publier sur Vinted" dans `StockPage.tsx`), en attente de validation en conditions réelles avant usage en production — voir ROADMAP.md. Restent à venir : republication, messages, offres, alertes (voir §8)
 - **Abonnement (`SubscriptionPage.tsx`)** : UI de plans statique, aucune intégration Stripe. Table `subscriptions` déjà en base (scaffolding), pas encore branchée
 - **Suppression de compte (`SettingsPage.tsx`, zone danger)** : bouton désactivé volontairement ("bientôt disponible") — aucune logique de suppression de compte n'existe côté backend, le bouton a été trouvé sans handler lors de l'audit de juillet 2026 et corrigé pour ne pas être une action destructive factice
 - **Multi-marketplace** : mentionné en roadmap sur la landing page ("Bientôt"), aucun code d'abstraction marketplace n'existe et ce n'est pas prévu tant que Vinted reste la seule marketplace gérée (voir §3, ligne Playwright, et [EXTENSION.md](EXTENSION.md) §5 pour pourquoi cette abstraction est explicitement écartée pour l'instant)

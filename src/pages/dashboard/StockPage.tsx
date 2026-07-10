@@ -1,16 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb } from 'lucide-react';
+import { Search, X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb, UploadCloud } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
+import { useActionEngine } from '../../hooks/useActionEngine';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
+import PublishConfirmationModal, { type PackageSize } from '../../components/publish/PublishConfirmationModal';
+import PublishProgressModal from '../../components/publish/PublishProgressModal';
 import { isExtensionConfigured, pingExtension } from '../../lib/extensionBridge';
 import { formatRelativeSync } from '../../lib/formatRelativeTime';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
+import { isPublishStep, type PublishStep } from '../../lib/actions/publishSteps';
+import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
+import type { VintedAccount } from '../../lib/types';
+
+function buildPublishPayload(listing: Listing, account: VintedAccount, packageSize: PackageSize): PublishListingPayload {
+  return {
+    title: listing.title,
+    description: listing.description,
+    price: listing.price,
+    category: listing.category,
+    brand: listing.brand || null,
+    size: listing.size || null,
+    condition: listing.condition,
+    color: listing.color || null,
+    material: listing.material || null,
+    imageUrls: listing.image_urls,
+    packageSize,
+    expectedVintedUsername: account.vinted_username,
+  };
+}
 
 type StatusFilter = 'all' | 'online' | 'reserved' | 'sold_pending' | 'sold_completed' | 'draft' | 'hidden' | 'unknown';
 
@@ -52,6 +75,11 @@ export default function StockPage() {
   const [extensionState, setExtensionState] = useState<'checking' | 'not-installed' | 'ready'>('checking');
   const [syncing, setSyncing] = useState(false);
   const [syncHint, setSyncHint] = useState<string | null>(null);
+  const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
+  const [publishState, setPublishState] = useState<{ step: PublishStep | 'done' | null; error: string | null } | null>(
+    null
+  );
+  const { prepareAction, confirmAction } = useActionEngine();
 
   useEffect(() => {
     (async () => {
@@ -106,6 +134,34 @@ export default function StockPage() {
       setSoldPrice('');
       setFees('0');
       await load();
+    }
+  };
+
+  const handleConfirmPublish = async (packageSize: PackageSize) => {
+    if (!publishingItem || !selectedAccount) return;
+    const listing = publishingItem;
+    setPublishingItem(null);
+    setPublishState({ step: 'preparing', error: null });
+
+    const payload = buildPublishPayload(listing, selectedAccount, packageSize);
+    const prepared = await prepareAction('publish_listing', payload, { listingId: listing.id, targetListing: listing });
+    if (!prepared.ok) {
+      setPublishState({ step: null, error: prepared.failure.message });
+      return;
+    }
+
+    const result = await confirmAction(prepared.prepared, (step) => {
+      if (isPublishStep(step)) setPublishState({ step, error: null });
+    });
+
+    if (result.outcome.status === 'success') {
+      setPublishState({ step: 'syncing', error: null });
+      await load();
+      setPublishState({ step: 'done', error: null });
+    } else if (result.outcome.status === 'error') {
+      setPublishState({ step: null, error: result.outcome.errorMessage });
+    } else {
+      setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.' });
     }
   };
 
@@ -404,18 +460,29 @@ export default function StockPage() {
                       <MiniValue label="ROI" value={hasCost ? `${roi} %` : '—'} highlight={hasCost} />
                     </div>
 
-                    {!isSold && (
-                      <button
-                        onClick={() => {
-                          setSellingItem(item);
-                          setSoldPrice(String(item.price ?? ''));
-                          setFees('0');
-                        }}
-                        className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 transition-all flex-shrink-0"
-                      >
-                        Marquer vendu
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {!isSold && item.vinted_account_id === null && selectedAccount && (
+                        <button
+                          onClick={() => setPublishingItem(item)}
+                          className="flex items-center gap-1.5 text-xs font-semibold bg-dark-400 border border-white/10 text-gray-200 px-3 py-2 rounded-xl hover:border-neon-500/40 transition-all"
+                        >
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          Publier sur Vinted
+                        </button>
+                      )}
+                      {!isSold && (
+                        <button
+                          onClick={() => {
+                            setSellingItem(item);
+                            setSoldPrice(String(item.price ?? ''));
+                            setFees('0');
+                          }}
+                          className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 transition-all"
+                        >
+                          Marquer vendu
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -475,6 +542,23 @@ export default function StockPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {publishingItem && selectedAccount && (
+        <PublishConfirmationModal
+          listing={publishingItem}
+          account={selectedAccount}
+          onCancel={() => setPublishingItem(null)}
+          onConfirm={handleConfirmPublish}
+        />
+      )}
+
+      {publishState && (
+        <PublishProgressModal
+          currentStep={publishState.step}
+          error={publishState.error}
+          onClose={() => setPublishState(null)}
+        />
       )}
     </div>
   );

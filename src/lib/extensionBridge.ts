@@ -4,8 +4,15 @@
 
 import type { ActionOutcome, ActionRequest } from './actions/types';
 
+interface ExtensionPort {
+  onMessage: { addListener: (callback: (message: unknown) => void) => void };
+  onDisconnect: { addListener: (callback: () => void) => void };
+  disconnect: () => void;
+}
+
 interface ExtensionRuntime {
   sendMessage: (extensionId: string, message: unknown, callback: (response: unknown) => void) => void;
+  connect: (extensionId: string, connectInfo?: { name?: string }) => ExtensionPort;
   lastError?: { message?: string };
 }
 
@@ -96,13 +103,45 @@ export interface RunActionResult {
   error?: string;
 }
 
+export interface RunActionOptions {
+  timeoutMs?: number;
+  // Phase 3.1 (publication) : abonnement optionnel aux etapes intermediaires
+  // d'une action longue, relayees par l'extension via un port persistant
+  // (chrome.runtime.connect) plutot que par le canal RUN_ACTION classique,
+  // qui ne porte que la reponse finale. N'affecte pas les actions qui ne
+  // rapportent aucune progression (le port reste simplement inutilise).
+  onProgress?: (step: string) => void;
+}
+
+const ACTION_PROGRESS_PORT_NAME = "action-progress";
+
 // Delai plus long que pingExtension() (400ms) : une action reelle (Phase
-// 3.1+) pourra ouvrir un onglet/attendre le content script, un simple ping
-// ne suffit pas comme reference de duree.
-export async function runAction(historyId: string, request: ActionRequest, timeoutMs = 8000): Promise<RunActionResult> {
+// 3.1+) peut ouvrir un onglet/attendre le content script, un simple ping ne
+// suffit pas comme reference de duree.
+export async function runAction(
+  historyId: string,
+  request: ActionRequest,
+  options: RunActionOptions = {}
+): Promise<RunActionResult> {
+  const { timeoutMs = 8000, onProgress } = options;
   const runtime = getRuntime();
   if (!EXTENSION_ID || !runtime) {
     return { ok: false, error: "Extension non détectée" };
+  }
+
+  let port: ExtensionPort | null = null;
+  if (onProgress) {
+    try {
+      port = runtime.connect(EXTENSION_ID, { name: ACTION_PROGRESS_PORT_NAME });
+      port.onMessage.addListener((message) => {
+        const progress = message as { type?: string; step?: string } | undefined;
+        if (progress?.type === "progress" && typeof progress.step === "string") {
+          onProgress(progress.step);
+        }
+      });
+    } catch {
+      port = null; // la progression est un bonus, pas requis pour obtenir le resultat
+    }
   }
 
   return new Promise((resolve) => {
@@ -110,6 +149,7 @@ export async function runAction(historyId: string, request: ActionRequest, timeo
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        port?.disconnect();
         resolve({ ok: false, error: "Délai dépassé" });
       }
     }, timeoutMs);
@@ -131,6 +171,7 @@ export async function runAction(historyId: string, request: ActionRequest, timeo
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          port?.disconnect();
           if (runtime.lastError) {
             resolve({ ok: false, error: runtime.lastError.message ?? "Échec de la connexion à l'extension" });
             return;
@@ -142,6 +183,7 @@ export async function runAction(historyId: string, request: ActionRequest, timeo
       if (!settled) {
         settled = true;
         clearTimeout(timer);
+        port?.disconnect();
         resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
       }
     }

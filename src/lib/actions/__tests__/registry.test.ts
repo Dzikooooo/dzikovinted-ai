@@ -2,18 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { ACTION_DEFINITIONS, findActionDefinition } from '../registry';
 
 describe('ACTION_DEFINITIONS', () => {
-  // Garde-fou volontaire : cette phase (préparation du Action Engine, voir
-  // ROADMAP.md) n'enregistre aucune action réelle. Ce test doit être mis à
-  // jour explicitement dès que la Phase 3.1 ajoute la première entrée
-  // (publication) - il ne doit jamais "juste passer" silencieusement.
-  it('is empty until the first real action is registered (Phase 3.1+)', () => {
-    expect(ACTION_DEFINITIONS).toHaveLength(0);
+  // Phase 3.1 (publication) a ajouté la première entrée réelle. Ce test
+  // reste un garde-fou : il doit être mis à jour explicitement à chaque
+  // nouvelle action enregistrée (Phase 3.2+), jamais "juste passer"
+  // silencieusement.
+  it('registers exactly the actions implemented so far', () => {
+    expect(ACTION_DEFINITIONS.map((d) => d.kind)).toEqual(['publish_listing']);
+  });
+
+  it('never registers the same kind twice', () => {
+    const kinds = ACTION_DEFINITIONS.map((d) => d.kind);
+    expect(new Set(kinds).size).toBe(kinds.length);
   });
 });
 
 describe('findActionDefinition', () => {
-  it('returns undefined for any kind while the registry is empty', () => {
+  it('finds a registered kind', () => {
+    expect(findActionDefinition('publish_listing')).toBeDefined();
+  });
+
+  it('returns undefined for an unregistered kind', () => {
     expect(findActionDefinition('republish_listing')).toBeUndefined();
-    expect(findActionDefinition('publish_listing')).toBeUndefined();
   });
 });

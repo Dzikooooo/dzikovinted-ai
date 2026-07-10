@@ -46,3 +46,20 @@ export const checkListingOwnership: ActionCheck = (ctx, deps) => {
   }
   return { ok: true };
 };
+
+export const checkListingHasPhotos: ActionCheck = (_ctx, deps) => {
+  if (!deps.targetListing || deps.targetListing.image_urls.length === 0) {
+    return { ok: false, failure: { code: 'no_photos', message: "L'annonce n'a aucune photo." } };
+  }
+  return { ok: true };
+};
+
+export const checkListingNotAlreadyPublished: ActionCheck = (_ctx, deps) => {
+  if (deps.targetListing?.vinted_item_id) {
+    return {
+      ok: false,
+      failure: { code: 'already_published', message: 'Cette annonce est déjà publiée sur Vinted.' },
+    };
+  }
+  return { ok: true };
+};

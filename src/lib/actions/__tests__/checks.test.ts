@@ -3,7 +3,9 @@ import {
   checkAccountSelected,
   checkAuthenticated,
   checkExtensionConnected,
+  checkListingHasPhotos,
   checkListingLoaded,
+  checkListingNotAlreadyPublished,
   checkListingOwnership,
 } from '../checks';
 import { makeActionContext, makeCheckDeps, makeListing } from './fixtures';
@@ -102,5 +104,46 @@ describe('checkListingOwnership', () => {
       ok: false,
       failure: expect.objectContaining({ code: 'listing_account_mismatch' }),
     });
+  });
+});
+
+describe('checkListingHasPhotos', () => {
+  it('passes when the listing has at least one photo', () => {
+    const result = checkListingHasPhotos(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ image_urls: ['https://example.com/photo.jpg'] }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with no_photos when image_urls is empty', () => {
+    const result = checkListingHasPhotos(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ image_urls: [] }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'no_photos' }) });
+  });
+
+  it('fails with no_photos when no listing is loaded', () => {
+    const result = checkListingHasPhotos(makeActionContext(), makeCheckDeps({ targetListing: null }));
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'no_photos' }) });
+  });
+});
+
+describe('checkListingNotAlreadyPublished', () => {
+  it('passes when the listing has no vinted_item_id yet', () => {
+    const result = checkListingNotAlreadyPublished(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ vinted_item_id: null }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with already_published when vinted_item_id is already set', () => {
+    const result = checkListingNotAlreadyPublished(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ vinted_item_id: '123456' }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_published' }) });
   });
 });

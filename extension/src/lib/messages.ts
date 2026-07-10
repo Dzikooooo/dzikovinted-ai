@@ -37,6 +37,61 @@ export type RunActionOutcome =
 
 export type RunActionResponse = { ok: true; outcome: RunActionOutcome } | { ok: false; error: string };
 
+// Phase 3.1 (publication) : etapes de progression rapportees pendant
+// l'execution d'une action longue. Nom volontairement generique
+// (PublishStep) meme si seule publish_listing les emet aujourd'hui - les
+// actions futures (republication, offres) reutiliseront ce meme type.
+export type PublishStep =
+  | "preparing"
+  | "connecting"
+  | "uploading_photos"
+  | "filling_form"
+  | "publishing"
+  | "syncing";
+
+export interface PublishListingPayload {
+  title: string;
+  description: string;
+  price: number;
+  category: string;
+  brand: string | null;
+  size: string | null;
+  condition: string;
+  color: string | null;
+  material: string | null;
+  imageUrls: string[];
+  packageSize: "small" | "medium" | "large";
+  expectedVintedUsername: string;
+}
+
+// Background -> content script, via chrome.tabs.sendMessage.
+export type ContentCommand = { type: "PUBLISH_LISTING"; payload: PublishListingPayload };
+
+// Content script -> background, via chrome.runtime.sendMessage (meme canal
+// interne que ACCOUNT_DETECTED/LISTINGS_DETECTED, capte par onMessage).
+export type ContentReport =
+  | { type: "PUBLISH_PROGRESS"; step: PublishStep }
+  | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome };
+
+export function isContentCommand(msg: unknown): msg is ContentCommand {
+  if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
+  return (msg as { type: unknown }).type === "PUBLISH_LISTING";
+}
+
+export function isContentReport(msg: unknown): msg is ContentReport {
+  if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
+  const type = (msg as { type: unknown }).type;
+  return type === "PUBLISH_PROGRESS" || type === "PUBLISH_RESULT";
+}
+
+// App web -> background, port persistant (chrome.runtime.connect, via
+// externally_connectable) pour relayer la progression d'une action longue -
+// complement du canal RUN_ACTION (sendMessage/callback unique, qui ne porte
+// que le resultat terminal). Un seul port actif a la fois est supporte (une
+// seule action en cours a la fois cote UI) - voir EXTENSION.md.
+export const ACTION_PROGRESS_PORT_NAME = "action-progress";
+export type ActionProgressPortMessage = { type: "progress"; step: PublishStep };
+
 // App web -> background, via chrome.runtime.sendMessage(EXTENSION_ID, ...)
 // (externally_connectable, limite a l'origine de l'app - voir manifest.config.ts)
 export type ExternalMessage =
@@ -65,7 +120,8 @@ export type InternalMessage =
   | { type: "GET_STATUS" }
   | { type: "UNPAIR" }
   | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string }
-  | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] };
+  | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] }
+  | ContentReport;
 
 export interface StatusResponse {
   paired: boolean;
@@ -85,5 +141,11 @@ export function isExternalMessage(msg: unknown): msg is ExternalMessage {
 export function isInternalMessage(msg: unknown): msg is InternalMessage {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "GET_STATUS" || type === "UNPAIR" || type === "ACCOUNT_DETECTED" || type === "LISTINGS_DETECTED";
+  return (
+    type === "GET_STATUS" ||
+    type === "UNPAIR" ||
+    type === "ACCOUNT_DETECTED" ||
+    type === "LISTINGS_DETECTED" ||
+    isContentReport(msg)
+  );
 }

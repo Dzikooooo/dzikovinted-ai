@@ -1,27 +1,33 @@
-// Action Engine (Phase 3, preparation) : registre de handlers d'execution
-// cote extension, intentionnellement VIDE de tout handler qui ecrit
-// reellement sur Vinted. Chaque ActionKind resout aujourd'hui vers
-// 'not_implemented' - preuve que le pipe complet (app -> RUN_ACTION -> ici
-// -> reponse -> maj action_log cote app) fonctionne de bout en bout sans
-// jamais ecrire une seule donnee sur Vinted. Phase 3.1+ ajoutera de vrais
-// handlers ici, un par ActionKind, avec alors les permissions tabs/scripting
-// absentes aujourd'hui. Voir EXTENSION.md.
+// Action Engine : registre de handlers d'execution cote extension. La
+// Phase 3 (preparation) l'a laisse intentionnellement vide - toute
+// ActionKind resolvait alors 'not_implemented', prouvant que le pipe
+// complet (app -> RUN_ACTION -> ici -> reponse -> maj action_log cote app)
+// fonctionne de bout en bout sans jamais ecrire sur Vinted. La Phase 3.1
+// ajoute le premier handler reel (publish_listing) ; les actions futures
+// (republication, offres...) suivront le meme registre, jamais un nouveau
+// mecanisme. Voir EXTENSION.md et ARCHITECTURE.md §4.6.
 //
 // L'app web est la seule a ecrire action_log (insert dans prepare(), update
-// dans confirm()/cancel()) - ce module ne touche pas Supabase, seulement un
-// lookup de registre local, pour eviter toute ecriture concurrente.
+// dans confirm()/cancel()) - ce module ne touche pas Supabase directement.
 
 import { logger } from "./logger";
-import type { ActionKind, RunActionOutcome, RunActionRequest } from "../lib/messages";
+import { handlePublishListing } from "./handlers/publishListing";
+import type { ActionKind, PublishStep, RunActionOutcome, RunActionRequest } from "../lib/messages";
 
-type ActionHandler = (request: RunActionRequest) => Promise<RunActionOutcome>;
+type ActionHandler = (request: RunActionRequest, onProgress: (step: PublishStep) => void) => Promise<RunActionOutcome>;
 
-const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {};
-// vide en Phase 3 - toute cle absente tombe sur le fallback not_implemented
+const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {
+  publish_listing: handlePublishListing,
+};
+// toute cle absente (Phase 3.1 : tout sauf publish_listing) tombe sur le
+// fallback not_implemented
 
-export async function runAction(request: RunActionRequest): Promise<RunActionOutcome> {
+export async function runAction(
+  request: RunActionRequest,
+  onProgress: (step: PublishStep) => void = () => {}
+): Promise<RunActionOutcome> {
   const handler = HANDLERS[request.kind];
-  const outcome: RunActionOutcome = handler ? await handler(request) : { status: "not_implemented" };
+  const outcome: RunActionOutcome = handler ? await handler(request, onProgress) : { status: "not_implemented" };
   logger.info("RUN_ACTION traité", { kind: request.kind, status: outcome.status });
   return outcome;
 }

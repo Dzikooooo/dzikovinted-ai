@@ -131,7 +131,10 @@ export interface ActionEngineDeps {
     >
   ) => Promise<void>;
   runViaExtension: (historyId: string, request: ActionRequest) => Promise<ActionOutcome>;
-  resyncAffectedData: (request: ActionRequest) => Promise<void>;
+  // Reçoit l'outcome complet (pas seulement la requête) : une action réussie
+  // porte souvent l'information nécessaire à la resynchronisation dans son
+  // resultPayload (ex. publish_listing renvoie vintedItemId/vintedUrl).
+  resyncAffectedData: (request: ActionRequest, outcome: Extract<ActionOutcome, { status: 'success' }>) => Promise<void>;
   now: () => Date;
 }
 

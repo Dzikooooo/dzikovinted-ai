@@ -2,7 +2,15 @@
 // (voir EXTENSION.md §4) : les content scripts et le popup passent toujours
 // par des messages traites ici, jamais d'appel Supabase direct ailleurs.
 
-import { isExternalMessage, isInternalMessage, type ExternalResponse, type RunActionResponse } from "../lib/messages";
+import {
+  isExternalMessage,
+  isInternalMessage,
+  ACTION_PROGRESS_PORT_NAME,
+  type ActionProgressPortMessage,
+  type ExternalResponse,
+  type PublishStep,
+  type RunActionResponse,
+} from "../lib/messages";
 import { pair, unpair, getStatus } from "./pairing";
 import { recordAccountDetected, recordListings } from "./sync";
 import { runAction } from "./runAction";
@@ -10,6 +18,24 @@ import { logger } from "./logger";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+// Port de progression (Phase 3.1, publication) : l'app web l'ouvre juste
+// avant d'envoyer RUN_ACTION pour recevoir les etapes intermediaires d'une
+// action longue (voir messages.ts). Une seule action en cours a la fois
+// cote UI - un seul port actif suffit.
+let activeProgressPort: chrome.runtime.Port | null = null;
+
+chrome.runtime.onConnectExternal.addListener((port) => {
+  if (port.name !== ACTION_PROGRESS_PORT_NAME) return;
+  activeProgressPort = port;
+  port.onDisconnect.addListener(() => {
+    if (activeProgressPort === port) activeProgressPort = null;
+  });
+});
+
+function reportActionProgress(step: PublishStep): void {
+  activeProgressPort?.postMessage({ type: "progress", step } satisfies ActionProgressPortMessage);
 }
 
 // Messages venant de l'app web (externally_connectable, voir manifest.config.ts).
@@ -32,7 +58,7 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
 
   if (message.type === "RUN_ACTION") {
-    runAction(message.request)
+    runAction(message.request, reportActionProgress)
       .then((outcome) => sendResponse({ ok: true, outcome } satisfies RunActionResponse))
       .catch((err: unknown) => sendResponse({ ok: false, error: errorMessage(err) } satisfies RunActionResponse));
     return true; // reponse asynchrone : garder le canal ouvert
