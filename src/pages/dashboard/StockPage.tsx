@@ -55,7 +55,11 @@ const SYNC_WINDOW_NAME = 'resellos_vinted_sync';
 const SYNC_POLL_INTERVAL_MS = 3000;
 const SYNC_POLL_MAX_ATTEMPTS = 10;
 
-export default function StockPage() {
+interface StockPageProps {
+  onViewAction?: (actionId: string) => void;
+}
+
+export default function StockPage({ onViewAction }: StockPageProps) {
   const { user } = useAuth();
   const {
     accounts,
@@ -76,9 +80,11 @@ export default function StockPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncHint, setSyncHint] = useState<string | null>(null);
   const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
-  const [publishState, setPublishState] = useState<{ step: PublishStep | 'done' | null; error: string | null } | null>(
-    null
-  );
+  const [publishState, setPublishState] = useState<{
+    step: PublishStep | 'done' | null;
+    error: string | null;
+    historyId: string | null;
+  } | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
 
   useEffect(() => {
@@ -141,27 +147,28 @@ export default function StockPage() {
     if (!publishingItem || !selectedAccount) return;
     const listing = publishingItem;
     setPublishingItem(null);
-    setPublishState({ step: 'preparing', error: null });
+    setPublishState({ step: 'preparing', error: null, historyId: null });
 
     const payload = buildPublishPayload(listing, selectedAccount, packageSize);
     const prepared = await prepareAction('publish_listing', payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
-      setPublishState({ step: null, error: prepared.failure.message });
+      setPublishState({ step: null, error: prepared.failure.message, historyId: null });
       return;
     }
+    const historyId = prepared.prepared.id;
 
     const result = await confirmAction(prepared.prepared, (step) => {
-      if (isPublishStep(step)) setPublishState({ step, error: null });
+      if (isPublishStep(step)) setPublishState({ step, error: null, historyId });
     });
 
     if (result.outcome.status === 'success') {
-      setPublishState({ step: 'syncing', error: null });
+      setPublishState({ step: 'syncing', error: null, historyId });
       await load();
-      setPublishState({ step: 'done', error: null });
+      setPublishState({ step: 'done', error: null, historyId });
     } else if (result.outcome.status === 'error') {
-      setPublishState({ step: null, error: result.outcome.errorMessage });
+      setPublishState({ step: null, error: result.outcome.errorMessage, historyId });
     } else {
-      setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.' });
+      setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.', historyId });
     }
   };
 
@@ -558,6 +565,15 @@ export default function StockPage() {
           currentStep={publishState.step}
           error={publishState.error}
           onClose={() => setPublishState(null)}
+          onViewAction={
+            onViewAction && publishState.historyId
+              ? () => {
+                  const historyId = publishState.historyId as string;
+                  setPublishState(null);
+                  onViewAction(historyId);
+                }
+              : undefined
+          }
         />
       )}
     </div>

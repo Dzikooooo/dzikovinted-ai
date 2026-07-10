@@ -4,6 +4,7 @@ import { useVintedAccountFilter } from '../contexts/VintedAccountFilterContext';
 import { supabase } from '../lib/supabase';
 import { pingExtension, runAction as runActionViaExtension } from '../lib/extensionBridge';
 import { createActionEngine } from '../lib/actions/engine';
+import { ACTION_STEP_LOG_MESSAGES } from '../lib/actions/labels';
 import type {
   ActionCheckDeps,
   ActionContext,
@@ -11,6 +12,7 @@ import type {
   ActionOutcome,
   ActionRequest,
   ActionResult,
+  ActionStep,
   PreparedAction,
 } from '../lib/actions/types';
 import type { Listing } from '../lib/types';
@@ -66,6 +68,24 @@ async function applyPublishListingResult(request: ActionRequest, outcome: Extrac
     .is('sold_price', null);
 }
 
+// Centre des Actions : journalise une ligne d'historique consultable et,
+// si l'etape correspond a une ActionStep connue, met a jour le champ
+// denormalise action_log.current_step (evite de re-derive la derniere
+// etape depuis le journal a chaque lecture de liste). Echec silencieux
+// volontaire (le journal est un plus, pas une condition de succes de
+// l'action elle-meme - une erreur reseau sur ce log ne doit jamais faire
+// echouer une publication par ailleurs reussie).
+async function logActionEntry(actionId: string, step: ActionStep | null, message: string): Promise<void> {
+  try {
+    await supabase.from('action_log_entries').insert({ action_id: actionId, step, message });
+    if (step) {
+      await supabase.from('action_log').update({ current_step: step }).eq('id', actionId);
+    }
+  } catch {
+    // voir commentaire ci-dessus
+  }
+}
+
 // Pont Supabase + extension pour le Action Engine (src/lib/actions/), meme
 // role que useInsights.ts pour src/lib/insights/ : aucune logique de cycle
 // de vie ici, uniquement le cablage des dependances reelles.
@@ -112,10 +132,19 @@ export function useActionEngine(): UseActionEngineResult {
           if (error) throw error;
         },
         runViaExtension: async (historyId, request) => {
-          const onProgress = progressListenersRef.current.get(historyId);
+          const callerProgress = progressListenersRef.current.get(historyId);
+          // Enveloppe la progression fournie par l'appelant (mise a jour
+          // d'UI locale, ex. StockPage) : chaque etape est aussi journalisee
+          // ici, automatiquement, pour TOUTE action future sans changement
+          // page par page - voir Centre des Actions.
+          const wrappedProgress = (step: string) => {
+            callerProgress?.(step);
+            const message = ACTION_STEP_LOG_MESSAGES[step as ActionStep] ?? step;
+            void logActionEntry(historyId, step as ActionStep, message);
+          };
           const result = await runActionViaExtension(historyId, request, {
             timeoutMs: ACTION_TIMEOUT_MS,
-            onProgress,
+            onProgress: wrappedProgress,
           });
           progressListenersRef.current.delete(historyId);
           if (!result.ok) {
@@ -164,7 +193,11 @@ export function useActionEngine(): UseActionEngineResult {
         payload,
       };
 
-      return engine.prepare(request, ctx, checkDeps);
+      const result = await engine.prepare(request, ctx, checkDeps);
+      if (result.ok) {
+        void logActionEntry(result.prepared.id, null, 'En attente de validation utilisateur');
+      }
+      return result;
     },
     [user, accounts, selectedAccountId, engine]
   );
@@ -174,7 +207,30 @@ export function useActionEngine(): UseActionEngineResult {
       if (onProgress) {
         progressListenersRef.current.set(prepared.id, onProgress);
       }
-      return engine.confirm(prepared);
+      await logActionEntry(prepared.id, 'awaiting_confirmation', ACTION_STEP_LOG_MESSAGES.awaiting_confirmation);
+
+      const result = await engine.confirm(prepared);
+
+      const terminalMessage =
+        result.outcome.status === 'success'
+          ? 'Action terminée avec succès'
+          : result.outcome.status === 'error'
+            ? `Erreur : ${result.outcome.errorMessage}`
+            : result.outcome.status === 'cancelled'
+              ? 'Action annulée'
+              : "Action non implémentée";
+      void logActionEntry(prepared.id, null, terminalMessage);
+
+      return result;
+    },
+    [engine]
+  );
+
+  const cancelAction = useCallback(
+    async (prepared: PreparedAction) => {
+      const result = await engine.cancel(prepared);
+      void logActionEntry(prepared.id, null, 'Action annulée par l’utilisateur');
+      return result;
     },
     [engine]
   );
@@ -182,6 +238,6 @@ export function useActionEngine(): UseActionEngineResult {
   return {
     prepareAction,
     confirmAction,
-    cancelAction: engine.cancel,
+    cancelAction,
   };
 }

@@ -98,6 +98,36 @@ export type ActionHistoryStatus =
   | 'cancelled'
   | 'not_implemented';
 
+// Centre des Actions : etapes de progression generiques (superset de
+// extension/src/lib/messages.ts::PublishStep, meme convention de
+// duplication assumee — voir EXTENSION.md §9). 'awaiting_confirmation' est
+// posee par useActionEngine.ts au moment de confirmAction(), avant tout
+// appel a l'extension — c'est la coche "Validation utilisateur" demandee
+// par l'utilisateur. 'analyzing' n'est utilisee par aucune action
+// aujourd'hui (publish_listing ne l'emet pas) — preparee pour de futures
+// actions pilotees par une analyse (IA ou autre), jamais fabriquee tant
+// qu'aucun handler reel ne l'emet.
+export type ActionStep =
+  | 'awaiting_confirmation'
+  | 'preparing'
+  | 'connecting'
+  | 'uploading_photos'
+  | 'analyzing'
+  | 'filling_form'
+  | 'publishing'
+  | 'syncing';
+
+export const ACTION_STEP_ORDER: ActionStep[] = [
+  'awaiting_confirmation',
+  'preparing',
+  'connecting',
+  'uploading_photos',
+  'analyzing',
+  'filling_form',
+  'publishing',
+  'syncing',
+];
+
 export interface ActionHistoryEntry {
   id: string;
   userId: string;

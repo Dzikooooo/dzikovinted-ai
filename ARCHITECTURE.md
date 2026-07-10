@@ -240,6 +240,37 @@ Répartition des responsabilités imposée par l'architecture existante (§8, EX
 
 Tests Vitest complets (`src/lib/actions/__tests__/`) : cycle de vie complet du moteur avec dépendances injectées factices (aucun appel Supabase/extension réel dans les tests), un test de garde qui échoue volontairement si un `ActionKind` est enregistré deux fois ou sans mise à jour du test de registre, et des tests dédiés à `publishListingDefinition` (checks, preview). Côté extension : `domWait.test.ts` (jsdom, première introduction de `MutationObserver` dans ce projet), `matchOption.test.ts` (jamais de correspondance inventée). Aucun test automatisé ne simule la manipulation réelle du DOM Vinted (impossible à reproduire fidèlement) — compensé par un test live obligatoire avant toute utilisation en production.
 
+### 4.7 Centre des Actions (`src/pages/dashboard/ActionsPage.tsx`, 2026-07-10)
+
+Page dédiée (inspirée de GitHub Actions/Vercel/Linear) où **toute** action exécutée via le Action Engine (§4.6) est visible, suivie en direct et conservée dans un historique filtrable — réutilise entièrement le moteur existant, aucune logique dupliquée : toute action future (Phase 3.2+) apparaît automatiquement dès qu'elle passe par `useActionEngine.ts`, sans retoucher cette page.
+
+**Écart d'architecture comblé** : la progression rapportée par le port `action-progress` (§4.6) était jusqu'ici purement éphémère — reçue uniquement par l'onglet qui a démarré l'action, jamais persistée. `useActionEngine.ts` journalise désormais chaque étape :
+
+```
+supabase/migrations/20260710150000_add_action_log_entries.sql
+  action_log.current_step  (nouvelle colonne)          dernière étape connue, dénormalisée
+  action_log_entries                                     journal append-only (id, action_id, step,
+                                                          message, at) - même discipline que
+                                                          listing_metric_snapshots (select+insert
+                                                          seulement, pas de update/delete)
+
+useActionEngine.ts (seul point de journalisation - aucun changement à engine.ts) :
+  prepareAction()   → "En attente de validation utilisateur"
+  confirmAction()   → "Validation utilisateur confirmée" (step: awaiting_confirmation), puis
+                      chaque onProgress(step) reçu de l'extension est à la fois relayé à
+                      l'appelant (mise à jour d'UI locale, ex. PublishProgressModal) ET
+                      journalisé (action_log_entries + current_step) - automatique pour
+                      toute action future, aucun changement page par page
+                      → à la résolution : entrée terminale (succès/erreur/annulée/non disponible)
+  cancelAction()    → "Action annulée par l'utilisateur"
+```
+
+**Temps réel** (`src/hooks/useActionHistory.ts`) : première introduction de **Supabase Realtime côté app web** dans ce projet — `supabase.channel(...).on('postgres_changes', { table: 'action_log' | 'action_log_entries', filter: 'user_id=eq.<id>' | 'action_id=eq.<id>' }, ...)`. Nécessite que les tables soient explicitement ajoutées à la publication `supabase_realtime` (`alter publication supabase_realtime add table ...` — aucune table n'y figurait avant cette migration, vérifié via `pg_publication_tables`, voir `supabase/migrations/20260710151000_enable_realtime_action_log.sql`). **Distinct de la décision "pas de Realtime" déjà prise pour l'extension** (EXTENSION.md §7) : celle-ci concerne spécifiquement le service worker MV3, déchargé après ~30s d'inactivité, un problème de cycle de vie qui ne s'applique pas à l'app web (un onglet normal reste ouvert et connecté). Effet concret : une action déclenchée depuis `StockPage.tsx` reste visible en direct dans le Centre des Actions ouvert dans un autre onglet.
+
+**UI** : gabarit de carte identique à `StockPage.tsx` (icône/vignette, titre+badge, pastilles meta, actions à droite) ; `ActionStatusBadge.tsx` (clone du pattern `VintedStatusBadge.tsx`) ; `ActionStepTimeline.tsx` (nouveau composant générique — ✓/⏳/○, **`PublishProgressModal.tsx` a été refactorisé pour le réutiliser** au lieu de dupliquer le rendu de checklist) ; filtres réutilisant le pattern de puces déjà établi (période/résultat), une liste déroulante (type d'action), et le sélecteur de compte Vinted **global** déjà existant (`useVintedAccountFilter()`) plutôt qu'un filtre local dupliqué. Détail : rejoue `action_log_entries` triées par date, JSON du payload/résultat.
+
+**Point d'enregistrement unique pour toute future action** : `src/lib/actions/labels.ts` (`ACTION_KIND_LABELS`, `ACTION_KIND_ICONS`, `ACTION_STEP_LOG_MESSAGES`) — une nouvelle `ActionKind` n'a besoin que d'une entrée ici pour s'afficher correctement, jamais de changement dans `ActionsPage.tsx`. Test de garde (`labels.test.ts`) qui échoue si une clé manque.
+
 ## 5. Interactions avec Supabase
 
 Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md). Résumé de qui accède à quoi :
@@ -247,7 +278,7 @@ Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md).
 | Client | Clé utilisée | Accès |
 |---|---|---|
 | Frontend (`src/lib/supabase.ts`) | `VITE_SUPABASE_ANON_KEY` | Toutes les opérations CRUD sur les données de l'utilisateur connecté, filtrées par RLS (`auth.uid() = user_id`) |
-| `action_log` (Action Engine, §4.6) | `VITE_SUPABASE_ANON_KEY` (frontend uniquement) | Insert dans `prepare()`, update dans `confirm()`/`cancel()` — l'extension ne touche pas cette table en Phase 3, voir EXTENSION.md |
+| `action_log`/`action_log_entries` (Action Engine, §4.6/§4.7) | `VITE_SUPABASE_ANON_KEY` (frontend uniquement) + canal Realtime | Insert/update depuis `useActionEngine.ts` uniquement — l'extension ne touche pas ces tables, voir EXTENSION.md. Lu en temps réel par le Centre des Actions via Realtime (§4.7) |
 | Edge function `analyze-clothing` | `SUPABASE_ANON_KEY` + JWT utilisateur transmis | Vérifie l'identité de l'appelant avant tout traitement, pas d'accès élevé |
 | `scripts/vinted-scan.ts` | `SUPABASE_SERVICE_ROLE_KEY` | Bypass RLS — nécessaire car le scan tourne hors session utilisateur (cron), lit `watchlist` et écrit `market_opportunities` pour tous les utilisateurs |
 | Trigger `handle_new_user()` | interne Postgres | Crée automatiquement une ligne `profiles` à l'inscription (`auth.users` → `profiles`) |
@@ -298,7 +329,7 @@ Vinted n'ayant pas d'API publique, toute action qui nécessite d'agir *dans* le 
 - **Accessibilité** : tout bouton icône-seul (sans texte visible) doit avoir un `aria-label` décrivant l'action. Norme appliquée rétroactivement à tout le projet lors de l'audit de juillet 2026
 - **Un composant rejoint `components/ui/` seulement s'il est réutilisé** à plus d'un endroit (voir §2) — pas d'extraction anticipée
 - **Migrations Supabase toujours versionnées**, jamais de modification directe en base via le dashboard (voir §5 et DATABASE.md)
-- **Scripts de vérification avant tout commit significatif** : `npm run typecheck`, `npm run lint`, `npm run build`, et `npm run audit` (schéma + code mort, voir `.claude/skills/project-audit/`) — pas de suite de tests automatisés à ce jour, donc ces vérifications statiques + un passage manuel en navigateur (Claude Preview ou équivalent) sont le seul filet de sécurité actuel
+- **Scripts de vérification avant tout commit significatif** : `npm run typecheck`, `npm run lint`, `npm run build`, `npm run test` (Vitest, introduit en Phase 2 — voir §3, couvre `src/lib/insights/` et `src/lib/actions/` en fonctions pures) et `npm run audit` (schéma + code mort, voir `.claude/skills/project-audit/`) — la logique UI/composants reste vérifiée par un passage manuel en navigateur (Claude Preview ou équivalent), pas de test de composants React à ce jour
 - **Commits** : messages en français, détaillés, groupés par unité de travail cohérente plutôt qu'un commit par fichier
 
 ## 10. Prochaines étapes recommandées
@@ -308,7 +339,7 @@ Par ordre de priorité réaliste (voir aussi le détail complet dans [ROADMAP.md
 1. **Décider du sort de `business_items`/`business_expenses`** — tables orphelines, la première contient 53 lignes de données réelles jamais migrées. Bloquant moralement avant de considérer le schéma "propre"
 2. **Corriger l'incohérence "OpenAI API Key" vs Gemini** dans `SettingsPage.tsx` (§7) — petit fix, confusion utilisateur réelle
 3. **Implémenter le MVP de l'extension Chrome** — appairage, republication, sync vues/favoris — voir le phasage détaillé dans [EXTENSION.md](EXTENSION.md) §10
-4. **Introduire un framework de tests minimal** (Vitest pour la logique pure de `scripts/market-engine.ts`/`market-price.ts` serait le point de départ le plus rentable — logique déterministe, facile à tester, déjà à l'origine d'au moins un bug de calcul corrigé manuellement)
+4. **Étendre la couverture Vitest à `scripts/market-engine.ts`/`market-price.ts`** — logique déterministe, facile à tester, déjà à l'origine d'au moins un bug de calcul corrigé manuellement. Vitest est introduit depuis la Phase 2 (`src/lib/insights/`, `src/lib/actions/`) — reste à l'étendre au scan de marché
 5. **Terminer la migration vers les classes `.btn-neon`/`.glass-card`/`.input-dark`** sur les pages qui réimplémentent encore leur style en Tailwind brut
 6. **Traiter les items de sécurité/perf restants documentés dans DATABASE.md** : policy storage `listing-images` trop permissive, protection mots de passe compromis désactivée, policies RLS dupliquées, pattern `auth.uid()` non optimisé
 7. **Router applicatif (`react-router`)** — seulement quand l'extension Chrome ou un besoin de deep-link concret l'exige (§3), pas avant

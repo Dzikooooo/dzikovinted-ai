@@ -7,6 +7,7 @@ export type DashboardPage =
   | 'expenses'
   | 'accounting'
   | 'vinted-account'
+  | 'actions'
   | 'stats'
   | 'subscription'
   | 'settings';

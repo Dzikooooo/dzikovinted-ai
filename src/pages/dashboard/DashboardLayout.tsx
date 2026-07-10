@@ -15,7 +15,8 @@ import {
   Plus,
   Search,
   Puzzle,
-  Receipt
+  Receipt,
+  Activity
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
@@ -29,6 +30,7 @@ const StockPage = lazy(() => import('./StockPage'));
 const ExpensesPage = lazy(() => import('./ExpensesPage'));
 const AccountingPage = lazy(() => import('./AccountingPage'));
 const VintedAccountPage = lazy(() => import('./VintedAccountPage'));
+const ActionsPage = lazy(() => import('./ActionsPage'));
 const StatsPage = lazy(() => import('./StatsPage'));
 const SubscriptionPage = lazy(() => import('./SubscriptionPage'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
@@ -52,6 +54,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'opportunities', icon: Search, label: 'Opportunités' },
   { page: 'stock', icon: History, label: 'Stock' },
   { page: 'vinted-account', icon: Puzzle, label: 'Compte Vinted' },
+  { page: 'actions', icon: Activity, label: 'Centre des Actions' },
   { page: 'accounting', icon: Receipt, label: 'Comptabilite' },
   { page: 'expenses', icon: Wallet, label: 'Depenses' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
@@ -63,7 +66,13 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const [activePage, setActivePage] = useState<DashboardPage>('home');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
+  const [actionsInitialSelectedId, setActionsInitialSelectedId] = useState<string | undefined>(undefined);
   const { profile, signOut } = useAuth();
+
+  const handleViewAction = (actionId: string) => {
+    setActionsInitialSelectedId(actionId);
+    setActivePage('actions');
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -231,8 +240,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
               {activePage === 'generator' && <GeneratorPage />}
               {activePage === 'opportunities' && <Opportunities />}
-              {activePage === 'stock' && <StockPage />}
+              {activePage === 'stock' && <StockPage onViewAction={handleViewAction} />}
               {activePage === 'vinted-account' && <VintedAccountPage />}
+              {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}
               {activePage === 'accounting' && <AccountingPage />}
               {activePage === 'expenses' && <ExpensesPage />}
               {activePage === 'stats' && <StatsPage />}
