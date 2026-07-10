@@ -2,7 +2,7 @@
 
 Document de conception de l'extension Chrome ResellOS. Voir [ARCHITECTURE.md](ARCHITECTURE.md) §8 pour comment ce document s'articule avec le reste du projet, et [ROADMAP.md](ROADMAP.md) Phase 2 pour le séquençage global.
 
-**État d'implémentation** : la Phase 1 complète (1.1 appairage, 1.2 détection du compte, 1.3 synchronisation des annonces) est codée **et validée en conditions réelles**. La refonte multi-comptes est ensuite lancée : **Phase A (fondation schéma `vinted_accounts`) faite et validée**, sans régression visible. **Phase B (interface multi-comptes) faite et validée en conditions réelles** avec deux comptes réels (`alexisdzk`, `matleshop`) : sélecteur de compte premium (`AccountSwitcher`), gestion complète dans Paramètres (renommage, compte par défaut via RPC, suppression), Dashboard et page Compte Vinted en double mode (vue globale/filtrée). Pendant cette validation, l'utilisateur a découvert que la synchronisation des annonces (étape 1.3) était incomplète et mal étiquetée depuis le début — **corrigé le 2026-07-09**. **`listings` et `vinted_listings` fusionnées (2026-07-09)** : sur demande explicite de l'utilisateur, une annonce Vinted synchronisée EST désormais la même ligne que l'article ResellOS correspondant (plus deux tables séparées) — voir §5 `listings`. `StockPage.tsx` devient une vue unifiée (fin des onglets "Vinted"/"ResellOS" introduits une itération plus tôt, redevenus inutiles une fois les données fusionnées), avec taxonomie de statut Vinted stable, suppression douce, auto-comptabilité sur vente détectée, CA/bénéfice honnêtement calculés uniquement quand le prix d'achat est connu, synchronisation à la demande sans nouvelle permission Chrome — voir §5 et §6.2. Le rapprochement manuel des brouillons pré-existants (créés au Générateur avant publication réelle sur Vinted) reste hors scope, différé à une amélioration future — voir `ROADMAP.md`. **Moteur d'intelligence métier — "Phase 2" produit (2026-07-09)** : nouveau module `src/lib/insights/` (scores, recommandations, alertes, priorités, narrations) calculé en fonctions pures à partir de `listings` réel, jamais d'appel LLM ni de donnée fabriquée — voir §5 `listing_metric_snapshots` et ARCHITECTURE.md §4.5. Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, d'autres après des bugs réels découverts en test live (§3, §5) — marquées explicitement.
+**État d'implémentation** : la Phase 1 complète (1.1 appairage, 1.2 détection du compte, 1.3 synchronisation des annonces) est codée **et validée en conditions réelles**. La refonte multi-comptes est ensuite lancée : **Phase A (fondation schéma `vinted_accounts`) faite et validée**, sans régression visible. **Phase B (interface multi-comptes) faite et validée en conditions réelles** avec deux comptes réels (`alexisdzk`, `matleshop`) : sélecteur de compte premium (`AccountSwitcher`), gestion complète dans Paramètres (renommage, compte par défaut via RPC, suppression), Dashboard et page Compte Vinted en double mode (vue globale/filtrée). Pendant cette validation, l'utilisateur a découvert que la synchronisation des annonces (étape 1.3) était incomplète et mal étiquetée depuis le début — **corrigé le 2026-07-09**. **`listings` et `vinted_listings` fusionnées (2026-07-09)** : sur demande explicite de l'utilisateur, une annonce Vinted synchronisée EST désormais la même ligne que l'article ResellOS correspondant (plus deux tables séparées) — voir §5 `listings`. `StockPage.tsx` devient une vue unifiée (fin des onglets "Vinted"/"ResellOS" introduits une itération plus tôt, redevenus inutiles une fois les données fusionnées), avec taxonomie de statut Vinted stable, suppression douce, auto-comptabilité sur vente détectée, CA/bénéfice honnêtement calculés uniquement quand le prix d'achat est connu, synchronisation à la demande sans nouvelle permission Chrome — voir §5 et §6.2. Le rapprochement manuel des brouillons pré-existants (créés au Générateur avant publication réelle sur Vinted) reste hors scope, différé à une amélioration future — voir `ROADMAP.md`. **Moteur d'intelligence métier — "Phase 2" produit (2026-07-09)** : nouveau module `src/lib/insights/` (scores, recommandations, alertes, priorités, narrations) calculé en fonctions pures à partir de `listings` réel, jamais d'appel LLM ni de donnée fabriquée — voir §5 `listing_metric_snapshots` et ARCHITECTURE.md §4.5. **Action Engine — préparation "Phase 3" produit (2026-07-10)** : nouveau module `src/lib/actions/` (registre générique de handlers d'actions, cycle checks/préparation/validation/exécution/résultat/resynchronisation/historique identique pour toute action future) + canal `RUN_ACTION` + table `action_log`, qui remplace la conception `sync_jobs` jamais implémentée — voir §5 "Action Engine et `action_log`" et ARCHITECTURE.md §4.6. **Zéro écriture réelle sur Vinted à ce stade** : le registre d'exécuteurs côté extension est vide, toute action résout `not_implemented` — seule la mécanique est construite, les actions réelles (publier, republier, éditer...) arrivent en Phase 3.1+. Plusieurs décisions ci-dessous ont été révisées par rapport à la conception initiale, certaines après vérification directe du schéma existant, d'autres après des bugs réels découverts en test live (§3, §5) — marquées explicitement.
 
 **Sélecteurs DOM Vinted (étapes 1.2/1.3)** : découverts en direct le 2026-07-09 en naviguant sur `https://www.vinted.fr/member/<id>` avec un compte réel (voir `extension/src/content/selectors.ts` pour le détail exact, code = source de vérité). Points notables : la présence de `[data-testid="closet-seller-filters-active"]` distingue "c'est mon propre profil" de "je regarde le profil de quelqu'un d'autre" — testé positivement sur son propre profil et négativement sur le profil d'un autre utilisateur (`clementk61`), aucune détection erronée. Sur cette page précise, `--description-title`/`--description-subtitle` affichent les stats vendeur (vues/favoris) plutôt que le titre de l'annonce — le vrai titre vient de l'attribut `title` du lien overlay.
 
@@ -26,7 +26,7 @@ Manifest V3 (obligatoire, V2 est déprécié). Quatre surfaces de code :
                           .sendMessage   │  │ Background            │ │
                           (externally_   │  │ (service worker MV3)  │ │
                           connectable)   │  │ - session Supabase    │ │
-                                         │  │ - polling sync_jobs   │ │
+                                         │  │ - RUN_ACTION (§5)      │ │
                                          │  │ - orchestration onglets│ │
                                          │  └──────────┬───────────┘ │
                                          │             │ messages     │
@@ -43,7 +43,7 @@ Manifest V3 (obligatoire, V2 est déprécié). Quatre surfaces de code :
                                                     Supabase (même projet que l'app web)
 ```
 
-- **Background (service worker)** — le seul composant qui parle à Supabase. Détient la session (via `chrome.storage.local`), interroge périodiquement `sync_jobs` (§5), orchestre l'ouverture d'onglets vinted.fr quand une action doit s'exécuter.
+- **Background (service worker)** — le seul composant qui parle à Supabase. Détient la session (via `chrome.storage.local`), reçoit les commandes `RUN_ACTION` du Action Engine (§5), orchestre l'ouverture d'onglets vinted.fr quand une action doit s'exécuter.
 - **Content scripts** — injectés uniquement sur `*.vinted.fr/*`. Lisent/manipulent le DOM (déjà le cas pour `scripts/vinted-scan.ts` en scraping anonyme — ici avec une vraie session). Ne parlent jamais directement à Supabase, ils passent par `chrome.runtime.sendMessage` vers le background.
 - **Popup** — statut de connexion, dernière synchro, actions rapides. Petite app React, cohérente avec le design system de l'app principale (tokens `neon-*`/`dark-*`).
 - **Options** — préférences (fréquence de sync, autoriser l'ouverture d'onglets en arrière-plan ou non — voir §8).
@@ -174,7 +174,47 @@ create table listing_metric_snapshots (
 
 Journal append-only (jamais de `update`/`delete`) : chaque colonne "vivante" de `listings` (`views`, `favourites`, `price`, `vinted_status`) est écrasée à chaque synchro sans garder de trace — impossible de calculer honnêtement une tendance ("cette annonce a perdu en visibilité", "évolution dans le temps") sans un historique réel. `recordListings()` (`extension/src/background/sync.ts`) écrit un instantané pour chaque annonce synchronisée (nouvelle ou mise à jour), y compris la toute première visite — sert de point de départ aux comparaisons futures. Tant que l'historique d'une annonce est insuffisant (moins de 2 instantanés, ou moins de `MIN_TREND_INTERVAL_DAYS` entre eux), le moteur ne produit **aucun** signal de tendance pour elle plutôt que d'en fabriquer un — voir `src/lib/insights/trends.ts`.
 
-### Nouvelle table `sync_jobs` (Phase 2+, pas encore implémentée)
+### Action Engine et `action_log` (Phase 3, préparation, implémentée le 2026-07-10)
+
+**Remplace la conception `sync_jobs` ci-dessous, jamais implémentée** (narré plutôt que supprimé silencieusement, même convention que pour la fusion `vinted_listings`→`listings`, voir §5 `listings`). L'ancienne conception était une file d'attente interrogée par polling ; `action_log` est un journal d'audit du [Action Engine](ARCHITECTURE.md §4.6) (`src/lib/actions/`), écrit une fois l'action préparée (checks passés côté app web, avant confirmation utilisateur) et mis à jour une seule fois avec le résultat terminal — pas de polling `sync_jobs` pending. Elle satisfait en plus l'exigence explicite de l'utilisateur d'un historique complet (qui/quoi/quand/quel compte/quelle annonce/résultat/durée), que la conception `sync_jobs` ne couvrait pas (pas de `vinted_account_id`, pas de `listing_id`, pas de durée).
+
+```sql
+create table action_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id),
+  vinted_account_id uuid references vinted_accounts(id) on delete set null,
+  listing_id uuid references listings(id) on delete set null,
+  kind text not null,                -- ActionKind, voir src/lib/actions/types.ts
+  status text not null default 'pending_confirmation',
+    -- 'pending_confirmation' | 'success' | 'error' | 'cancelled' | 'not_implemented'
+  payload jsonb not null default '{}',
+  preview jsonb,
+  result_payload jsonb,
+  error_message text,
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  duration_ms integer
+);
+
+alter table action_log enable row level security;
+create policy "select_own_action_log" on action_log for select
+  to authenticated using (auth.uid() = user_id);
+create policy "insert_own_action_log" on action_log for insert
+  to authenticated with check (
+    auth.uid() = user_id
+    and (vinted_account_id is null or vinted_account_id in (select id from vinted_accounts where user_id = auth.uid()))
+    and (listing_id is null or listing_id in (select id from listings where user_id = auth.uid()))
+  );
+create policy "update_own_action_log" on action_log for update
+  to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+**Qui écrit quoi** : l'app web est la seule à écrire `action_log` (insert dans `prepare()`, update dans `confirm()`/`cancel()`, voir `src/hooks/useActionEngine.ts`). L'extension ne touche pas Supabase pour `RUN_ACTION` cette phase — évite toute mise à jour concurrente entre l'app et l'extension. À revisiter en Phase 3.1+ si une action réelle devient asynchrone (onglet ouvert, confirmation différée du content script).
+
+**Le pipe `RUN_ACTION`** : une fois `prepare()` réussi (checks passés, ligne `action_log` insérée en `pending_confirmation`) et `confirm()` appelé côté app (= la validation utilisateur), `src/lib/extensionBridge.ts::runAction()` envoie `{ type: "RUN_ACTION", request }` au background (`chrome.runtime.sendMessage(EXTENSION_ID, ...)`, `externally_connectable`, même canal que `PING`/`PAIR`). `extension/src/background/runAction.ts` cherche un handler dans un registre local (`Partial<Record<ActionKind, ActionHandler>>`), **intentionnellement vide cette phase** — toute clé résout donc `{ status: "not_implemented" }`. Preuve que le pipe complet (app → extension → réponse → `action_log` en statut terminal) fonctionne de bout en bout sans jamais écrire une seule donnée sur Vinted, et sans nouvelle permission Chrome (`tabs`/`scripting` restent réservées à la Phase 3.1, quand un premier handler réel devra ouvrir/manipuler un onglet vinted.fr).
+
+<details>
+<summary>Ancienne conception <code>sync_jobs</code> (jamais implémentée, remplacée ci-dessus)</summary>
 
 File d'attente d'actions déclenchées côté web, exécutées par l'extension quand un onglet Vinted est disponible.
 
@@ -195,19 +235,25 @@ create policy "sync_jobs_owner" on sync_jobs for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
-Pas de `service_role` requis : chaque job est créé par l'utilisateur pour lui-même (insert depuis l'app web), et l'extension le lit/met à jour authentifiée comme ce même utilisateur. Conséquence directe du choix d'appairage du §3 — aucun privilège élevé à distribuer.
+</details>
 
 ## 6. Flux par fonctionnalité
 
-### 6.1 Republication d'une annonce (MVP, §10)
+### 6.0 Le pipe `RUN_ACTION` (Action Engine, Phase 3, préparation)
+
+Tout ce qui suit dans ce §6 (republication, messages, offres) devra passer par le [Action Engine](ARCHITECTURE.md §4.6) plutôt que d'appeler Supabase directement depuis une page — voir §5 `action_log` pour le détail du canal `RUN_ACTION`, du registre de handlers (vide aujourd'hui) et de la répartition des responsabilités app web / extension. Les flux 6.1-6.3 ci-dessous décrivent l'intention produit ; leur mécanique d'exécution réelle (checks, préparation, validation, résultat, resynchronisation, historique) est celle du Action Engine, pas une logique ad hoc par fonctionnalité.
+
+### 6.1 Republication d'une annonce (Phase 3.1, pas encore codée)
 
 ```
-StockPage.tsx (bouton « Republier ») → insert sync_jobs { type: 'republish', payload: { vinted_url } }
-Background (réveillé par chrome.alarms, §7) → lit les sync_jobs pending de l'utilisateur
+StockPage.tsx (bouton « Republier ») → useActionEngine().prepareAction('republish_listing', { vinted_url })
+  → Action Engine : checks (connecté, extension appairée, bon compte, annonce chargée) → preview
+  → confirmAction() (validation utilisateur) → extensionBridge.runAction() → RUN_ACTION
+Background → runAction() : Phase 3.1 ajoute ici un vrai handler 'republish_listing'
   → si aucun onglet vinted.fr ouvert : chrome.tabs.create({ url: vinted_url, active: false })
   → chrome.tabs.sendMessage au content script : { action: 'republish' }
   → content script clique le bouton « Réserver en avant » / renouvellement natif de Vinted
-  → confirme au background → update sync_jobs.status = 'done', vinted_connection.last_synced_at = now()
+  → réponse RUN_ACTION → Action Engine met à jour action_log en statut terminal, resynchronise
   → ferme l'onglet si il a été ouvert pour l'occasion
 ```
 
@@ -217,7 +263,7 @@ Périodiquement (alarm, §7), le background demande au content script (si un ong
 
 ### 6.3 Messages / offres (Phase 2.1, pas MVP)
 
-Lecture seule d'abord (synchroniser la liste des messages/offres non lus vers une future table `vinted_messages`, affichée dans `VintedAccountPage.tsx`). Une réponse ou une acceptation d'offre reste **toujours déclenchée explicitement par l'utilisateur** dans ResellOS (crée un `sync_job` de type `reply_message`/`accept_offer`) — jamais d'automatisation silencieuse sur une action qui engage l'utilisateur vis-à-vis d'un acheteur (voir §8).
+Lecture seule d'abord (synchroniser la liste des messages/offres non lus vers une future table `vinted_messages`, affichée dans `VintedAccountPage.tsx`). Une réponse ou une acceptation d'offre reste **toujours déclenchée explicitement par l'utilisateur** dans ResellOS (déclenche une action `reply_message`/`accept_offer` via le Action Engine, §6.0) — jamais d'automatisation silencieuse sur une action qui engage l'utilisateur vis-à-vis d'un acheteur (voir §8).
 
 ### 6.4 Scan de marché via session réelle (Phase 2.2, pas MVP)
 
@@ -227,12 +273,12 @@ Lecture seule d'abord (synchroniser la liste des messages/offres non lus vers un
 
 Un service worker Manifest V3 n'est **pas persistant** — Chrome le décharge après ~30 secondes d'inactivité. Une connexion websocket Supabase Realtime ouverte dans le background serait coupée en permanence, avec une logique de reconnexion à réinventer pour un gain marginal.
 
-**Choix retenu : `chrome.alarms`**, qui réveille le service worker à intervalle régulier (ex. toutes les 10-15 minutes, configurable dans Options) même s'il a été déchargé entre-temps. À chaque réveil : lecture des `sync_jobs` pending + éventuel sync vues/favoris (§6.2). C'est du polling, pas du temps réel — assumé, cohérent avec la fréquence déjà en place pour le scan cron (4h) et largement suffisant pour republier une annonce ou rafraîchir des compteurs.
+**Choix retenu : `chrome.alarms`**, qui réveille le service worker à intervalle régulier (ex. toutes les 10-15 minutes, configurable dans Options) même s'il a été déchargé entre-temps. À chaque réveil : éventuel sync vues/favoris (§6.2). Les actions utilisateur (`RUN_ACTION`, §6.0) ne dépendent pas de ce polling — elles sont envoyées directement au moment de la confirmation utilisateur, `chrome.alarms` sert uniquement à la synchronisation périodique en lecture. C'est du polling pour la lecture, pas du temps réel — assumé, cohérent avec la fréquence déjà en place pour le scan cron (4h) et largement suffisant pour rafraîchir des compteurs.
 
 ## 8. Sécurité, conformité, contrôle utilisateur
 
 - **Jamais de contournement anti-bot.** Si Vinted présente un CAPTCHA ou bloque la session, le content script le détecte et remonte un état clair (« action requise sur Vinted ») plutôt que de tenter un bypass. C'est une limite dure, pas une optimisation à faire plus tard.
-- **Lecture automatique, écriture toujours sur déclenchement explicite.** Synchroniser des compteurs (§6.2) peut tourner en tâche de fond silencieusement. Republier, répondre à un message, accepter une offre : toujours initié par un clic utilisateur dans ResellOS (crée un `sync_job`), jamais décidé par l'extension elle-même.
+- **Lecture automatique, écriture toujours sur déclenchement explicite.** Synchroniser des compteurs (§6.2) peut tourner en tâche de fond silencieusement. Republier, répondre à un message, accepter une offre : toujours initié par un clic utilisateur dans ResellOS, passe par le Action Engine (validation explicite non contournable, §6.0/ARCHITECTURE.md §4.6), jamais décidé par l'extension elle-même.
 - **Onglets ouverts en arrière-plan** (`chrome.tabs.create({ active: false })`, §6.1) : comportement potentiellement surprenant pour l'utilisateur s'il ne s'y attend pas. Doit être une préférence explicite dans Options (« autoriser l'extension à ouvrir Vinted en arrière-plan pour exécuter mes actions » — activé par défaut mais visible et désactivable), pas un comportement caché.
 - **Rate limiting côté extension** : espacer les actions automatiques (pas de rafale de republications, pas de scan de compteurs plus fréquent que nécessaire) pour rester à une fréquence d'usage humain plausible plutôt que de ressembler à un bot agressif.
 - **Permissions minimales** dans `manifest.json` : `host_permissions` limité à `*://*.vinted.fr/*`, pas de `<all_urls>`. `externally_connectable` limité au domaine de prod ResellOS (§3).
@@ -253,6 +299,7 @@ extension/
       pairing.ts                  pair/unpair/getStatus, gestion de session self-managed (voir §3)
       logger.ts                    logger leve + ring buffer persiste (50 dernieres entrees)
       retry.ts                      backoff exponentiel
+      runAction.ts                   [réalisé Phase 3 - registre vide] handler RUN_ACTION, voir §6.0/§5
     content/                   [pas encore fait, etape 1.2]
       vinted-listing.ts          republication, lecture vues/favoris (§6.1, §6.2)
       vinted-inbox.ts             messages/offres — phase 2.1, pas au MVP
@@ -272,6 +319,8 @@ extension/
 
 ## 10. Phasage
 
+**Action Engine (§5/§6.0, ARCHITECTURE.md §4.6)** — ✅ socle générique terminé le 2026-07-10 : cycle checks → préparation → validation → exécution → résultat → resynchronisation → historique, canal `RUN_ACTION`, table `action_log`. Registre de handlers vide, zéro écriture Vinted. Prérequis architectural pour toute action d'écriture ci-dessous — chacune n'ajoutera qu'une entrée `ActionDefinition` au registre existant.
+
 **MVP (Phase 2.0)** — le seul objectif est de prouver que le pont fonctionne, avec le risque le plus faible possible :
 1. Appairage (§3) + statut de connexion réel dans `VintedAccountPage.tsx` (remplace le placeholder actuel)
 2. Republication d'une annonce (§6.1) — une seule action d'écriture, bien délimitée, valeur perçue immédiate
@@ -281,7 +330,7 @@ extension/
 
 **Phase 2.2** — scan de marché via session authentifiée (§6.4), seulement une fois le MVP stable en production.
 
-Ne pas paralléliser ces phases — chacune dépend de la précédente pour la confiance dans le mécanisme d'appairage et la file `sync_jobs`.
+Ne pas paralléliser ces phases — chacune dépend de la précédente pour la confiance dans le mécanisme d'appairage et le Action Engine (`action_log`).
 
 ## 11. Ce que ça change dans le code existant
 
@@ -291,7 +340,8 @@ Ne pas paralléliser ces phases — chacune dépend de la précédente pour la c
 - `SettingsPage.tsx` (onglet "Comptes Vinted") : l'ancien `useAccounts`/table `accounts` (carnet d'étiquettes mort) est supprimé — remplacé en Phase A par un état honnête "gestion complète bientôt disponible", puis par la gestion complète en Phase B (liste, renommage inline, compte par défaut via `set_default_vinted_account`, suppression avec confirmation) — **fait, Phase A puis B**
 - `AccountSwitcher.tsx`/`AccountAvatar.tsx`/`VintedAccountFilterContext.tsx` (nouveaux, `src/components/ui/` et `src/contexts/`) : sélecteur de compte dans la sidebar, avatars à initiales colorées déterministes par compte, état de filtre partagé (`selectedAccountId: string | 'all'`) persisté en `localStorage` — **fait, Phase B**
 - `StockPage.tsx`, `AccountingPage.tsx`, `StatsPage.tsx` : rattachés à `vinted_account_id` via `useVintedAccountFilter()` — **fait, fusion du 2026-07-09**. `GeneratorPage.tsx`/`ExpensesPage.tsx` restent hors scope (le Générateur ne demande pas de compte à la création, `expenses` attend toujours son `vinted_account_id` nullable — amélioration future)
-- `StockPage.tsx` (bouton « Republier », à ajouter) : créera un `sync_job` plutôt que d'appeler Supabase directement — Phase 2
+- `src/lib/actions/`, `src/hooks/useActionEngine.ts`, `extension/src/background/runAction.ts` (nouveaux) : Action Engine générique (§5/§6.0), registre de handlers vide — **fait, préparation Phase 3, 2026-07-10**
+- `StockPage.tsx` (bouton « Republier », à ajouter) : appellera `useActionEngine().prepareAction('republish_listing', ...)` plutôt que d'appeler Supabase ou l'extension directement — Phase 3.1, pas encore fait
 - Aucun changement à `scripts/vinted-scan.ts` ni au cron GitHub Actions (§6.4)
 
 ## 12. Risques et inconnues ouvertes

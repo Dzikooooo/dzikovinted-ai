@@ -2,9 +2,10 @@
 // (voir EXTENSION.md §4) : les content scripts et le popup passent toujours
 // par des messages traites ici, jamais d'appel Supabase direct ailleurs.
 
-import { isExternalMessage, isInternalMessage, type ExternalResponse } from "../lib/messages";
+import { isExternalMessage, isInternalMessage, type ExternalResponse, type RunActionResponse } from "../lib/messages";
 import { pair, unpair, getStatus } from "./pairing";
 import { recordAccountDetected, recordListings } from "./sync";
+import { runAction } from "./runAction";
 import { logger } from "./logger";
 
 function errorMessage(err: unknown): string {
@@ -27,6 +28,13 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
     pair(message.access_token, message.refresh_token)
       .then(() => sendResponse({ ok: true } satisfies ExternalResponse))
       .catch((err: unknown) => sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse));
+    return true; // reponse asynchrone : garder le canal ouvert
+  }
+
+  if (message.type === "RUN_ACTION") {
+    runAction(message.request)
+      .then((outcome) => sendResponse({ ok: true, outcome } satisfies RunActionResponse))
+      .catch((err: unknown) => sendResponse({ ok: false, error: errorMessage(err) } satisfies RunActionResponse));
     return true; // reponse asynchrone : garder le canal ouvert
   }
 

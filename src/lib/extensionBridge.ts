@@ -2,6 +2,8 @@
 // (voir extension/manifest.config.ts et EXTENSION.md §3). Aucune authentification
 // separee ici : on relaie la session Supabase deja ouverte dans l'app web.
 
+import type { ActionOutcome, ActionRequest } from './actions/types';
+
 interface ExtensionRuntime {
   sendMessage: (extensionId: string, message: unknown, callback: (response: unknown) => void) => void;
   lastError?: { message?: string };
@@ -84,6 +86,64 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
       );
     } catch (err) {
       resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+}
+
+export interface RunActionResult {
+  ok: boolean;
+  outcome?: ActionOutcome;
+  error?: string;
+}
+
+// Delai plus long que pingExtension() (400ms) : une action reelle (Phase
+// 3.1+) pourra ouvrir un onglet/attendre le content script, un simple ping
+// ne suffit pas comme reference de duree.
+export async function runAction(historyId: string, request: ActionRequest, timeoutMs = 8000): Promise<RunActionResult> {
+  const runtime = getRuntime();
+  if (!EXTENSION_ID || !runtime) {
+    return { ok: false, error: "Extension non détectée" };
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve({ ok: false, error: "Délai dépassé" });
+      }
+    }, timeoutMs);
+
+    try {
+      runtime.sendMessage(
+        EXTENSION_ID,
+        {
+          type: "RUN_ACTION",
+          request: {
+            historyId,
+            kind: request.kind,
+            vintedAccountId: request.vintedAccountId,
+            listingId: request.listingId,
+            payload: request.payload as Record<string, unknown>,
+          },
+        },
+        (response) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (runtime.lastError) {
+            resolve({ ok: false, error: runtime.lastError.message ?? "Échec de la connexion à l'extension" });
+            return;
+          }
+          resolve((response as RunActionResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" });
+        }
+      );
+    } catch (err) {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
     }
   });
 }

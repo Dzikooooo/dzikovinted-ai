@@ -1,8 +1,8 @@
 // Backoff exponentiel local pour les ecritures Supabase depuis le background.
-// Pas une file persistee (voir EXTENSION.md / le plan Phase 1 : sync_jobs est
-// differe a la Phase 2, quand une vraie action d'ecriture aura besoin d'un
-// declencheur durable). Ici, juste reessayer une operation qui peut echouer
-// pour une raison transitoire (reseau, cold-start du service worker).
+// Pas une file persistee - le Action Engine (Phase 3, voir EXTENSION.md §5
+// "Action Engine et action_log") gere l'historique/le suivi d'une action,
+// ce module se contente de reessayer une operation qui peut echouer pour une
+// raison transitoire (reseau, cold-start du service worker).
 
 export interface RetryOptions {
   attempts?: number;

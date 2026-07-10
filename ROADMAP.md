@@ -48,8 +48,15 @@ Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messag
 
 1. **Lecture** — ✅ terminée : extension, synchro, multi-comptes, Dashboard/Stock/Comptabilité/Statistiques, `listings` comme source unique de vérité, synchro ventes/statuts.
 2. **Intelligence métier** — ✅ terminée (2026-07-09) : moteur `src/lib/insights/` (scores, recommandations, alertes, priorités du jour, narrations Dashboard), table d'historique `listing_metric_snapshots` pour les signaux de tendance. Détail architecture dans [ARCHITECTURE.md](ARCHITECTURE.md) §4.5, schéma dans [DATABASE.md](DATABASE.md). Hors scope explicite de cette phase, documenté volontairement plutôt que caché : pas de centre d'alertes dédié (les alertes remontent via Dashboard + badges Stock uniquement) ; signaux de tendance inertes tant que l'historique de snapshots est insuffisant ; aucune action d'écriture sur Vinted.
-3. **Écriture sur Vinted** — pas commencée : publier/modifier une annonce (prix, photos, titre, description, caractéristiques) depuis ResellOS, toujours explicite, jamais silencieux.
-4. **Republication** — pas commencée : moteur de republication piloté par les recommandations produites en Phase 2 (ex. "12 annonces prioritaires à republier"), validation utilisateur puis exécution par l'extension.
+3. **Écriture sur Vinted** — **groundwork terminé le 2026-07-10, aucune écriture réelle encore.** Avant d'implémenter une action réelle, l'utilisateur a demandé un **Action Engine** : couche d'abstraction unique par laquelle passeront toutes les futures actions (publier, republier, modifier une annonce/un prix/des photos, répondre à un message, accepter une offre, contre-offrir, supprimer, mettre en pause, réactiver), avec un cycle identique pour chacune (vérifications → préparation → validation utilisateur explicite → exécution via l'extension → résultat → resynchronisation → historique) et un **registre de handlers**, pas un fichier par action. Livré : `src/lib/actions/` (moteur générique, tests Vitest complets), canal `RUN_ACTION` (app → extension), table `action_log` (historique complet : qui/quoi/quand/quel compte/quelle annonce/résultat/durée) qui remplace la conception `sync_jobs` jamais implémentée. Registre d'exécuteurs côté extension **intentionnellement vide** — toute action résout `not_implemented`, zéro donnée écrite sur Vinted. Détail architecture dans [ARCHITECTURE.md](ARCHITECTURE.md) §4.6, canal extension dans [EXTENSION.md](EXTENSION.md) §5/§6.0. Sous-phases (chacune ajoute une entrée `ActionDefinition` au registre existant, jamais une nouvelle architecture) :
+   - 3.1 **Publication** — pas commencée
+   - 3.2 **Modification** — pas commencée
+   - 3.3 **Republication** — pas commencée
+   - 3.4 **Messages** — pas commencée
+   - 3.5 **Offres** — pas commencée
+   - 3.6 **Notifications** — pas commencée
+   - 3.7 **Automatisations assistées** — pas commencée
+4. **Republication** — pas commencée : moteur de republication piloté par les recommandations produites en Phase 2 (ex. "12 annonces prioritaires à republier"), validation utilisateur puis exécution par l'extension, via l'Action Engine (Phase 3).
 5. **Messages** — pas commencée : conversations Vinted visibles dans ResellOS, réponses proposées, jamais envoyées automatiquement.
 6. **Offres** — pas commencée : recevoir/accepter/refuser/contre-proposer, toujours validé par l'utilisateur.
 7. **Notifications** — pas commencée : nouveau favori/offre/message/vente/réservation, perte de visibilité, annonce inactive, republication recommandée.
