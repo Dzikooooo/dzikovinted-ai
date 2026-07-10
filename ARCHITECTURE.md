@@ -279,11 +279,13 @@ Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md).
 |---|---|---|
 | Frontend (`src/lib/supabase.ts`) | `VITE_SUPABASE_ANON_KEY` | Toutes les opérations CRUD sur les données de l'utilisateur connecté, filtrées par RLS (`auth.uid() = user_id`) |
 | `action_log`/`action_log_entries` (Action Engine, §4.6/§4.7) | `VITE_SUPABASE_ANON_KEY` (frontend uniquement) + canal Realtime | Insert/update depuis `useActionEngine.ts` uniquement — l'extension ne touche pas ces tables, voir EXTENSION.md. Lu en temps réel par le Centre des Actions via Realtime (§4.7) |
-| Edge function `analyze-clothing` | `SUPABASE_ANON_KEY` + JWT utilisateur transmis | Vérifie l'identité de l'appelant avant tout traitement, pas d'accès élevé |
+| Edge function `analyze-clothing` | `SUPABASE_ANON_KEY` + JWT utilisateur transmis | Vérifie l'identité de l'appelant avant tout traitement, pas d'accès élevé. **Depuis le 2026-07-11 (P0.1) : applique aussi le quota côté serveur** — réserve un crédit (`decrement_credit`) avant d'appeler Gemini si le plan est `free`, rembourse (`refund_credit`) si Gemini échoue, incrémente `usage` (`increment_usage`) seulement après succès. Le client ne décide plus jamais lui-même s'il a le droit de consommer un crédit |
 | `scripts/vinted-scan.ts` | `SUPABASE_SERVICE_ROLE_KEY` | Bypass RLS — nécessaire car le scan tourne hors session utilisateur (cron), lit `watchlist` et écrit `market_opportunities` pour tous les utilisateurs |
 | Trigger `handle_new_user()` | interne Postgres | Crée automatiquement une ligne `profiles` à l'inscription (`auth.users` → `profiles`) |
 
 **Règle impérative** : tout changement de schéma passe par une migration versionnée (`supabase/migrations/`) + `npx supabase db push`, jamais par une modification directe dans le SQL Editor du dashboard. Une dérive de ce type s'est déjà produite (policies RLS non versionnées trouvées en prod, dont une faille de sécurité réelle) — voir DATABASE.md pour le détail et la procédure de vérification (`supabase db query --linked`, `supabase db advisors --linked`).
+
+**Principe pour toute donnée qui décide de ce que le client a le droit de faire (plan, crédits, abonnement, limites)** : RLS seule ne suffit pas — elle protège les *lignes* (quel utilisateur peut toucher quelle ligne), pas les *colonnes* (quelles valeurs il peut y écrire). Ces colonnes doivent avoir leur `UPDATE` révoqué pour `authenticated` au niveau colonne et n'être modifiables que par une RPC `SECURITY DEFINER` vérifiant `auth.uid()`, ou par un futur webhook Stripe en `service_role`. Confirmé nécessaire en pratique le 2026-07-11 : `profiles.plan`/`credits` étaient modifiables directement par n'importe quel client authentifié avant ce correctif (P0.1) — détail complet, y compris un piège Postgres rencontré en l'appliquant (`REVOKE` colonne par colonne inefficace contre un `GRANT` accordé au niveau table), dans [DATABASE.md](DATABASE.md).
 
 ## 6. Fonctionnalités existantes
 

@@ -20,6 +20,13 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  // Declares en dehors du try pour rester visibles dans le catch : si une
+  // erreur survient apres la reservation d'un credit (decrement_credit),
+  // le catch doit pouvoir le rembourser (refund_credit) avant de repondre.
+  let supabase: ReturnType<typeof createClient> | null = null;
+  let userId: string | null = null;
+  let creditReserved = false;
+
   try {
     const authHeader = req.headers.get("Authorization");
 
@@ -30,7 +37,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const supabase = createClient(
+    supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       {
@@ -50,6 +57,8 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    userId = user.id;
+
     const {
       image_urls,
       gemini_key,
@@ -65,9 +74,49 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Quota serveur : seul le plan free est limite en credits (pro/team =
+    // illimite). Duplique de PLAN_LIMITS (src/lib/types.ts) -- pas d'import
+    // cross-runtime possible entre Vite (src/) et Deno (supabase/functions/).
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return new Response(JSON.stringify({ error: "Profil introuvable" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const isMetered = profile.plan === "free";
+
+    if (isMetered) {
+      const { error: reserveError } = await supabase.rpc("decrement_credit", {
+        p_user_id: user.id,
+      });
+
+      if (reserveError) {
+        const status = reserveError.message?.includes("insufficient_credits") ? 402 : 500;
+        return new Response(
+          JSON.stringify({
+            error:
+              status === 402
+                ? "Tu as atteint ta limite de credits. Passe au plan Pro pour continuer."
+                : "Impossible de verifier tes credits pour le moment.",
+          }),
+          { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      creditReserved = true;
+    }
+
     const apiKey = gemini_key || Deno.env.get("GEMINI_API_KEY");
 
     if (!apiKey) {
+      if (creditReserved) await supabase.rpc("refund_credit", { p_user_id: user.id });
       return new Response(
         JSON.stringify({
           error: "GEMINI_API_KEY manquante. Impossible de générer une annonce réelle.",
@@ -153,6 +202,7 @@ Tous les textes doivent être en français correct.
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
 
+      if (creditReserved) await supabase.rpc("refund_credit", { p_user_id: user.id });
       return new Response(
         JSON.stringify({
           error: `Gemini API error (${geminiRes.status}): ${errText.slice(0, 300)}`,
@@ -168,6 +218,7 @@ Tous les textes doivent être en français correct.
     const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!content) {
+      if (creditReserved) await supabase.rpc("refund_credit", { p_user_id: user.id });
       return new Response(JSON.stringify({ error: "Empty response from Gemini" }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -176,11 +227,24 @@ Tous les textes doivent être en français correct.
 
     const listing = JSON.parse(content);
 
+    const month = new Date().toISOString().slice(0, 7);
+    const { error: usageErr } = await supabase.rpc("increment_usage", {
+      p_user_id: user.id,
+      p_month: month,
+    });
+    if (usageErr) console.error("increment_usage error:", usageErr);
+
     return new Response(JSON.stringify({ listing }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
+
+    if (creditReserved && supabase && userId) {
+      await supabase.rpc("refund_credit", { p_user_id: userId }).catch((e: unknown) =>
+        console.error("refund_credit failed during error handling:", e)
+      );
+    }
 
     return new Response(JSON.stringify({ error: message }), {
       status: 500,

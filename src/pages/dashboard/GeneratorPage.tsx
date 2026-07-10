@@ -54,20 +54,14 @@ export default function GeneratorPage() {
       setEditForm({ ...generated });
       setStep('result');
 
-      if (user) {
-        const month = new Date().toISOString().slice(0, 7);
-        const { error: usageErr } = await supabase.rpc('increment_usage', { p_user_id: user.id, p_month: month });
-        if (usageErr) console.error('increment_usage error:', usageErr);
-
-        if (limit !== null) {
-          const { error: creditErr } = await supabase.rpc('decrement_credit', { p_user_id: user.id });
-          if (creditErr) console.error('decrement_credit error:', creditErr);
-          await refreshProfile();
-        }
-      }
+      // Le debit du credit et l'incrementation du compteur d'usage sont
+      // desormais geres cote serveur par la fonction Edge analyze-clothing
+      // (reservation atomique avant l'appel Gemini, remboursement si echec)
+      // -- le client ne fait plus que rafraichir le solde affiche.
+      if (user) await refreshProfile();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Une erreur est survenue';
-      console.error('Generation failed (credits NOT decremented):', msg);
+      console.error('Generation failed:', msg);
       setError(msg);
       setStep('upload');
     }
