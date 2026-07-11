@@ -49,6 +49,78 @@ async function writeTerminal(
   }
 }
 
+interface ObservationRow {
+  watchlist_id: string;
+  vinted_url: string;
+  brand: string;
+  category: string;
+  price: number;
+  favourites: number;
+}
+
+// Taille de lot pour l'insertion de l'historique (market_price_observations).
+// Un insert multi-lignes Postgres est atomique : une seule ligne invalide
+// (contrainte violee, valeur inattendue) fait echouer tout le lot d'un coup,
+// y compris les lignes valides. Avec ~3000-4000 lignes par scan (21
+// recherches x ~150-250 annonces), un seul insert géant maximise le risque
+// qu'une anomalie ponctuelle (ex. NaN serialise en null par JSON.stringify,
+// voir DATABASE.md) fasse perdre TOUT l'historique du scan sans que la
+// vraie ligne fautive soit identifiable. Des lots de 500 limitent le degat
+// a un lot et permettent de logger precisement lequel echoue.
+const OBSERVATION_INSERT_BATCH_SIZE = 500;
+
+// Diagnostic explicite (2026-07-12) : un scan reel a produit 214
+// opportunites correctement enregistrees mais 0 ligne dans
+// market_price_observations, sans exception ni crash visible - preuve que
+// l'echec est soit silencieux (erreur Supabase non assez detaillee dans le
+// log), soit que ce bloc n'etait pas atteint avec des lignes a inserer.
+// Cette fonction rend les deux hypotheses immediatement verifiables au
+// prochain scan : elle logue explicitement le nombre de lignes AVANT
+// tentative (jamais "rien" si le tableau est vide), puis le resultat
+// complet (succes ou detail integral de l'erreur Postgres/PostgREST :
+// message, code, details, hint) pour chaque lot.
+async function insertObservations(rows: ObservationRow[]): Promise<void> {
+  console.log(`[observations] ${rows.length} ligne(s) a inserer dans market_price_observations`);
+
+  if (rows.length === 0) {
+    console.log("[observations] Aucune ligne a inserer (observationRows vide) - rien a faire.");
+    return;
+  }
+
+  let totalInserted = 0;
+  let totalFailed = 0;
+
+  for (let i = 0; i < rows.length; i += OBSERVATION_INSERT_BATCH_SIZE) {
+    const batch = rows.slice(i, i + OBSERVATION_INSERT_BATCH_SIZE);
+    const batchNumber = Math.floor(i / OBSERVATION_INSERT_BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(rows.length / OBSERVATION_INSERT_BATCH_SIZE);
+
+    const { error, status, statusText } = await supabase
+      .from("market_price_observations")
+      .insert(batch);
+
+    if (error) {
+      totalFailed += batch.length;
+      console.error(
+        `[observations] ECHEC lot ${batchNumber}/${totalBatches} (${batch.length} lignes) - ` +
+          `HTTP ${status} ${statusText} - message="${error.message}" code="${error.code}" ` +
+          `details="${error.details}" hint="${error.hint}"`
+      );
+      console.error(
+        `[observations] Exemple de ligne du lot en echec (premiere ligne) :`,
+        JSON.stringify(batch[0])
+      );
+    } else {
+      totalInserted += batch.length;
+      console.log(`[observations] Lot ${batchNumber}/${totalBatches} OK (${batch.length} lignes)`);
+    }
+  }
+
+  console.log(
+    `[observations] Bilan final : ${totalInserted}/${rows.length} lignes inserees, ${totalFailed} en echec`
+  );
+}
+
 function normalize(str: string) {
   return str
     .toLowerCase()
@@ -205,14 +277,7 @@ async function main() {
     // noter quoi que ce soit - impossible en mono-passe scrape+score comme
     // avant.
     const perSearchResults: { watch: WatchlistRow; items: ScrapedItem[] }[] = [];
-    const observationRows: {
-      watchlist_id: string;
-      vinted_url: string;
-      brand: string;
-      category: string;
-      price: number;
-      favourites: number;
-    }[] = [];
+    const observationRows: ObservationRow[] = [];
 
     for (let i = 0; i < watchlistRows.length; i++) {
       const watch = watchlistRows[i];
@@ -224,7 +289,18 @@ async function main() {
       const items = await scanSearch(page, search);
       perSearchResults.push({ watch, items });
 
+      let invalidPriceCount = 0;
       for (const item of items) {
+        // Garde-fou explicite : JSON.stringify(NaN) devient silencieusement
+        // `null`, ce qui violerait la contrainte `price not null` et ferait
+        // echouer TOUT le lot d'insertion (pas seulement cette ligne) sans
+        // message clair - voir insertObservations(). On ecarte la ligne
+        // invalide ici, a la source, plutot que de la laisser polluer un
+        // lot entier.
+        if (!Number.isFinite(item.price)) {
+          invalidPriceCount++;
+          continue;
+        }
         observationRows.push({
           watchlist_id: watch.id,
           vinted_url: item.url,
@@ -233,6 +309,11 @@ async function main() {
           price: item.price,
           favourites: item.favourites,
         });
+      }
+      if (invalidPriceCount > 0) {
+        console.error(
+          `[observations] ${invalidPriceCount} annonce(s) écartée(s) pour "${search}" (prix invalide, non fini)`
+        );
       }
     }
 
@@ -308,16 +389,7 @@ async function main() {
 
     await logProgress("saving", "Enregistrement des résultats…");
 
-    if (observationRows.length > 0) {
-      const { error: obsInsertError } = await supabase
-        .from("market_price_observations")
-        .insert(observationRows);
-      if (obsInsertError) {
-        // Echec doux : l'historique est un enrichissement, pas la sortie
-        // principale du scan - ne bloque jamais l'ecriture des opportunites.
-        console.error("OBSERVATIONS INSERT ERROR (continue) :", obsInsertError);
-      }
-    }
+    await insertObservations(observationRows);
 
     const { error: insertError } = await supabase
       .from("market_opportunities")
