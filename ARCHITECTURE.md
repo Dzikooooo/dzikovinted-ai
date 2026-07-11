@@ -373,6 +373,22 @@ Le scan relancé après le correctif ci-dessus a réussi et enregistré 214 oppo
 - **Correctifs appliqués** (`scripts/vinted-scan.ts`) : (1) garde-fou à la source — une ligne au prix non fini (`!Number.isFinite`) est désormais écartée avant d'entrer dans `observationRows`, avec un `console.error` dédié ; (2) l'insertion est découpée en lots de 500 lignes (`insertObservations()`) au lieu d'un seul appel géant — une anomalie dans un lot ne bloque plus les autres ; (3) chaque lot logue explicitement son résultat (succès avec compte, ou échec avec `message`/`code`/`details`/`hint` complets de l'erreur Postgres/PostgREST, plus un exemple de ligne) ; (4) le nombre de lignes à insérer est toujours logué avant tentative, y compris quand il est nul.
 - **Prochain scan réel** : ces logs donneront une réponse univoque (bilan par lot + détail d'erreur complet si échec persistant), sans nécessiter de nouvelle hypothèse.
 
+### 4.8.6 Cause réelle confirmée (2026-07-12) — timeout Playwright non rattrapé, pas un problème d'insertion
+
+Le scan suivant (commit `b63319d`) a de nouveau laissé `market_opportunities` **et** `market_price_observations` vides — mais cette fois avec une vraie erreur visible dans le log GitHub Actions, fournie par l'utilisateur : `page.goto: Timeout 30000ms exceeded waiting until "networkidle"`, levée dans `scanSearch` (une recherche watchlist sur 21). L'hypothèse `4.8.5` (sous-évaluation extrême faisant échouer un lot d'insertion) n'était donc **pas** la cause réelle sur ce run précis — elle reste une vraie amélioration (garde-fou légitime, corrige un vrai risque), mais le vrai problème était en amont : le scraping lui-même n'a jamais terminé.
+
+**Deux défauts distincts, réels, confirmés :**
+
+1. **`waitUntil: "networkidle"` n'est pas un critère fiable sur Vinted** — la page ne devient jamais "silencieuse" niveau réseau (tracking, analytics, requêtes en arrière-plan continues), donc `page.goto` attend jusqu'au timeout (30s) même quand la page est parfaitement utilisable, et échoue par pur artefact du critère d'attente choisi, pas d'un vrai problème réseau.
+2. **Aucune recherche isolée + aucun code de sortie non nul** : une erreur non rattrapée dans `scanSearch` remontait jusqu'au `catch` global de `main()`, qui journalisait l'erreur puis se terminait normalement (code de sortie `0`, faute d'un `process.exitCode`/`process.exit()` explicite). Conséquence directe : **une seule recherche en échec faisait avorter tout le scan** (aucune des 20 autres recherches n'était exploitée, aucune écriture n'avait lieu), tout en laissant GitHub Actions rapporter "Success" — la pire combinaison possible pour la détection de ce type d'incident.
+
+**Correctifs appliqués** (`scripts/vinted-scan.ts`) :
+
+- `page.goto` utilise désormais `waitUntil: "domcontentloaded"` (signal de chargement réel, pas de silence réseau) suivi d'une attente explicite du sélecteur des cartes d'annonces (`waitForSelector`, 10s) — un vrai 0 résultat (sélecteur absent) est un état valide, distinct d'un échec de navigation, et n'est jamais confondu avec une erreur.
+- `gotoWithRetry()` : 3 tentatives par navigation avec un backoff croissant (2s, 4s), avant d'abandonner définitivement cette navigation.
+- Chaque recherche watchlist est désormais isolée dans son propre `try/catch` (`main()`, passe 1) : un échec définitif (après les 3 tentatives) journalise la recherche en échec et passe à la suivante — `perSearchResults`/`observationRows` ne contiennent que les recherches réussies, mais le reste du pipeline (passe 2, `insertObservations`, upsert `market_opportunities`) s'exécute normalement dessus. Le nombre de recherches ignorées est journalisé (résumé global) et inclus dans `result_payload.failedSearches` du succès terminal.
+- `process.exitCode = 1` ajouté à **tous** les chemins d'erreur fatale (échec `DELETE`, échec lecture `watchlist`, échec upsert `market_opportunities`, catch global) — `process.exitCode` plutôt que `process.exit()` pour laisser Node terminer les écritures asynchrones (`writeTerminal`) avant de quitter. GitHub Actions reflète désormais fidèlement un scan qui a réellement échoué.
+
 ### 4.8.2 Audit des pondérations — chaque critère, son poids, sa justification
 
 | Critère | Fichier | Poids | Justification |

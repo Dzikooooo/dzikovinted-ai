@@ -147,6 +147,44 @@ function isRelevant(item: ScrapedItem, search: string) {
 
 const PAGES_PER_SEARCH = 2;
 
+// "networkidle" n'est jamais atteint de façon fiable sur une page Vinted
+// (tracking/analytics en arrière-plan continu) - confirmé en direct le
+// 2026-07-12 : page.goto a expiré après 30s d'attente sur ce critère,
+// interrompant tout le scan (voir insertObservations() plus bas pour le
+// contexte : l'erreur remontait jusqu'au catch global sans faire échouer
+// le job CI). "domcontentloaded" + attente explicite du contenu utile
+// (les cartes d'annonces, ou confirmation d'un vrai 0 résultat) est un
+// signal réel de "page utilisable", pas une heuristique de trafic réseau.
+const NAVIGATION_TIMEOUT_MS = 30000;
+const CONTENT_WAIT_TIMEOUT_MS = 10000;
+const NAVIGATION_RETRIES = 3;
+
+async function gotoWithRetry(page: Page, url: string): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= NAVIGATION_RETRIES; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
+      // 0 résultat réel est un état valide (le sélecteur n'apparaît jamais
+      // sans que ce soit une erreur) - on ignore ce timeout précis, pas les
+      // autres.
+      await page
+        .waitForSelector('[data-testid$="--description-title"]', { timeout: CONTENT_WAIT_TIMEOUT_MS })
+        .catch(() => {});
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[nav] Tentative ${attempt}/${NAVIGATION_RETRIES} échouée pour ${url} : ${message}`);
+      if (attempt < NAVIGATION_RETRIES) {
+        await page.waitForTimeout(2000 * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 async function extractItemsFromPage(page: Page): Promise<ScrapedItem[]> {
   return page.evaluate(() => {
     const titleEls = document.querySelectorAll('[data-testid$="--description-title"]');
@@ -187,9 +225,9 @@ async function scanSearch(page: Page, search: string) {
   const foundItems: ScrapedItem[] = [];
 
   for (let pageNum = 1; pageNum <= PAGES_PER_SEARCH; pageNum++) {
-    await page.goto(
-      `https://www.vinted.fr/catalog?search_text=${encodeURIComponent(search)}&page=${pageNum}`,
-      { waitUntil: "networkidle" }
+    await gotoWithRetry(
+      page,
+      `https://www.vinted.fr/catalog?search_text=${encodeURIComponent(search)}&page=${pageNum}`
     );
     await page.waitForTimeout(4000);
     foundItems.push(...(await extractItemsFromPage(page)));
@@ -254,6 +292,7 @@ async function main() {
     if (deleteError) {
       console.error("DELETE ERROR (aborting, refuse de melanger des donnees perimees) :", deleteError);
       await writeTerminal("error", { errorMessage: "Échec de la mise à jour des opportunités (suppression)." });
+      process.exitCode = 1;
       return;
     }
 
@@ -266,6 +305,7 @@ async function main() {
     if (error) {
       console.error("WATCHLIST ERROR:", error);
       await writeTerminal("error", { errorMessage: "Impossible de lire la liste de surveillance." });
+      process.exitCode = 1;
       return;
     }
 
@@ -278,6 +318,7 @@ async function main() {
     // avant.
     const perSearchResults: { watch: WatchlistRow; items: ScrapedItem[] }[] = [];
     const observationRows: ObservationRow[] = [];
+    const failedSearches: string[] = [];
 
     for (let i = 0; i < watchlistRows.length; i++) {
       const watch = watchlistRows[i];
@@ -286,7 +327,19 @@ async function main() {
       console.log("\nRecherche :", search);
       await logProgress("searching", `Recherche : ${i + 1}/${watchlistRows.length} (${search})`);
 
-      const items = await scanSearch(page, search);
+      // Une recherche isolée (page.goto qui expire malgré les tentatives,
+      // page cassée...) ne doit jamais interrompre tout le scan - les
+      // autres recherches déjà réussies (et celles à venir) restent
+      // exploitées, écrites en base normalement.
+      let items: ScrapedItem[];
+      try {
+        items = await scanSearch(page, search);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[scan] Recherche "${search}" ignorée après échec définitif : ${message}`);
+        failedSearches.push(search);
+        continue;
+      }
       perSearchResults.push({ watch, items });
 
       let invalidPriceCount = 0;
@@ -315,6 +368,12 @@ async function main() {
           `[observations] ${invalidPriceCount} annonce(s) écartée(s) pour "${search}" (prix invalide, non fini)`
         );
       }
+    }
+
+    if (failedSearches.length > 0) {
+      console.error(
+        `[scan] ${failedSearches.length}/${watchlistRows.length} recherche(s) ignorée(s) après échec définitif : ${failedSearches.join(", ")}`
+      );
     }
 
     // Historique recent (fenetre glissante) charge une seule fois pour tout
@@ -427,17 +486,28 @@ async function main() {
     if (insertError) {
       console.error("INSERT ERROR:", insertError);
       await writeTerminal("error", { errorMessage: "Échec de l'enregistrement des opportunités." });
+      process.exitCode = 1;
     } else {
       console.log(`${unique.length} opportunités enregistrées dans Supabase.`);
-      await writeTerminal("success", { resultPayload: { opportunitiesFound: unique.length } });
+      await writeTerminal("success", {
+        resultPayload: { opportunitiesFound: unique.length, failedSearches: failedSearches.length },
+      });
     }
   } finally {
     await browser.close();
   }
 }
 
+// process.exitCode (pas process.exit()) : laisse Node terminer les écritures
+// asynchrones en cours (writeTerminal) avant de quitter, tout en garantissant
+// un code de sortie non nul - sans ça, une erreur non rattrapée ici était
+// bien loguée mais le process se terminait quand même en code 0, donc
+// GitHub Actions rapportait "Success" pour un scan qui avait réellement
+// échoué (voir ARCHITECTURE.md §4.8 : cause réelle du "succès" du run où
+// market_opportunities et market_price_observations sont restées vides).
 main().catch(async (error) => {
   console.error(error);
   const message = error instanceof Error ? error.message : "Le scan a échoué pour une raison inconnue.";
   await writeTerminal("error", { errorMessage: message });
+  process.exitCode = 1;
 });
