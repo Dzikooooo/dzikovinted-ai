@@ -110,6 +110,12 @@ UploadStep (photos, style, retouche) → GeneratorPage (état du flow)
 
 La clé Gemini peut être celle de l'utilisateur (passée dans le body, jamais stockée côté serveur) ou celle du serveur par défaut (`GEMINI_API_KEY` en variable d'environnement de l'edge function).
 
+**Modèle utilisé : `gemini-2.5-flash`** (depuis le 2026-07-11 — voir plus bas). Point d'attention pour toute future modification de `analyze-clothing/index.ts` : c'est un modèle "thinking" par défaut — sans `generationConfig.thinkingConfig: { thinkingBudget: 0 }`, il peut consommer tout `maxOutputTokens` en raisonnement invisible et renvoyer une réponse vide (vérifié en direct, pas une hypothèse). Ne jamais retirer ce paramètre sans re-tester un vrai appel.
+
+**Incident du 2026-07-11 — leçon à ne pas répéter** : le modèle précédent (`gemini-2.0-flash`) a vu son quota niveau gratuit passé à zéro par Google sans que rien dans le code ne le signale — le Générateur IA a probablement échoué sur 100% des appels pendant plus d'un mois avant d'être détecté (lors de l'audit pré-lancement, pas via une alerte). Confirmé par un vrai appel `generateContent` (`429 RESOURCE_EXHAUSTED`, `limit: 0`), pas par la documentation Google seule (qui donnait une info différente et moins précise). Migration validée par un test réel de bout en bout avant déploiement.
+
+**Risque connu, non traité par cette migration** : `GEMINI_API_KEY` tourne sur le niveau **gratuit** de l'API Gemini (confirmé via les métriques d'erreur `_free_tier_`). Deux conséquences : (1) Google peut faire la même chose à `gemini-2.5-flash` sans préavis, comme il vient de le faire à `gemini-2.0-flash` ; (2) les conditions du niveau gratuit autorisent Google à faire réviser les requêtes par des humains et à s'en servir pour améliorer ses produits — contrairement au niveau payant. Passer sur une clé Gemini facturée réglerait les deux, mais n'a pas été demandé dans le cadre de cette migration (portée volontairement limitée au changement de modèle).
+
 ### 4.3 Scan de marché (hors app, asynchrone)
 
 ```

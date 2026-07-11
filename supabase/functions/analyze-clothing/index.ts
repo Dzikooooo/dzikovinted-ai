@@ -169,7 +169,7 @@ Tous les textes doivent être en français correct.
 `;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: {
@@ -194,6 +194,11 @@ Tous les textes doivent être en français correct.
             temperature: 0.4,
             responseMimeType: "application/json",
             maxOutputTokens: 1500,
+            // gemini-2.5-flash est un modele "thinking" par defaut -- sans ce
+            // budget a 0, il peut consommer maxOutputTokens en raisonnement
+            // invisible avant de produire le JSON demande (verifie en direct
+            // le 2026-07-11 : sans thinkingBudget, la reponse revient vide).
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       }
