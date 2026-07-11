@@ -63,7 +63,7 @@ export default function StatsPage() {
   const conditions = Object.entries(conditionCounts).sort(([, a], [, b]) => b - a);
 
   if (loading) return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 bg-surface rounded-2xl animate-pulse" />)}
       </div>
@@ -74,7 +74,7 @@ export default function StatsPage() {
   );
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-black mb-2">Statistiques</h1>
         <p className="text-gray-400 text-sm">Vue d'ensemble de ton activite de revente sur Resell OS.</p>

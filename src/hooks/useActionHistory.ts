@@ -73,6 +73,7 @@ export function useActionHistory(filters: ActionHistoryFilters) {
   const { selectedAccountId } = useVintedAccountFilter();
   const [rows, setRows] = useState<ActionHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -93,8 +94,12 @@ export function useActionHistory(filters: ActionHistoryFilters) {
     const { from } = computePeriodRange(filters.period);
     if (from) query = query.gte('started_at', from);
 
-    const { data, error } = await query;
-    if (!error && data) {
+    const { data, error: queryError } = await query;
+    if (queryError) {
+      console.error(queryError);
+      setError("Impossible de charger l'historique des actions. Réessaie plus tard.");
+    } else {
+      setError(null);
       setRows((data as unknown as RawActionLogRow[]).map(mapRow));
     }
     setLoading(false);
@@ -128,7 +133,7 @@ export function useActionHistory(filters: ActionHistoryFilters) {
       )
     : rows;
 
-  return { rows: filteredRows, loading, refetch: load };
+  return { rows: filteredRows, loading, error, refetch: load };
 }
 
 export interface ActionLogEntryRow {

@@ -7,6 +7,9 @@ import { useActionEngine } from '../../hooks/useActionEngine';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 import PublishConfirmationModal, { type PackageSize } from '../../components/publish/PublishConfirmationModal';
@@ -71,6 +74,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
 
   const [items, setItems] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [sellingItem, setSellingItem] = useState<Listing | null>(null);
@@ -114,7 +118,13 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       query = query.eq('vinted_account_id', selectedAccountId);
     }
     const { data, error } = await query;
-    if (!error) setItems((data ?? []) as Listing[]);
+    if (error) {
+      console.error(error);
+      setLoadError('Impossible de charger le stock. Réessaie plus tard.');
+    } else {
+      setLoadError(null);
+      setItems((data ?? []) as Listing[]);
+    }
     setLoading(false);
   }, [user, selectedAccountId]);
 
@@ -271,13 +281,15 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     item.status !== 'vendu' && Date.now() - new Date(item.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-black mb-1">Stock</h1>
         <p className="text-gray-400 text-sm">
           Le miroir de ton stock — Vinted et ResellOS, une seule source.
         </p>
       </div>
+
+      {loadError && <ErrorBanner message={loadError} className="mb-6" />}
 
       {accounts.length > 0 && (
         <div className="mb-4">
@@ -364,14 +376,14 @@ export default function StockPage({ onViewAction }: StockPageProps) {
 
       {loading ? (
         <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-20 bg-surface rounded-2xl animate-pulse" />)}
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} shape="block" className="h-20" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
-          <Sparkles className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-          <p className="text-gray-400 font-semibold mb-2">Aucun article</p>
-          <p className="text-sm text-gray-600">Ajoute un article depuis le générateur, ou synchronise un compte Vinted.</p>
-        </div>
+        <EmptyState
+          icon={Sparkles}
+          title="Aucun article"
+          description="Ajoute un article depuis le générateur, ou synchronise un compte Vinted."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {filtered.map((item) => {

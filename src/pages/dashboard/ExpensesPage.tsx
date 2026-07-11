@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { useExpenses } from '../../hooks/useExpenses';
 import { StatCard } from '../../components/ui/StatCard';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 const CATEGORIES = [
   'Emballage',
@@ -51,7 +53,7 @@ export default function ExpensesPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black mb-1">Depenses</h1>
@@ -77,13 +79,13 @@ export default function ExpensesPage() {
 
       {loading ? (
         <div className="space-y-3">
-          {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-surface rounded-2xl animate-pulse" />)}
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} shape="block" className="h-16" />)}
         </div>
       ) : expenses.length === 0 ? (
-        <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
-          <p className="text-gray-400 font-semibold mb-2">Aucune depense enregistree</p>
-          <p className="text-sm text-gray-600">Ajoute ta premiere depense pour suivre tes frais.</p>
-        </div>
+        <EmptyState
+          title="Aucune depense enregistree"
+          description="Ajoute ta premiere depense pour suivre tes frais."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {expenses.map((expense) => (

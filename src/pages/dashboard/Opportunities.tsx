@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, ArrowUpRight, Heart, RefreshCw, Search } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Heart, RefreshCw, Search, Sparkles } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 import type { MarketOpportunity, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
 import { StatCard } from "../../components/ui/StatCard";
+import { Skeleton } from "../../components/ui/Skeleton";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { ErrorBanner } from "../../components/ui/ErrorBanner";
 import { useActionEngine } from "../../hooks/useActionEngine";
 import ScanProgressModal from "../../components/opportunities/ScanProgressModal";
 import OpportunityFilterPanel from "../../components/opportunities/OpportunityFilterPanel";
@@ -51,21 +55,29 @@ interface ScanState {
 }
 
 export default function Opportunities({ onViewAction }: OpportunitiesProps) {
+  const { user } = useAuth();
   const [products, setProducts] = useState<MarketOpportunity[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("score");
   const [filters, setFilters] = useState<OpportunityFilters>(EMPTY_FILTERS);
+  const [search, setSearch] = useState("");
+  const [favouriteUrls, setFavouriteUrls] = useState<Set<string>>(new Set());
+  const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [scanState, setScanState] = useState<ScanState | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
 
+  // Le tri se fait desormais cote client (voir sortedProducts) : plus besoin
+  // de refaire un aller-retour reseau a chaque changement de sortBy, exactement
+  // comme tous les autres filtres de cette page qui operent deja sur le
+  // meme jeu de donnees deja charge.
   const loadProducts = useCallback(async () => {
     setLoading(true);
 
     const { data, error } = await supabase
       .from("market_opportunities")
       .select("*")
-      .order(sortBy, { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error(error);
@@ -76,11 +88,57 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
     }
 
     setLoading(false);
-  }, [sortBy]);
+  }, []);
 
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
+
+  // Favoris : market_opportunities est integralement recreee a chaque scan
+  // (voir ARCHITECTURE.md §4.8), une colonne "favori" dessus serait effacee
+  // toutes les ~4h - stockes dans une table dediee cle par vinted_url, pas
+  // par market_opportunities.id qui change a chaque scan.
+  useEffect(() => {
+    if (!user) return;
+    let ignore = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("opportunity_favourites")
+        .select("vinted_url")
+        .eq("user_id", user.id);
+      if (!ignore && !error && data) {
+        setFavouriteUrls(new Set(data.map((row) => row.vinted_url)));
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [user]);
+
+  const toggleFavourite = useCallback(
+    async (vintedUrl: string) => {
+      if (!user) return;
+      const isFavourited = favouriteUrls.has(vintedUrl);
+
+      setFavouriteUrls((prev) => {
+        const next = new Set(prev);
+        if (isFavourited) next.delete(vintedUrl);
+        else next.add(vintedUrl);
+        return next;
+      });
+
+      if (isFavourited) {
+        await supabase
+          .from("opportunity_favourites")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("vinted_url", vintedUrl);
+      } else {
+        await supabase.from("opportunity_favourites").insert({ user_id: user.id, vinted_url: vintedUrl });
+      }
+    },
+    [user, favouriteUrls]
+  );
 
   const isScanning = !!scanState && !scanState.done;
 
@@ -122,6 +180,7 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
     return products.filter((item) => {
       if (filters.category !== "all" && item.category !== filters.category) return false;
       if (filters.brands.length > 0 && (!item.brand || !filters.brands.includes(item.brand))) return false;
@@ -135,9 +194,22 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
         if (item.resale_days_max > filters.maxResaleDays) return false;
       }
       if (filters.riskLevels.length > 0 && (!item.risk_level || !filters.riskLevels.includes(item.risk_level))) return false;
+      if (favouritesOnly && (!item.vinted_url || !favouriteUrls.has(item.vinted_url))) return false;
+      if (query) {
+        const haystack = `${item.title} ${item.brand ?? ""} ${item.category ?? ""}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
       return true;
     });
-  }, [products, filters]);
+  }, [products, filters, favouritesOnly, favouriteUrls, search]);
+
+  const sortedProducts = useMemo(() => {
+    return [...filteredProducts].sort((a, b) => {
+      const aVal = Number(a[sortBy] ?? 0);
+      const bVal = Number(b[sortBy] ?? 0);
+      return bVal - aVal;
+    });
+  }, [filteredProducts, sortBy]);
 
   const stats = useMemo(() => {
     const count = filteredProducts.length;
@@ -196,17 +268,23 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
         </button>
       </div>
 
-      {loadError && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 mb-6 text-sm text-red-300">
-          {loadError}
-        </div>
-      )}
+      {loadError && <ErrorBanner message={loadError} className="mb-6" />}
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <StatCard size="lg" label="Opportunités" value={stats.count} />
         <StatCard size="lg" label="Profit moyen" value={`+${stats.avgProfit}€`} />
         <StatCard size="lg" label="ROI moyen" value={`+${stats.avgRoi}%`} />
         <StatCard size="lg" label="Meilleur deal" value={`+${stats.bestProfit}€`} />
+      </div>
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher une opportunité..."
+          className="w-full bg-surface border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/30 focus:ring-2 focus:ring-neon-500/20"
+        />
       </div>
 
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
@@ -224,6 +302,17 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
               {cat === "all" ? "Toutes" : cat}
             </button>
           ))}
+          <button
+            onClick={() => setFavouritesOnly((v) => !v)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold border transition flex items-center gap-1.5 ${
+              favouritesOnly
+                ? "bg-neon-500 text-black border-neon-500"
+                : "bg-surface-alt text-gray-400 border-white/10 hover:text-white"
+            }`}
+          >
+            <Heart className={`w-3.5 h-3.5 ${favouritesOnly ? "fill-current" : ""}`} />
+            Favoris
+          </button>
         </div>
 
         <div className="flex bg-surface-alt border border-white/10 rounded-xl overflow-hidden">
@@ -238,18 +327,33 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
       <OpportunityFilterPanel filters={filters} onChange={setFilters} availableBrands={availableBrands} />
 
       {loading ? (
-        <div className="bg-surface-alt border border-white/10 rounded-2xl p-10 text-center">
-          <h2 className="text-2xl font-black">Chargement…</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-white/5 overflow-hidden">
+              <Skeleton shape="block" className="h-44 rounded-none" />
+              <div className="p-5 space-y-3">
+                <Skeleton shape="text" className="w-3/4" />
+                <Skeleton shape="text" className="w-1/2" />
+                <Skeleton shape="block" className="h-16" />
+              </div>
+            </div>
+          ))}
         </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="bg-surface-alt border border-white/10 rounded-2xl p-10 text-center">
-          <h2 className="text-2xl font-black">Aucune opportunité</h2>
-          <p className="text-gray-500 mt-2">Lance un scan ou modifie tes filtres.</p>
-        </div>
+      ) : sortedProducts.length === 0 ? (
+        <EmptyState
+          icon={Sparkles}
+          title="Aucune opportunité"
+          description="Lance un scan ou modifie tes filtres."
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
-          {filteredProducts.map((item) => (
-            <OpportunityCard key={item.id} item={item} />
+          {sortedProducts.map((item) => (
+            <OpportunityCard
+              key={item.id}
+              item={item}
+              isFavourited={!!item.vinted_url && favouriteUrls.has(item.vinted_url)}
+              onToggleFavourite={() => item.vinted_url && toggleFavourite(item.vinted_url)}
+            />
           ))}
         </div>
       )}
@@ -276,7 +380,13 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
   );
 }
 
-function OpportunityCard({ item }: { item: MarketOpportunity }) {
+interface OpportunityCardProps {
+  item: MarketOpportunity;
+  isFavourited: boolean;
+  onToggleFavourite: () => void;
+}
+
+function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
   const roi = Number(item.roi || 0);
   const tier = getTier(roi);
   const favourites = item.favourites ?? 0;
@@ -294,12 +404,23 @@ function OpportunityCard({ item }: { item: MarketOpportunity }) {
         <span className={`absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full ${tier.className}`}>
           {tier.label}
         </span>
-        {favourites > 0 && (
-          <span className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-            <Heart className="w-3 h-3 fill-current" />
-            {favourites}
-          </span>
-        )}
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          {favourites > 0 && (
+            <span className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+              <Heart className="w-3 h-3 fill-current" />
+              {favourites}
+            </span>
+          )}
+          <button
+            onClick={onToggleFavourite}
+            aria-label={isFavourited ? "Retirer des favoris" : "Ajouter aux favoris"}
+            className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors ${
+              isFavourited ? "bg-neon-500 text-black" : "bg-black/60 text-white hover:bg-black/80"
+            }`}
+          >
+            <Heart className={`w-3.5 h-3.5 ${isFavourited ? "fill-current" : ""}`} />
+          </button>
+        </div>
       </div>
 
       <div className="p-5">

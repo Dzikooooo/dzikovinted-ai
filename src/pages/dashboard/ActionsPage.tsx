@@ -8,6 +8,9 @@ import type { ActionKind } from '../../lib/actions/types';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import ActionStatusBadge from '../../components/actions/ActionStatusBadge';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../../components/actions/ActionStepTimeline';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 const PERIOD_FILTERS: { key: ActionPeriod; label: string }[] = [
   { key: 'today', label: "Aujourd'hui" },
@@ -58,7 +61,7 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
   const [result, setResult] = useState<'all' | 'success' | 'error'>('all');
   const [selectedActionId, setSelectedActionId] = useState<string | null>(initialSelectedActionId ?? null);
 
-  const { rows, loading } = useActionHistory({ search, period, kind, result });
+  const { rows, loading, error } = useActionHistory({ search, period, kind, result });
   const selectedRow = rows.find((r) => r.id === selectedActionId) ?? null;
 
   const total = rows.length;
@@ -66,13 +69,15 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
   const errorCount = rows.filter((r) => r.status === 'error').length;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-black mb-1">Centre des Actions</h1>
         <p className="text-gray-400 text-sm">
           Tout ce qui s'exécute sur tes comptes Vinted, en direct et dans le temps.
         </p>
       </div>
+
+      {error && <ErrorBanner message={error} className="mb-6" />}
 
       {total > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -147,15 +152,15 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-20 bg-surface rounded-2xl animate-pulse" />
+            <Skeleton key={i} shape="block" className="h-20" />
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-12 text-center">
-          <Activity className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-          <p className="text-gray-400 font-semibold mb-2">Aucune action</p>
-          <p className="text-sm text-gray-600">Publie ou modifie une annonce pour voir l'historique ici.</p>
-        </div>
+        <EmptyState
+          icon={Activity}
+          title="Aucune action"
+          description="Publie ou modifie une annonce pour voir l'historique ici."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {rows.map((row) => (

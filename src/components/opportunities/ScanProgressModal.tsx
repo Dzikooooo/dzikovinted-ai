@@ -2,6 +2,7 @@ import { AlertTriangle, Search } from 'lucide-react';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../actions/ActionStepTimeline';
 import { SCAN_STEP_ORDER, SCAN_STEP_LABELS, isScanStep, type ScanStep } from '../../lib/actions/scanSteps';
 import { useActionLogEntries } from '../../hooks/useActionHistory';
+import { Modal } from '../ui/Modal';
 
 interface ScanProgressModalProps {
   actionId: string | null;
@@ -51,48 +52,46 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
   const isTerminal = done || !!error;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-      <div className="w-full max-w-sm bg-surface border border-white/10 rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-5">
-          <Search className="w-4 h-4 text-neon-500" />
-          <h2 className="text-lg font-black">{error ? 'Échec du scan' : 'Scan en cours'}</h2>
-        </div>
-
-        <ActionStepTimeline rows={buildRows(currentStep, done, error, entries)} />
-
-        {error && (
-          <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300">{error}</p>
-          </div>
-        )}
-
-        {done && !error && (
-          <p className="mt-4 text-sm text-neon-500 font-semibold">
-            {opportunitiesFound === 0
-              ? 'Terminé — aucune opportunité trouvée cette fois.'
-              : `Terminé — ${opportunitiesFound} opportunité${opportunitiesFound === 1 ? '' : 's'} trouvée${opportunitiesFound === 1 ? '' : 's'}.`}
-          </p>
-        )}
-
-        {isTerminal && onViewAction && (
-          <button
-            onClick={onViewAction}
-            className="w-full mt-5 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
-          >
-            Voir dans le Centre des Actions
-          </button>
-        )}
-
-        {isTerminal && (
-          <button
-            onClick={onClose}
-            className="w-full mt-3 bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
-          >
-            Fermer
-          </button>
-        )}
+    <Modal onClose={onClose} dismissible={isTerminal} size="sm">
+      <div className="flex items-center gap-2 mb-5">
+        <Search className="w-4 h-4 text-neon-500" />
+        <h2 className="text-lg font-black">{error ? 'Échec du scan' : 'Scan en cours'}</h2>
       </div>
-    </div>
+
+      <ActionStepTimeline rows={buildRows(currentStep, done, error, entries)} />
+
+      {error && (
+        <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-300">{error}</p>
+        </div>
+      )}
+
+      {done && !error && (
+        <p className="mt-4 text-sm text-neon-500 font-semibold">
+          {opportunitiesFound === 0
+            ? 'Terminé — aucune opportunité trouvée cette fois.'
+            : `Terminé — ${opportunitiesFound} opportunité${opportunitiesFound === 1 ? '' : 's'} trouvée${opportunitiesFound === 1 ? '' : 's'}.`}
+        </p>
+      )}
+
+      {isTerminal && onViewAction && (
+        <button
+          onClick={onViewAction}
+          className="w-full mt-5 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+        >
+          Voir dans le Centre des Actions
+        </button>
+      )}
+
+      {isTerminal && (
+        <button
+          onClick={onClose}
+          className="w-full mt-3 bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
+        >
+          Fermer
+        </button>
+      )}
+    </Modal>
   );
 }

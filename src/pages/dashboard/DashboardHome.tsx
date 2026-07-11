@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
 
 interface DashboardHomeProps {
   onNavigate: (page: DashboardPage) => void;
@@ -22,7 +23,9 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { report: insights } = useInsights();
   const [listings, setListings] = useState<Listing[]>([]);
   const [newOpportunities, setNewOpportunities] = useState(0);
+  const [opportunityStats, setOpportunityStats] = useState({ today: 0, avgRoi: 0, avgProfit: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -31,6 +34,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     (async () => {
       setLoading(true);
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const todayStart = new Date().toISOString().slice(0, 10);
       // `.or(...)` plutot qu'un simple `.neq('vinted_status','deleted')` :
       // un neq seul exclurait aussi les articles jamais lies a Vinted
       // (vinted_status null), pas seulement les annonces reellement
@@ -45,13 +49,38 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         listingsQuery = listingsQuery.eq('vinted_account_id', selectedAccountId);
       }
 
-      const [{ data: allListings }, { count: oppCount }] = await Promise.all([
+      const [
+        { data: allListings, error: listingsError },
+        { count: oppCount, error: oppCountError },
+        { count: oppTodayCount, error: oppTodayError },
+        { data: oppStatsRows, error: oppStatsError },
+      ] = await Promise.all([
         listingsQuery,
         supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
+        supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', todayStart),
+        // market_opportunities est integralement recreee a chaque scan
+        // (~190 lignes) - fetch direct + moyenne cote client, meme
+        // convention que le reste de l'app (Opportunities.tsx), plutot
+        // qu'une agregation PostgREST non deja utilisee ailleurs.
+        supabase.from('market_opportunities').select('roi, profit'),
       ]);
+
+      const firstError = listingsError || oppCountError || oppTodayError || oppStatsError;
       if (!ignore) {
+        if (firstError) {
+          console.error(firstError);
+          setLoadError('Impossible de charger le tableau de bord. Réessaie plus tard.');
+        } else {
+          setLoadError(null);
+        }
         setListings((allListings ?? []) as Listing[]);
         setNewOpportunities(oppCount ?? 0);
+        const rows = oppStatsRows ?? [];
+        setOpportunityStats({
+          today: oppTodayCount ?? 0,
+          avgRoi: rows.length > 0 ? Math.round(rows.reduce((s, r) => s + Number(r.roi || 0), 0) / rows.length) : 0,
+          avgProfit: rows.length > 0 ? Math.round(rows.reduce((s, r) => s + Number(r.profit || 0), 0) / rows.length) : 0,
+        });
         setLoading(false);
       }
     })();
@@ -102,6 +131,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     const agingStock = stockItems.filter(
       (l) => Date.now() - new Date(l.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000
     );
+    const newListingsToday = listings.filter((l) => l.created_at.slice(0, 10) === today).length;
 
     return {
       soldTodayCount: soldToday.length,
@@ -111,6 +141,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       roiMonth,
       stockValue,
       agingStockCount: agingStock.length,
+      newListingsToday,
       recentListings: listings.slice(0, 5),
       hasAnyListing: listings.length > 0,
     };
@@ -144,7 +175,9 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {loadError && <ErrorBanner message={loadError} className="mb-6" />}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
@@ -285,6 +318,32 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             { icon: Sparkles, label: 'Benefice', value: loading ? '-' : `${metrics.profitMonth.toFixed(0)} EUR`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
             { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
             { icon: Package, label: 'Valeur du stock', value: loading ? '-' : `${metrics.stockValue.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
+          ].map(({ icon: Icon, label, value, color, bg }) => (
+            <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
+              <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                <Icon className={`w-4 h-4 ${color}`} />
+              </div>
+              <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
+              <p className="text-[11px] text-gray-500">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Marché */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-sm text-gray-300">Marché</h2>
+          <button onClick={() => onNavigate('opportunities')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+            Voir les opportunités <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { icon: Search, label: 'Opportunités aujourd\'hui', value: loading ? '-' : opportunityStats.today.toString(), color: 'text-blue-400', bg: 'bg-blue-400/10' },
+            { icon: TrendingUp, label: 'ROI moyen (marché)', value: loading ? '-' : `${opportunityStats.avgRoi} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
+            { icon: Sparkles, label: 'Bénéfice estimé (marché)', value: loading ? '-' : `${opportunityStats.avgProfit} EUR`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
+            { icon: Package, label: 'Nouvelles annonces (stock)', value: loading ? '-' : metrics.newListingsToday.toString(), color: 'text-gray-100', bg: 'bg-white/5' },
           ].map(({ icon: Icon, label, value, color, bg }) => (
             <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
               <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>

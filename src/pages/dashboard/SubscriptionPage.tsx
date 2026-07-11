@@ -39,7 +39,7 @@ export default function SubscriptionPage() {
   const currentPlan = profile?.plan ?? 'free';
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-black mb-2">Abonnement</h1>
         <p className="text-gray-400 text-sm">Tu es sur le plan <span className={`font-bold ${currentPlan === 'pro' || currentPlan === 'team' ? 'text-neon-500' : 'text-gray-300'}`}>{currentPlan.toUpperCase()}</span>.</p>

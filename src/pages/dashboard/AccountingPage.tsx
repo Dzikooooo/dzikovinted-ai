@@ -5,6 +5,8 @@ import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContex
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
 
 const VAT_RATE = 0.2;
 const URSSAF_RATE = 0.123;
@@ -23,6 +25,7 @@ export default function AccountingPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>('month');
 
   useEffect(() => {
@@ -33,10 +36,17 @@ export default function AccountingPage() {
       if (selectedAccountId !== 'all') {
         listingsQuery = listingsQuery.eq('vinted_account_id', selectedAccountId);
       }
-      const [{ data: l }, { data: e }] = await Promise.all([
+      const [{ data: l, error: listingsError }, { data: e, error: expensesError }] = await Promise.all([
         listingsQuery,
         supabase.from('expenses').select('category, amount, expense_date'),
       ]);
+      const firstError = listingsError || expensesError;
+      if (firstError) {
+        console.error(firstError);
+        setLoadError('Impossible de charger la comptabilité. Réessaie plus tard.');
+      } else {
+        setLoadError(null);
+      }
       setListings((l ?? []) as Listing[]);
       setExpenses((e ?? []) as ExpenseRow[]);
       setLoading(false);
@@ -79,7 +89,7 @@ export default function AccountingPage() {
   const maxExpense = stats.sortedExpenses[0]?.[1] ?? 1;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black mb-1">Comptabilite</h1>
@@ -101,9 +111,11 @@ export default function AccountingPage() {
         </div>
       </div>
 
+      {loadError && <ErrorBanner message={loadError} className="mb-6" />}
+
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 bg-surface rounded-2xl animate-pulse" />)}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} shape="block" className="h-28" />)}
         </div>
       ) : (
         <>

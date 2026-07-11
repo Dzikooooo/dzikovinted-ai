@@ -4,6 +4,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
 import AccountAvatar from '../../components/ui/AccountAvatar';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import type { SettingsTab, VintedAccount } from '../../lib/types';
 
 interface SettingsPageProps {
@@ -268,29 +271,18 @@ function AccountsManager() {
 
   return (
     <div className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-xl border text-sm bg-red-500/10 border-red-500/20 text-red-400">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner message={error} />}
 
       {loading ? (
         <div className="space-y-2">
-          {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-16 bg-surface rounded-2xl animate-pulse" />)}
+          {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} shape="block" className="h-16" />)}
         </div>
       ) : accounts.length === 0 ? (
-        <div className="bg-surface border border-white/5 rounded-2xl p-10 text-center space-y-3">
-          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mx-auto">
-            <Users className="w-5 h-5 text-gray-500" />
-          </div>
-          <div>
-            <h2 className="font-bold text-sm">Aucun compte Vinted connecté</h2>
-            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-              Connecte l'extension ResellOS depuis « Compte Vinted » pour qu'un compte apparaisse ici automatiquement.
-            </p>
-          </div>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="Aucun compte Vinted connecté"
+          description="Connecte l'extension ResellOS depuis « Compte Vinted » pour qu'un compte apparaisse ici automatiquement."
+        />
       ) : (
         <div className="bg-surface border border-white/5 rounded-2xl divide-y divide-white/5">
           {accounts.map((account) => (
