@@ -49,10 +49,14 @@ src/
       __tests__/                            tests Vitest (fixtures synthétiques, aucun mock Supabase)
 
 scripts/                  hors bundle frontend, exécuté par Node/tsx
-  vinted-scan.ts             scraping Playwright + orchestration du scan
-  market-price.ts             calcul du prix de marché (médiane)
-  market-engine.ts            calcul profit/ROI/score à partir d'un item scrapé
-  types.ts                    types partagés entre les scripts (ScrapedItem, AnalyzedItem...)
+  vinted-scan.ts             scraping Playwright (2 passes) + orchestration du scan
+  opportunity-engine/         moteur de scoring multi-critères (2026-07-12), voir §4.8
+    types.ts / constants.ts / math.ts    contrats, seuils nommés, helpers purs
+    context.ts                            buildScanContext()/buildSearchContext() : agrégats + historique
+    priceModel.ts / scoring.ts / confidence.ts / risk.ts / resaleEstimate.ts / explanation.ts
+    engine.ts                             analyzeOpportunity() : point d'entrée unique
+    __tests__/                            tests Vitest (fixtures synthétiques)
+  types.ts                    types partagés entre les scripts (ScrapedItem, WatchlistItem)
   audit-project.mjs            script d'audit schéma<->code (voir .claude/skills/project-audit/)
 
 supabase/
@@ -116,21 +120,32 @@ La clé Gemini peut être celle de l'utilisateur (passée dans le body, jamais s
 
 **Risque connu, non traité par cette migration** : `GEMINI_API_KEY` tourne sur le niveau **gratuit** de l'API Gemini (confirmé via les métriques d'erreur `_free_tier_`). Deux conséquences : (1) Google peut faire la même chose à `gemini-2.5-flash` sans préavis, comme il vient de le faire à `gemini-2.0-flash` ; (2) les conditions du niveau gratuit autorisent Google à faire réviser les requêtes par des humains et à s'en servir pour améliorer ses produits — contrairement au niveau payant. Passer sur une clé Gemini facturée réglerait les deux, mais n'a pas été demandé dans le cadre de cette migration (portée volontairement limitée au changement de modèle).
 
-### 4.3 Scan de marché (hors app, asynchrone)
+### 4.3 Scan de marché (hors app, asynchrone) + scan à la demande (Action Engine)
 
 ```
-GitHub Actions (cron 4h) OU npm run scan (local)
+GitHub Actions (cron 4h, OU workflow_dispatch déclenché à la demande) OU npm run scan (local)
   → scripts/vinted-scan.ts (Playwright, clé service_role — bypass RLS)
     → lit `watchlist` (recherches à surveiller)
-    → scrape 2 pages de résultats Vinted par recherche
-    → market-price.ts : prix de marché = médiane des annonces trouvées
-    → market-engine.ts : calcule profit, ROI, score
+    → Passe 1 : scrape 2 pages de résultats Vinted par recherche (aucun score encore)
+    → charge l'historique récent (`market_price_observations`, fenêtre glissante)
+    → Passe 2 : opportunity-engine/ (voir §4.8) analyse chaque item avec le contexte
+      complet du batch + l'historique, applique le filtre de sélectivité score/confiance
+    → insère les items pertinents dans `market_price_observations` (append-only)
     → ré-écrit entièrement `market_opportunities`
   → Opportunities.tsx (lecture seule côté app, clé anon) affiche le résultat
   → DashboardHome.tsx compte les opportunités des dernières 24h pour le cockpit
 ```
 
-Ce flux ne passe jamais par le frontend applicatif — c'est un job batch complètement découplé de la session utilisateur.
+Ce flux ne passe jamais par le frontend applicatif — c'est un job batch complètement découplé de la session utilisateur, **sauf** quand il est déclenché à la demande (bouton "Scanner maintenant", voir ci-dessous), auquel cas il journalise sa propre progression pour un utilisateur donné avant de redevenir un job batch anonyme.
+
+**`scan_market` — première action du registre à ne pas passer par l'extension** (`src/lib/actions/handlers/scanMarket.ts`). Historique de la décision, pour ne pas la reproduire à l'identique sur une future action :
+
+1. **Tentative rejetée par vérification réelle, pas par précaution théorique** : appeler directement l'API JSON catalogue de Vinted (`GET /api/v2/catalog/items`, découverte par inspection réseau live) depuis l'Edge Function elle-même, sans Playwright. Deux échecs confirmés en direct le 2026-07-11 : un `fetch()` nu bloqué (`403`, niveau Cloudflare), puis — même avec des en-têtes de navigateur réalistes et un vrai cookie de session bootstrap (9 cookies, `200 OK`) — l'API catalogue rejette quand même (`401 Jeton d'authentification invalide`). Cause identifiée : Vinted émet son jeton de session anonyme via du JavaScript exécuté au chargement de page, pas via un simple en-tête `Set-Cookie` statique — seul un vrai navigateur (ou Playwright, qui en simule un) peut l'obtenir. Ce n'est pas contournable par du réglage d'en-têtes.
+2. **Architecture retenue** : `scan_market.execute()` (au lieu de `deps.runViaExtension`) appelle `supabase/functions/scan-market/index.ts`, qui ne fait plus qu'un **déclenchement** — un appel à l'API GitHub (`POST .../actions/workflows/scan-market.yml/dispatches`, jeton `GITHUB_ACTIONS_TOKEN` en secret Edge Function) qui lance immédiatement `scripts/vinted-scan.ts` (déjà éprouvé en production via le cron) au lieu d'attendre la prochaine fenêtre de 4h. Le workflow reçoit `action_id` en `workflow_dispatch.inputs` (`.github/workflows/scan-market.yml`) et `scripts/vinted-scan.ts` journalise sa propre progression (`action_log_entries`, étapes `connecting`/`searching`/`analyzing`/`ranking`/`saving`) et écrit le statut terminal directement, avec la clé `service_role` qu'il a déjà pour `market_opportunities`/`watchlist` — **seulement si `ACTION_ID` est fourni**, sinon comportement du cron strictement inchangé.
+3. **Attente côté client** : `execute()` retourne dès que le déclenchement GitHub réussit (quelques centaines de ms), puis attend le statut terminal via un abonnement Realtime sur `action_log` (même mécanisme que le Centre des Actions), avec un délai maximal de 6 minutes (marge large sur le démarrage de runner + installation de Playwright + scan réel) avant de renvoyer une erreur explicite si dépassé — sans jamais prétendre à un succès fictif.
+4. **Conséquence architecturale** : `ActionDefinition.execute` a dû recevoir `historyId` en 4ᵉ paramètre (`src/lib/actions/types.ts`/`engine.ts`) — absent jusqu'ici car seul `deps.runViaExtension` en avait besoin. Premier ajout générique de ce type depuis la création de l'Action Engine.
+
+`ScanProgressModal.tsx` (mirror de `PublishProgressModal.tsx`) et `scanSteps.ts` (mirror de `publishSteps.ts`) suivent exactement le même patron déjà établi pour la publication — vocabulaire d'étapes propre à l'action, rendu générique partagé (`ActionStepTimeline`), aucune modification du système générique `ActionStep`/`ACTION_STEP_ORDER`.
 
 ### 4.4 Stock et comptabilité
 
@@ -164,8 +179,8 @@ listings + vinted_accounts + listing_metric_snapshots (chargés par useInsights.
   → scoring.ts::computeScores()      score 0-100 par annonce, additif et transparent (base 50 +
                                        deltas nommés : vues/favoris vs médiane active, âge, ROI,
                                        performance marque/catégorie relative) — même philosophie
-                                       que scripts/market-engine.ts::calculateScore(), appliquée
-                                       à l'inventaire possédé plutôt qu'aux opportunités d'achat
+                                       que scripts/opportunity-engine/ (§4.8), appliquée à
+                                       l'inventaire possédé plutôt qu'aux opportunités d'achat
   → recommendations.ts / alerts.ts    registres de règles : chaque règle est une fonction pure
                                        nommée (listing, ctx) => Résultat | null, collectées dans
                                        un tableau et exécutées génériquement — ajouter une règle
@@ -277,6 +292,102 @@ useActionEngine.ts (seul point de journalisation - aucun changement à engine.ts
 
 **Point d'enregistrement unique pour toute future action** : `src/lib/actions/labels.ts` (`ACTION_KIND_LABELS`, `ACTION_KIND_ICONS`, `ACTION_STEP_LOG_MESSAGES`) — une nouvelle `ActionKind` n'a besoin que d'une entrée ici pour s'afficher correctement, jamais de changement dans `ActionsPage.tsx`. Test de garde (`labels.test.ts`) qui échoue si une clé manque.
 
+### 4.8 Moteur d'opportunités (`scripts/opportunity-engine/`, 2026-07-12)
+
+Remplace `scripts/market-engine.ts`/`market-price.ts` (score arbitraire, aucune mémoire entre scans, confiance = simple compte d'échantillon). **Miroir volontaire, non partagé en code**, de la convention déjà établie par `src/lib/insights/` (§4.5) : scoring additif via `add(label, delta)`, `breakdown` explicable, registre de facteurs en tableaux de fonctions, constantes nommées et justifiées, philosophie "l'absence de signal n'est pas un signal négatif". Non partagé car ce module tourne côté Node (Playwright, `scripts/`), `insights/` côté navigateur — deux frontières de build distinctes dans ce projet.
+
+Différence structurelle avec `insights/` : le score n'est **pas recalculé côté navigateur**. `scripts/vinted-scan.ts` l'exécute une fois par scan et persiste directement le résultat dans `market_opportunities` — `Opportunities.tsx` ne fait que lire des colonnes déjà calculées.
+
+```
+market_price_observations (nouvelle table, append-only, même convention RLS
+que listing_metric_snapshots) : une ligne par item pertinent scrapé à chaque
+scan, que l'item devienne ou non une opportunité — c'est ce qui donne enfin
+une mémoire dans le temps, absente avant cette table (market_opportunities
+étant intégralement recréée à chaque scan).
+
+opportunity-engine/context.ts
+  buildScanContext()   : médiane de favoris par catégorie (tout le batch),
+                          première apparition connue par URL, stats de prix
+                          historiques + échantillons de "disparition" par
+                          recherche (brand+catégorie) - null en dessous des
+                          seuils minimums (constants.ts), jamais calculé sur
+                          un échantillon insuffisant
+  buildSearchContext() : contexte propre à une recherche watchlist
+
+opportunity-engine/engine.ts::analyzeOpportunity()
+  → priceModel.ts   : médiane du batch (comportement historique préservé),
+                       blend avec l'historique + dispersion (coefficient de
+                       variation) quand disponibles
+  → scoring.ts      : ROI, profit, demande (relative à la catégorie, plus de
+                       paliers plats codés en dur), priorité watchlist
+                       (watchlist.priority, colonne existante mais jamais
+                       consommée avant ce moteur - remplace l'ancienne liste
+                       de mots-clés codée en dur), bande de prix
+  → confidence.ts   : suffisance d'échantillon (formule préservée) + pénalité
+                       de dispersion de prix
+  → risk.ts         : registre de facteurs (volatilité, rareté de donnée,
+                       concurrence, liquidité) → faible/modéré/élevé
+  → resaleEstimate.ts : fourchette de jours à partir des échantillons de
+                       disparition, ou null explicite si insuffisant
+  → explanation.ts  : transforme le breakdown déjà calculé en checklist en
+                       langage clair, vocabulaire imposé (jamais "garanti"/
+                       "assuré", toujours "Confiance du modèle : X%" /
+                       "Risque estimé : ..." / "Opportunité validée par le
+                       moteur d'analyse")
+
+Filtre de sélectivité ("peu d'opportunités mais excellentes" plutôt qu'une
+longue liste moyenne) : MIN_SCORE_FOR_OPPORTUNITY / MIN_CONFIDENCE_FOR_OPPORTUNITY
+(constants.ts), appliqué en plus des seuils min_profit/min_roi existants de
+la watchlist, jamais à leur place - seuils de départ non calibrés
+empiriquement, à ajuster en bêta.
+```
+
+**Signaux honnêtement inertes au lancement** : `resaleEstimate.ts` et le facteur de risque "liquidité" dépendent d'échantillons de disparition (`market_price_observations`) qui n'existent pas encore à un scan donné — ils renvoient `null`/sont exclus de l'agrégation plutôt que de fabriquer une valeur, et s'activent automatiquement après plusieurs semaines d'accumulation, sans changement de code.
+
+**Hors de portée, délibérément** : taille/état/couleur/description d'une annonce ne sont pas scrapés (la carte de résultat de recherche Vinted ne les expose pas en DOM) — les obtenir exigerait une visite de la page de chaque annonce, hors scope de cette passe. L'âge réel d'une annonce Vinted n'est pas non plus exposé ; le seul proxy honnête conservé est `first_observed_at` ("première fois que ResellOS a vu cette URL"), jamais présenté comme l'âge réel.
+
+### 4.8.1 Validation sur un vrai scan (2026-07-11) — deux bugs réels trouvés et corrigés
+
+Un vrai scan (déclenché manuellement, 329 lignes réelles dans `market_opportunities`) a été audité avant la mise en production du moteur. Le pipeline de scraping lui-même (titre/prix/URL/favoris) est sain : 329 URLs uniques, zéro doublon, zéro champ vide ou prix nul. Deux défauts réels de l'**ancien** moteur ont été mis en évidence par les données, et corrigés dans le nouveau avant tout déploiement :
+
+1. **Confiance systématiquement saturée à 100%.** Les 329 lignes du scan ont toutes `confidence = 100` — l'ancienne formule (`min(100, n_comparables * 5)`) sature dès que le pool dépasse 20 éléments, ce qui était le cas pour chaque recherche de ce scan. La "confiance du modèle" n'apportait donc aucune information. Le nouveau moteur corrige cela par une pénalité de dispersion (`confidence.ts`, déjà en place) **et** une pénalité de sous-évaluation extrême (ajoutée suite à cette découverte, voir point 2).
+
+2. **Sous-évaluations extrêmes non détectées.** Exemple réel : *"doudoune the north face nuptse 700"* à 1€ pour un marché estimé à 85€ (ROI 8400%), scoré 100/100, confiance 100%, aucun risque signalé par l'ancien moteur — presque certainement une erreur de prix ou une annonce trompeuse, pas une vraie affaire. Deuxième exemple : *"crampon nike tn"* — un crampon de football, dont le titre contient "nike" et "tn" (donc matché par `isRelevant()` pour la recherche watchlist "Nike TN") sans être le bon produit, scoré 99/100 avec un ROI fabriqué de 4500%. Root cause distincte des deux cas : le premier est une anomalie de **prix**, le second une anomalie de **pertinence du titre** (un vendeur qui truffe son titre de mots-clés populaires — pratique connue sur les marketplaces d'occasion).
+   - **Correctif appliqué** (`constants.ts`, `confidence.ts`, `risk.ts`, `engine.ts`) : un nouveau signal `factorExtremeUnderpricing` compare le prix affiché au prix de marché estimé (`EXTREME_UNDERPRICE_RATIO = 0.15`, `MODERATE_UNDERPRICE_RATIO = 0.35`) — pénalise la confiance ET ajoute un facteur de risque, sans jamais exclure automatiquement l'annonce (elle reste visible, mais honnêtement qualifiée). Vérifié en isolant les deux cas réels dans des tests dédiés (`confidence.test.ts`, `risk.test.ts`, commentaire "real scan regression").
+   - **Deuxième correctif, plus déterminant** : même avec la pénalité de confiance appliquée, les deux items réels retombaient exactement au plancher `MIN_CONFIDENCE_FOR_OPPORTUNITY` (50) et passaient encore le filtre de sélectivité. `meetsOpportunityGate()` exclut désormais explicitement tout item classé `risque élevé`, quel que soit le score — conformément à la consigne "si une annonce est douteuse, je préfère qu'elle ne soit pas affichée". Vérifié sur les deux cas réels (`engine.test.ts`) : aucun des deux ne passe plus le filtre après correction.
+   - **La correspondance de pertinence ("crampon nike tn") reste un problème distinct, hors du périmètre du moteur de scoring** : `isRelevant()` (scraping, inchangé dans cette passe) fait correspondre chaque terme de recherche indépendamment n'importe où dans le titre, sans exiger de cohérence de catégorie. Le nouveau moteur limite les dégâts (l'item est maintenant exclu par le filtre de risque grâce à sa sous-évaluation associée), mais une correspondance de titre plus stricte resterait une amélioration légitime, non traitée ici — décision à prendre séparément, cette fonction étant partagée par toutes les recherches.
+
+**Limite honnête de cette validation** : la revalidation ci-dessus a été faite en isolant les cas problématiques réels avec des tests unitaires ciblés — pas en rejouant un scan complet avec le nouveau moteur déployé, puisqu'aucun commit n'avait encore été poussé sur `origin/main` au moment du scan analysé (l'Action GitHub exécute ce qui est sur la branche par défaut, pas les changements locaux). Une simulation locale reconstituant le pool de comparables à partir de `market_opportunities` (déjà filtré) a été tentée puis écartée : le pool reconstruit est biaisé (il ne contient que des items déjà sélectionnés comme bonnes affaires), ce qui fausse le prix de marché recalculé. La validation définitive du taux de sélectivité réel ("20 excellentes" vs. l'ancien "329 movennes") nécessite un nouveau scan réel après déploiement du code.
+
+### 4.8.2 Audit des pondérations — chaque critère, son poids, sa justification
+
+| Critère | Fichier | Poids | Justification |
+|---|---|---|---|
+| ROI (paliers ≥80/100/150/200%) | `scoring.ts` | +10 à +25 | Paliers hérités de l'ancien moteur, préservés (pas de changement sans preuve) |
+| Profit potentiel (paliers ≥25/40/70/100€) | `scoring.ts` | +10 à +25 | Idem — montant fixe plutôt que %, un profit de 5€ est un problème quel que soit le prix |
+| Demande relative à la catégorie (favoris vs médiane) | `scoring.ts` | -8 à +15 | Remplace les paliers absolus codés en dur de l'ancien moteur — 8 favoris est "fort" dans une catégorie peu suivie, "faible" pour des sneakers très populaires |
+| Priorité watchlist (1-3 × 4) | `scoring.ts` | +4 à +12 | `watchlist.priority` existait déjà en base mais n'était jamais consommé pour le score (seulement l'ordre de scan) — remplace l'ancienne liste de mots-clés codée en dur |
+| Bande de prix (≤50€ / ≥150€) | `scoring.ts` | +5 / -10 | Préservé de l'ancien moteur |
+| Suffisance d'échantillon (n comparables × 5) | `confidence.ts` | 0 à 100 | Préservé, mais ne suffit plus seul (voir dispersion et sous-évaluation ci-dessous — cause du bug de saturation à 100% découvert le 2026-07-11) |
+| Dispersion des prix comparables | `confidence.ts` / `risk.ts` | -10 à -20 (confiance), +5 à +12 (risque) | Un prix volatil avec 10 comparables n'est pas plus fiable qu'un prix stable avec 10 comparables — signal absent de l'ancien moteur |
+| **Sous-évaluation extrême** (ajouté 2026-07-11) | `confidence.ts` / `risk.ts` | -12 à -30 (confiance), +8 à +20 (risque) | Preuve réelle scan 2026-07-11 (voir 4.8.1) — un ratio prix/marché <15-35% reflète le plus souvent une erreur de prix, pas une vraie affaire |
+| Rareté des données de marché | `risk.ts` | +6 à +15 | Reflète directement la confiance déjà calculée — informe le niveau de risque affiché sans dupliquer le calcul |
+| Concurrence (nb de comparables) | `risk.ts` | +6 | Beaucoup d'annonces comparables = pression potentielle sur le prix de revente |
+| Liquidité (délai de revente historique) | `risk.ts` / `resaleEstimate.ts` | +10 (risque), fourchette de jours | **Inerte au lancement** — nécessite des échantillons de disparition (`market_price_observations`), inexistants avant plusieurs semaines de scans réels |
+| Filtre de sélectivité (score/confiance/risque) | `engine.ts` | seuils, pas un poids | `MIN_SCORE_FOR_OPPORTUNITY=65`, `MIN_CONFIDENCE_FOR_OPPORTUNITY=50`, exclusion de `risque élevé` — valeurs de départ non calibrées empiriquement, à ajuster en bêta |
+
+Chaque ligne du tableau ci-dessus a son commentaire-source dans `scripts/opportunity-engine/constants.ts` — ce tableau en est un résumé de lecture, pas une source de vérité séparée (à maintenir synchronisé avec le code, pas l'inverse).
+
+### 4.8.3 Vision V2 — comment l'architecture accueille de nouveaux critères
+
+Le registre de facteurs (`risk.ts`) et le score additif (`scoring.ts`) sont conçus pour qu'ajouter un critère n'affecte aucun autre : une nouvelle fonction + une entrée de tableau, jamais un `if/else` monolithique à réécrire (même pattern que `src/lib/insights/alerts.ts`). Pistes déjà identifiées, classées par ce qui manque pour les activer :
+
+- **Vitesse réelle des ventes, saisonnalité, évolution des prix dans le temps** — l'architecture existe déjà (`market_price_observations`, append-only) mais nécessite plusieurs mois d'accumulation avant d'être statistiquement significative. Aucun changement de code ne sera nécessaire, seulement des seuils (`MIN_OBSERVATIONS_FOR_HISTORY`, `OBSERVATION_LOOKBACK_DAYS`) à recalibrer une fois l'historique disponible.
+- **Qualité des photos** — non accessible aujourd'hui (le scraping ne récupère qu'une URL de vignette, pas une analyse d'image). Ajouterait un appel Gemini par annonce candidate, avec un coût réel à chiffrer avant d'être activé (voir le modèle économique).
+- **Réputation du vendeur** — nécessiterait de scraper le profil vendeur (note, nombre d'avis, ancienneté), une page supplémentaire par annonce candidate — architecture de scraping plus lourde, à évaluer séparément.
+- **Fréquence des baisses de prix** — calculable directement depuis `market_price_observations` une fois l'historique suffisant : une baisse de prix répétée sur la même URL est un signal de motivation du vendeur, déjà capturable par la même table sans nouvelle collecte de données.
+- **Taille/état/couleur** — nécessiteraient une visite de la page de chaque annonce (hors DOM de la carte de recherche), explicitement écarté de cette passe (voir "Hors de portée" ci-dessus).
+
 ## 5. Interactions avec Supabase
 
 Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md). Résumé de qui accède à quoi :
@@ -284,9 +395,10 @@ Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md).
 | Client | Clé utilisée | Accès |
 |---|---|---|
 | Frontend (`src/lib/supabase.ts`) | `VITE_SUPABASE_ANON_KEY` | Toutes les opérations CRUD sur les données de l'utilisateur connecté, filtrées par RLS (`auth.uid() = user_id`) |
-| `action_log`/`action_log_entries` (Action Engine, §4.6/§4.7) | `VITE_SUPABASE_ANON_KEY` (frontend uniquement) + canal Realtime | Insert/update depuis `useActionEngine.ts` uniquement — l'extension ne touche pas ces tables, voir EXTENSION.md. Lu en temps réel par le Centre des Actions via Realtime (§4.7) |
+| `action_log`/`action_log_entries` (Action Engine, §4.6/§4.7) | `VITE_SUPABASE_ANON_KEY` (frontend) + canal Realtime, **ou** `SUPABASE_SERVICE_ROLE_KEY` (`scripts/vinted-scan.ts`, uniquement si `ACTION_ID` est fourni — voir §4.3) | Insert/update depuis `useActionEngine.ts` pour toute action passant par l'extension ; depuis `scripts/vinted-scan.ts` uniquement pour `scan_market` (seule action déclenchée hors session utilisateur, via GitHub Actions). Lu en temps réel par le Centre des Actions et par `ScanProgressModal` via Realtime (§4.7) |
 | Edge function `analyze-clothing` | `SUPABASE_ANON_KEY` + JWT utilisateur transmis | Vérifie l'identité de l'appelant avant tout traitement, pas d'accès élevé. **Depuis le 2026-07-11 (P0.1) : applique aussi le quota côté serveur** — réserve un crédit (`decrement_credit`) avant d'appeler Gemini si le plan est `free`, rembourse (`refund_credit`) si Gemini échoue, incrémente `usage` (`increment_usage`) seulement après succès. Le client ne décide plus jamais lui-même s'il a le droit de consommer un crédit |
-| `scripts/vinted-scan.ts` | `SUPABASE_SERVICE_ROLE_KEY` | Bypass RLS — nécessaire car le scan tourne hors session utilisateur (cron), lit `watchlist` et écrit `market_opportunities` pour tous les utilisateurs |
+| Edge function `scan-market` | `SUPABASE_ANON_KEY` + JWT utilisateur transmis, **et** `GITHUB_ACTIONS_TOKEN` (jeton fine-grained GitHub, scope `Actions: Read and write` limité à ce dépôt) | Vérifie l'identité de l'appelant, puis déclenche `workflow_dispatch` sur `.github/workflows/scan-market.yml` (API GitHub) — ne touche elle-même ni `market_opportunities` ni `watchlist`, voir §4.3 |
+| `scripts/vinted-scan.ts` | `SUPABASE_SERVICE_ROLE_KEY` | Bypass RLS — nécessaire car le scan tourne hors session utilisateur (cron ou déclenchement à la demande), lit `watchlist` et écrit `market_opportunities` **et** `market_price_observations` (§4.8) pour tous les utilisateurs |
 | Trigger `handle_new_user()` | interne Postgres | Crée automatiquement une ligne `profiles` à l'inscription (`auth.users` → `profiles`) |
 
 **Règle impérative** : tout changement de schéma passe par une migration versionnée (`supabase/migrations/`) + `npx supabase db push`, jamais par une modification directe dans le SQL Editor du dashboard. Une dérive de ce type s'est déjà produite (policies RLS non versionnées trouvées en prod, dont une faille de sécurité réelle) — voir DATABASE.md pour le détail et la procédure de vérification (`supabase db query --linked`, `supabase db advisors --linked`).
@@ -347,7 +459,7 @@ Par ordre de priorité réaliste (voir aussi le détail complet dans [ROADMAP.md
 1. **Décider du sort de `business_items`/`business_expenses`** — tables orphelines, la première contient 53 lignes de données réelles jamais migrées. Bloquant moralement avant de considérer le schéma "propre"
 2. **Corriger l'incohérence "OpenAI API Key" vs Gemini** dans `SettingsPage.tsx` (§7) — petit fix, confusion utilisateur réelle
 3. **Implémenter le MVP de l'extension Chrome** — appairage, republication, sync vues/favoris — voir le phasage détaillé dans [EXTENSION.md](EXTENSION.md) §10
-4. **Étendre la couverture Vitest à `scripts/market-engine.ts`/`market-price.ts`** — logique déterministe, facile à tester, déjà à l'origine d'au moins un bug de calcul corrigé manuellement. Vitest est introduit depuis la Phase 2 (`src/lib/insights/`, `src/lib/actions/`) — reste à l'étendre au scan de marché
+4. ~~Étendre la couverture Vitest à `scripts/market-engine.ts`/`market-price.ts`~~ — **fait (2026-07-12)** : ces fichiers ont été remplacés par `scripts/opportunity-engine/` (§4.8), couvert par `scripts/opportunity-engine/__tests__/` (`vitest.config.ts` inclut désormais `scripts/**/*.test.ts`), avec un `tsconfig.scripts.json` dédié plié dans `npm run typecheck`
 5. **Terminer la migration vers les classes `.btn-neon`/`.glass-card`/`.input-dark`** sur les pages qui réimplémentent encore leur style en Tailwind brut
 6. **Traiter les items de sécurité/perf restants documentés dans DATABASE.md** : policy storage `listing-images` trop permissive, protection mots de passe compromis désactivée, policies RLS dupliquées, pattern `auth.uid()` non optimisé
 7. **Router applicatif (`react-router`)** — seulement quand l'extension Chrome ou un besoin de deep-link concret l'exige (§3), pas avant

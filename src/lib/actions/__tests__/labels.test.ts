@@ -19,6 +19,7 @@ const ALL_KINDS: ActionKind[] = [
   'reply_message',
   'accept_offer',
   'counter_offer',
+  'scan_market',
 ];
 
 describe('ACTION_KIND_LABELS', () => {

@@ -68,6 +68,7 @@ Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messag
 7. **Notifications** — pas commencée : nouveau favori/offre/message/vente/réservation, perte de visibilité, annonce inactive, republication recommandée.
 8. **Automatisations assistées** — pas commencée : détection + proposition d'action, jamais d'action silencieuse.
 
-## Phase 3 — Sourcing intelligent, comptabilité fiscale — pas commencée
+## Phase 3 — Sourcing intelligent, comptabilité fiscale — Opportunity Engine terminé (2026-07-12), suite pas commencée
 
-Étude de marché automatisée plus poussée, comptabilité fiscale adaptée au régime de vente d'occasion (TVA sur la marge, déclarations URSSAF pour les vendeurs pro).
+- **Opportunity Engine** — ✅ fait (2026-07-12) : `scripts/market-engine.ts`/`market-price.ts` (score arbitraire, aucune mémoire entre scans) remplacés par `scripts/opportunity-engine/`, un moteur multi-critères extensible (score additif documenté, confiance combinant suffisance d'échantillon + dispersion de prix, niveau de risque, estimation de délai de revente, checklist en langage clair) — voir `ARCHITECTURE.md` §4.8. Nouvelle table append-only `market_price_observations` donne enfin une mémoire de prix dans le temps. Filtre de sélectivité (score+confiance) remplace le simple seuil `min_profit`/`min_roi`. `watchlist.priority`, colonne existante jamais consommée, devient un vrai signal de score.
+- Comptabilité fiscale adaptée au régime de vente d'occasion (TVA sur la marge, déclarations URSSAF pour les vendeurs pro) — pas commencée.

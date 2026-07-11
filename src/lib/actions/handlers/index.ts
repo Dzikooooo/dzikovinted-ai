@@ -1,4 +1,5 @@
 import { publishListingDefinition } from './publishListing';
+import { scanMarketDefinition } from './scanMarket';
 import type { ActionDefinition } from '../types';
 
 // Registre des actions reelles. Un objet ActionDefinition par ActionKind
@@ -7,4 +8,7 @@ import type { ActionDefinition } from '../types';
 // entierement dans src/lib/actions/engine.ts). publish_listing (Phase 3.1)
 // est la premiere entree reelle - les actions futures (republication,
 // offres...) s'ajoutent ici de la meme façon.
-export const ACTION_DEFINITIONS: ActionDefinition[] = [publishListingDefinition as ActionDefinition];
+export const ACTION_DEFINITIONS: ActionDefinition[] = [
+  publishListingDefinition as ActionDefinition,
+  scanMarketDefinition as ActionDefinition,
+];

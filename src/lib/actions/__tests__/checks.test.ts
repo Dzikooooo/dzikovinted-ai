@@ -7,6 +7,7 @@ import {
   checkListingLoaded,
   checkListingNotAlreadyPublished,
   checkListingOwnership,
+  checkNoScanInProgress,
 } from '../checks';
 import { makeActionContext, makeCheckDeps, makeListing } from './fixtures';
 
@@ -145,5 +146,17 @@ describe('checkListingNotAlreadyPublished', () => {
       makeCheckDeps({ targetListing: makeListing({ vinted_item_id: '123456' }) })
     );
     expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_published' }) });
+  });
+});
+
+describe('checkNoScanInProgress', () => {
+  it('passes when no scan is already running', () => {
+    const result = checkNoScanInProgress(makeActionContext(), makeCheckDeps({ scanInProgress: false }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with scan_in_progress when a scan is already running', () => {
+    const result = checkNoScanInProgress(makeActionContext(), makeCheckDeps({ scanInProgress: true }));
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'scan_in_progress' }) });
   });
 });

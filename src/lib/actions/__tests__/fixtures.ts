@@ -82,6 +82,7 @@ export function makeCheckDeps(overrides: Partial<ActionCheckDeps> = {}): ActionC
     extensionConnected: true,
     selectedAccount: makeAccount({ id: 'account-1' }),
     targetListing: null,
+    scanInProgress: false,
     ...overrides,
   };
 }

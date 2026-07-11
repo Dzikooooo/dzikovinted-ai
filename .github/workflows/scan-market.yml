@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '0 */4 * * *'
   workflow_dispatch:
+    inputs:
+      action_id:
+        description: >
+          UUID de la ligne action_log a mettre a jour (scan a la demande
+          depuis "Scanner maintenant" - voir supabase/functions/scan-market).
+          Laisser vide pour une execution normale du cron, auquel cas aucune
+          progression n'est journalisee (comportement inchange).
+        required: false
+        type: string
 
 jobs:
   scan:
@@ -19,3 +28,4 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ACTION_ID: ${{ github.event.inputs.action_id }}

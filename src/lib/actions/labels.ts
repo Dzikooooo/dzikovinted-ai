@@ -10,6 +10,7 @@ import {
   MessageCircle,
   CheckCircle2,
   Repeat,
+  Search,
   type LucideIcon,
 } from 'lucide-react';
 import type { ActionKind, ActionStep } from './types';
@@ -31,6 +32,7 @@ export const ACTION_KIND_LABELS: Record<ActionKind, string> = {
   reply_message: 'Répondre à un message',
   accept_offer: 'Accepter une offre',
   counter_offer: 'Contre-offre',
+  scan_market: 'Scanner le marché',
 };
 
 export const ACTION_KIND_ICONS: Record<ActionKind, LucideIcon> = {
@@ -45,6 +47,7 @@ export const ACTION_KIND_ICONS: Record<ActionKind, LucideIcon> = {
   reply_message: MessageCircle,
   accept_offer: CheckCircle2,
   counter_offer: Repeat,
+  scan_market: Search,
 };
 
 // Messages honnêtes et génériques par étape — pas de fausse précision

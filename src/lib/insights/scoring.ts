@@ -2,8 +2,8 @@ import type { EngineContext, ListingScore, ScoreBreakdownEntry } from './types';
 import { AGING_STOCK_DAYS } from './constants';
 import { daysSince, normalizeKey } from './math';
 
-// Score additif et transparent (meme principe que scripts/market-engine.ts,
-// deja en production pour les opportunites) : base neutre 50, chaque signal
+// Score additif et transparent (meme principe que scripts/opportunity-engine/,
+// utilise pour les opportunites) : base neutre 50, chaque signal
 // ajoute/retire des points nommes et justifies, jamais de penalite/bonus
 // fabrique sur une donnee inconnue (ex. pas de malus "ROI faible" si le prix
 // d'achat n'est pas saisi - l'absence de signal n'est pas un signal negatif).

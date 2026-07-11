@@ -175,6 +175,18 @@ export function useActionEngine(): UseActionEngineResult {
       const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null;
       const extensionConnected = await pingExtension();
 
+      // Prefetch pour checkNoScanInProgress (scan_market) - meme raison
+      // d'etre que extensionConnected ci-dessus : les checks restent des
+      // fonctions pures, donc tout acces reseau/BDD est fait ici, avant
+      // engine.prepare(). count:'exact', head:true evite de rapatrier des
+      // lignes pour ne compter que leur nombre.
+      const { count: activeScanCount } = await supabase
+        .from('action_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('kind', 'scan_market')
+        .eq('status', 'pending_confirmation');
+
       const ctx: ActionContext = {
         userId: user.id,
         vintedAccountId: selectedAccountId === 'all' ? null : selectedAccountId,
@@ -185,6 +197,7 @@ export function useActionEngine(): UseActionEngineResult {
         extensionConnected,
         selectedAccount,
         targetListing: options?.targetListing ?? null,
+        scanInProgress: (activeScanCount ?? 0) > 0,
       };
       const request: ActionRequest<TPayload> = {
         kind,

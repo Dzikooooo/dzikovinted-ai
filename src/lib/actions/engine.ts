@@ -51,7 +51,7 @@ export function createActionEngine(deps: ActionEngineDeps): ActionEngine {
     const definition = findActionDefinition(prepared.request.kind);
 
     const outcome = definition?.execute
-      ? await definition.execute(prepared.request, prepared.ctx, deps)
+      ? await definition.execute(prepared.request, prepared.ctx, deps, prepared.id)
       : await deps.runViaExtension(prepared.id, prepared.request);
 
     const durationMs = deps.now().getTime() - startedAtMs;

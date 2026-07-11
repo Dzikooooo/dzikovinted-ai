@@ -63,3 +63,13 @@ export const checkListingNotAlreadyPublished: ActionCheck = (_ctx, deps) => {
   }
   return { ok: true };
 };
+
+export const checkNoScanInProgress: ActionCheck = (_ctx, deps) => {
+  if (deps.scanInProgress) {
+    return {
+      ok: false,
+      failure: { code: 'scan_in_progress', message: 'Un scan est déjà en cours.' },
+    };
+  }
+  return { ok: true };
+};

@@ -239,7 +239,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
             <Suspense fallback={<PageFallback />}>
               {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
               {activePage === 'generator' && <GeneratorPage />}
-              {activePage === 'opportunities' && <Opportunities />}
+              {activePage === 'opportunities' && <Opportunities onViewAction={handleViewAction} />}
               {activePage === 'stock' && <StockPage onViewAction={handleViewAction} />}
               {activePage === 'vinted-account' && <VintedAccountPage />}
               {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}

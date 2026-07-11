@@ -7,21 +7,9 @@ export interface ScrapedItem {
   favourites: number;
 }
 
+// priority reprend watchlist.priority (1-3, colonne existante mais jamais
+// consommée avant le moteur d'opportunités - voir scripts/opportunity-engine).
 export interface WatchlistItem extends ScrapedItem {
   category: string;
-}
-
-export interface MarketPriceResult {
-  marketPrice: number;
-  confidence: number;
-  source: string;
-}
-
-export interface AnalyzedItem extends WatchlistItem {
-  market_price: number;
-  profit: number;
-  roi: number;
-  confidence: number;
-  price_source: string;
-  score: number;
+  priority: number;
 }

@@ -14,7 +14,8 @@ export type ActionKind =
   | 'delete_listing'
   | 'reply_message'
   | 'accept_offer'
-  | 'counter_offer';
+  | 'counter_offer'
+  | 'scan_market';
 
 export interface ActionContext {
   userId: string;
@@ -34,6 +35,10 @@ export interface ActionCheckDeps {
   extensionConnected: boolean;
   selectedAccount: VintedAccount | null;
   targetListing: Listing | null;
+  // Vrai si un scan_market est deja en pending_confirmation pour cet
+  // utilisateur (prefetch dans useActionEngine.ts::prepareAction, meme
+  // pattern que extensionConnected) - empeche les doubles scans.
+  scanInProgress: boolean;
 }
 
 export type ActionCheck = (ctx: ActionContext, deps: ActionCheckDeps) => ActionCheckResult;
@@ -83,11 +88,16 @@ export interface ActionDefinition<TPayload = unknown> {
   // Absent pour toute entree tant qu'aucun handler reel n'existe cote
   // extension (Phase 3) - engine.ts retombe alors sur deps.runViaExtension,
   // qui resout systematiquement 'not_implemented' via le registre vide de
-  // extension/src/background/runAction.ts.
+  // extension/src/background/runAction.ts. historyId permet a un execute()
+  // qui n'implique pas l'extension (ex. scan_market, qui appelle une Edge
+  // Function directement) de journaliser sa propre progression dans
+  // action_log_entries pour ce meme id, exactement comme runViaExtension le
+  // recoit deja en argument.
   execute?: (
     request: ActionRequest<TPayload>,
     ctx: ActionContext,
-    deps: ActionEngineDeps
+    deps: ActionEngineDeps,
+    historyId: string
   ) => Promise<ActionOutcome>;
 }
 

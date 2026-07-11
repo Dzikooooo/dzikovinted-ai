@@ -105,6 +105,14 @@ export interface UsageRecord {
   analyses_count: number;
 }
 
+export type OpportunityRiskLevel = 'faible' | 'modere' | 'eleve';
+
+export interface OpportunityBreakdownEntry {
+  label: string;
+  delta: number;
+  kind: 'score' | 'confidence' | 'risk';
+}
+
 export interface MarketOpportunity {
   id: string;
   title: string;
@@ -122,6 +130,28 @@ export interface MarketOpportunity {
   vinted_url: string | null;
   status: string;
   created_at: string;
+  // Moteur d'opportunités (phase 2) - toutes nullables, alimentées
+  // progressivement à mesure que market_price_observations accumule de
+  // l'historique (voir scripts/opportunity-engine).
+  risk_level: OpportunityRiskLevel | null;
+  breakdown: OpportunityBreakdownEntry[] | null;
+  resale_days_min: number | null;
+  resale_days_max: number | null;
+  resale_confidence: number | null;
+  first_observed_at: string | null;
+  competing_listings_count: number | null;
+}
+
+export interface OpportunityFilters {
+  category: string;
+  brands: string[];
+  minScore: number | null;
+  minConfidence: number | null;
+  minRoi: number | null;
+  minProfit: number | null;
+  maxBudget: number | null;
+  maxResaleDays: number | null;
+  riskLevels: OpportunityRiskLevel[];
 }
 
 export interface VintedAccount {
