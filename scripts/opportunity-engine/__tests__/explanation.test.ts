@@ -38,6 +38,16 @@ describe('buildChecklist', () => {
     expect(lines.some((l) => l.includes('validée'))).toBe(false);
   });
 
+  it('renders a zero-delta entry (e.g. price stability confirmation) with a checkmark, never a warning', () => {
+    const breakdown = [{ label: 'Prix stable sur les annonces comparables', delta: 0, kind: 'confidence' as const }];
+    const lines = buildChecklist(breakdown, { score: 70, confidence: 60, riskLevel: 'faible', opportunityValidated: true });
+    expect(lines).toContain('✓ Prix stable sur les annonces comparables');
+    const joined = lines.join(' \n ').toLowerCase();
+    for (const phrase of FORBIDDEN_PHRASES) {
+      expect(joined).not.toContain(phrase);
+    }
+  });
+
   it('only uses the strongest phrasing when score, confidence and risk all justify it', () => {
     const weak = buildChecklist([], { score: 70, confidence: 55, riskLevel: 'modere', opportunityValidated: true });
     expect(weak.some((l) => l.includes('Très forte probabilité'))).toBe(false);

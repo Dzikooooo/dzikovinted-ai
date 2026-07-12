@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import type { MarketOpportunity, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
 import { OPPORTUNITY_CATEGORIES } from "../../lib/opportunityCategories";
+import { computeVerdict, VERDICT_BADGES } from "../../lib/opportunityVerdict";
 import { StatCard } from "../../components/ui/StatCard";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -15,22 +16,11 @@ import OpportunityFilterPanel from "../../components/opportunities/OpportunityFi
 type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
 type CategoryFilter = "all" | (typeof OPPORTUNITY_CATEGORIES)[number];
 
-const TIERS = [
-  { min: 150, label: "Exceptionnel", className: "bg-neon-500 text-black" },
-  { min: 100, label: "Excellent", className: "bg-neon-500/15 text-neon-500 border border-neon-500/30" },
-  { min: 80, label: "Bon deal", className: "bg-blue-400/15 text-blue-400 border border-blue-400/30" },
-  { min: 0, label: "Correct", className: "bg-white/10 text-gray-300 border border-white/10" },
-];
-
 const RISK_BADGE: Record<OpportunityRiskLevel, { label: string; className: string }> = {
   faible: { label: "Risque estimé : faible", className: "bg-neon-500/15 text-neon-500 border border-neon-500/30" },
   modere: { label: "Risque estimé : modéré", className: "bg-amber-400/15 text-amber-400 border border-amber-400/30" },
   eleve: { label: "Risque estimé : élevé", className: "bg-red-400/15 text-red-400 border border-red-400/30" },
 };
-
-function getTier(roi: number) {
-  return TIERS.find((t) => roi >= t.min) ?? TIERS[TIERS.length - 1];
-}
 
 function daysSince(iso: string): string {
   const days = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000)));
@@ -48,6 +38,7 @@ const EMPTY_FILTERS: OpportunityFilters = {
   maxBudget: null,
   maxResaleDays: null,
   riskLevels: [],
+  verdicts: [],
 };
 
 interface OpportunitiesProps {
@@ -201,6 +192,10 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
         if (item.resale_days_max > filters.maxResaleDays) return false;
       }
       if (filters.riskLevels.length > 0 && (!item.risk_level || !filters.riskLevels.includes(item.risk_level))) return false;
+      if (filters.verdicts.length > 0) {
+        const verdict = computeVerdict(Number(item.score ?? 0), Number(item.confidence ?? 0), item.risk_level);
+        if (!filters.verdicts.includes(verdict)) return false;
+      }
       if (favouritesOnly && (!item.vinted_url || !favouriteUrls.has(item.vinted_url))) return false;
       if (query) {
         const haystack = `${item.title} ${item.brand ?? ""} ${item.category ?? ""}`.toLowerCase();
@@ -387,10 +382,30 @@ interface OpportunityCardProps {
 
 function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
   const roi = Number(item.roi || 0);
-  const tier = getTier(roi);
+  const verdict = computeVerdict(Number(item.score || 0), Number(item.confidence || 0), item.risk_level);
+  const verdictBadge = VERDICT_BADGES[verdict];
   const favourites = item.favourites ?? 0;
   const risk = item.risk_level ? RISK_BADGE[item.risk_level] : null;
   const checklist = (item.breakdown ?? []).slice(0, 8);
+
+  // Chiffres concrets dérivés des champs déjà exposés par le moteur (aucun
+  // nouveau calcul côté serveur) - complète le breakdown existant, qui reste
+  // en tier abstrait ("ROI élevé (≥100%)"), par les vraies valeurs de cette
+  // opportunité précise.
+  const concreteHighlights: string[] = [];
+  if (item.price_found && item.market_price && item.market_price > 0) {
+    const pctUnderMarket = Math.round((1 - Number(item.price_found) / Number(item.market_price)) * 100);
+    if (pctUnderMarket > 0) concreteHighlights.push(`Prix ${pctUnderMarket}% sous le marché`);
+  }
+  if (item.competing_listings_count !== null && item.competing_listings_count > 0) {
+    concreteHighlights.push(
+      `${item.competing_listings_count} annonce${item.competing_listings_count > 1 ? "s" : ""} comparable${item.competing_listings_count > 1 ? "s" : ""} analysée${item.competing_listings_count > 1 ? "s" : ""}`
+    );
+  }
+  if (item.roi !== null) concreteHighlights.push(`ROI estimé ${Math.round(Number(item.roi))}%`);
+  if (item.resale_days_min !== null && item.resale_days_max !== null) {
+    concreteHighlights.push(`Revente moyenne en ${Math.round((item.resale_days_min + item.resale_days_max) / 2)} jours`);
+  }
 
   return (
     <div className="group bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 hover:-translate-y-1 transition-all duration-300 overflow-hidden hover:shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
@@ -400,8 +415,8 @@ function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityC
           alt={item.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
-        <span className={`absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full ${tier.className}`}>
-          {tier.label}
+        <span className={`absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full ${verdictBadge.className}`}>
+          {verdictBadge.emoji} {verdictBadge.label}
         </span>
         <div className="absolute top-3 right-3 flex items-center gap-1.5">
           {favourites > 0 && (
@@ -464,9 +479,6 @@ function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityC
 
         <p className="text-[11px] text-gray-600 mt-3">
           Confiance du modèle {item.confidence ?? "--"}% · {item.price_source ?? "estimation IA"}
-          {item.competing_listings_count !== null && item.competing_listings_count > 0
-            ? ` · ${item.competing_listings_count} annonce${item.competing_listings_count > 1 ? "s" : ""} comparable${item.competing_listings_count > 1 ? "s" : ""}`
-            : ""}
           {item.first_observed_at ? ` · vue depuis ${daysSince(item.first_observed_at)}` : ""}
         </p>
 
@@ -487,10 +499,13 @@ function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityC
           )}
         </div>
 
-        {checklist.length > 0 && (
+        {(concreteHighlights.length > 0 || checklist.length > 0) && (
           <div className="mt-3">
             <p className="text-[11px] text-gray-500 font-bold mb-1.5">Pourquoi cette opportunité ?</p>
             <ul className="space-y-1 text-[11px] text-gray-400">
+              {concreteHighlights.map((label, i) => (
+                <li key={`concrete-${i}`}>✔ {label}</li>
+              ))}
               {checklist.map((entry, i) => (
                 <li key={i} className={entry.delta < 0 ? "text-amber-400/80" : "text-gray-400"}>
                   {entry.delta >= 0 ? "✓" : "⚠"} {entry.label}

@@ -1,10 +1,13 @@
-import type { OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
+import type { OpportunityFilters, OpportunityRiskLevel, Verdict } from "../../lib/types";
+import { VERDICT_BADGES } from "../../lib/opportunityVerdict";
 
 const RISK_OPTIONS: { value: OpportunityRiskLevel; label: string }[] = [
   { value: "faible", label: "Risque faible" },
   { value: "modere", label: "Risque modéré" },
   { value: "eleve", label: "Risque élevé" },
 ];
+
+const VERDICT_OPTIONS: Verdict[] = ["excellent", "recommande", "a_surveiller", "trop_risque"];
 
 interface OpportunityFilterPanelProps {
   filters: OpportunityFilters;
@@ -55,6 +58,13 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
     onChange({ ...filters, riskLevels });
   }
 
+  function toggleVerdict(verdict: Verdict) {
+    const verdicts = filters.verdicts.includes(verdict)
+      ? filters.verdicts.filter((v) => v !== verdict)
+      : [...filters.verdicts, verdict];
+    onChange({ ...filters, verdicts });
+  }
+
   const hasActiveFilters =
     filters.minScore !== null ||
     filters.minConfidence !== null ||
@@ -63,7 +73,8 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
     filters.maxBudget !== null ||
     filters.maxResaleDays !== null ||
     filters.brands.length > 0 ||
-    filters.riskLevels.length > 0;
+    filters.riskLevels.length > 0 ||
+    filters.verdicts.length > 0;
 
   return (
     <div className="bg-surface-alt border border-white/10 rounded-2xl p-4 mb-6">
@@ -77,6 +88,23 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
       </div>
 
       <div className="flex flex-wrap gap-4 mt-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500 font-semibold mr-1">Verdict</span>
+          {VERDICT_OPTIONS.map((verdict) => (
+            <button
+              key={verdict}
+              onClick={() => toggleVerdict(verdict)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                filters.verdicts.includes(verdict)
+                  ? "bg-neon-500 text-black border-neon-500"
+                  : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
+              }`}
+            >
+              {VERDICT_BADGES[verdict].emoji} {VERDICT_BADGES[verdict].label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-gray-500 font-semibold mr-1">Risque</span>
           {RISK_OPTIONS.map((opt) => (
@@ -126,6 +154,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
                 maxResaleDays: null,
                 brands: [],
                 riskLevels: [],
+                verdicts: [],
               })
             }
             className="text-xs text-gray-500 hover:text-white font-semibold ml-auto"

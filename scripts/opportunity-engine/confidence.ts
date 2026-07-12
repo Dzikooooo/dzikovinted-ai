@@ -35,6 +35,14 @@ export function computeConfidence(
       const penalty = -10;
       confidence += penalty;
       breakdown.push({ label: 'Prix comparables modérément dispersés', delta: penalty, kind: 'confidence' });
+    } else {
+      // Confirmation positive explicite (delta 0, purement informative -
+      // n'affecte pas le score) : jusqu'ici l'absence de pénalité de
+      // dispersion restait silencieuse, privant l'utilisateur d'un signal
+      // "stabilité du prix" pourtant demandé explicitement. Réutilise le
+      // même seuil PRICE_DISPERSION_MODERATE déjà documenté ci-dessus,
+      // aucun nouveau nombre.
+      breakdown.push({ label: 'Prix stable sur les annonces comparables', delta: 0, kind: 'confidence' });
     }
   }
 

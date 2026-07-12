@@ -143,6 +143,11 @@ export interface MarketOpportunity {
   competing_listings_count: number | null;
 }
 
+// Verdict unifié de score+confiance+risque (voir src/lib/opportunityVerdict.ts
+// pour la logique de calcul, dérivée sans nouveau seuil des constantes déjà
+// documentées dans scripts/opportunity-engine/).
+export type Verdict = 'excellent' | 'recommande' | 'a_surveiller' | 'trop_risque';
+
 export interface OpportunityFilters {
   category: string;
   brands: string[];
@@ -153,6 +158,7 @@ export interface OpportunityFilters {
   maxBudget: number | null;
   maxResaleDays: number | null;
   riskLevels: OpportunityRiskLevel[];
+  verdicts: Verdict[];
 }
 
 export interface WatchlistEntry {

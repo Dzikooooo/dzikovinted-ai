@@ -36,4 +36,18 @@ describe('computeConfidence', () => {
     const result = computeConfidence(10, { marketPrice: 50, source: 'x', dispersion: null }, 45);
     expect(result.breakdown.some((e) => e.label.toLowerCase().includes('marché'))).toBe(false);
   });
+
+  it('explicitly confirms price stability with a zero-delta entry when dispersion is low (below PRICE_DISPERSION_MODERATE)', () => {
+    const result = computeConfidence(10, { marketPrice: 50, source: 'x', dispersion: 0.05 }, 50);
+    const stableEntry = result.breakdown.find((e) => e.label.toLowerCase().includes('stable'));
+    expect(stableEntry).toBeDefined();
+    expect(stableEntry?.delta).toBe(0);
+  });
+
+  it('does not produce a stability confirmation when dispersion is moderate or high', () => {
+    const moderate = computeConfidence(10, { marketPrice: 50, source: 'x', dispersion: 0.2 }, 50);
+    const high = computeConfidence(10, { marketPrice: 50, source: 'x', dispersion: 0.5 }, 50);
+    expect(moderate.breakdown.some((e) => e.label.toLowerCase().includes('stable'))).toBe(false);
+    expect(high.breakdown.some((e) => e.label.toLowerCase().includes('stable'))).toBe(false);
+  });
 });

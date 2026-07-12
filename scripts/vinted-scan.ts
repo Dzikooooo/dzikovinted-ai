@@ -376,10 +376,22 @@ async function main() {
     // le scan - alimente prix historiques, demande relative et delai de
     // revente (opportunity-engine/context.ts). Un echec ici ne bloque pas le
     // scan : le moteur degrade proprement en absence d'historique.
+    //
+    // .order + .limit : plafond defensif, pas un chiffre choisi au hasard -
+    // un seul scan reel a deja produit ~3400 observations ; a raison d'un
+    // cron toutes les 4h, 60 jours sans purge representent un ordre de
+    // grandeur de plusieurs centaines de milliers de lignes sans plafond.
+    // 20000 = marge generouse au-dessus de l'echelle "dizaines de milliers"
+    // explicitement visee, empeche une explosion memoire/calcul. L'ordre
+    // (plus recent d'abord) garantit que seules les observations les plus
+    // ANCIENNES de la fenetre seraient tronquees si la limite est atteinte -
+    // jamais les plus recentes, qui comptent le plus pour context.ts.
     const { data: observations, error: obsError } = await supabase
       .from("market_price_observations")
       .select("vinted_url, brand, category, price, favourites, scanned_at")
-      .gte("scanned_at", observationLookbackSince(new Date()));
+      .gte("scanned_at", observationLookbackSince(new Date()))
+      .order("scanned_at", { ascending: false })
+      .limit(20000);
 
     if (obsError) {
       console.error("OBSERVATIONS READ ERROR (continue sans historique) :", obsError);
