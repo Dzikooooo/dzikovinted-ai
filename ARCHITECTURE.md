@@ -418,6 +418,12 @@ Le registre de facteurs (`risk.ts`) et le score additif (`scoring.ts`) sont con�
 - **Fréquence des baisses de prix** — calculable directement depuis `market_price_observations` une fois l'historique suffisant : une baisse de prix répétée sur la même URL est un signal de motivation du vendeur, déjà capturable par la même table sans nouvelle collecte de données.
 - **Taille/état/couleur** — nécessiteraient une visite de la page de chaque annonce (hors DOM de la carte de recherche), explicitement écarté de cette passe (voir "Hors de portée" ci-dessus).
 
+### 4.9 Watchlist personnelle et dédoublonnage du scan (2026-07-12)
+
+`watchlist` était jusqu'ici une liste globale unique (aucun `user_id`), lue telle quelle par `scripts/vinted-scan.ts`. Elle est désormais personnelle : chaque utilisateur gère ses propres recherches via `src/pages/dashboard/WatchlistPage.tsx` (`src/hooks/useWatchlist.ts`), tandis que les 7 recherches de départ restent des recherches "plateforme" (`user_id = null`), scannées pour tout le monde et protégées en lecture seule côté client (voir DATABASE.md pour le détail RLS).
+
+Ce changement introduit un problème que l'ancienne architecture n'avait pas : plusieurs utilisateurs peuvent désormais suivre la même paire marque/modèle. La recherche Vinted (`scanSearch`) ne dépend que de `brand`+`model` — scanner une fois par utilisateur au lieu d'une fois par paire unique multiplierait le coût (durée du scan, requêtes Vinted) sans aucun bénéfice. `scripts/watchlistDedup.ts` (module pur, testé indépendamment de `main()` qui se lance à l'import) fusionne les lignes en double avant tout scan : `min_profit`/`min_roi` prennent le minimum du groupe (le seuil le plus permissif l'emporte, aucune opportunité n'est perdue pour l'utilisateur qui voulait voir plus large), `priority` prend le maximum (le signal de score utilise l'enthousiasme le plus fort). `market_opportunities` reste une table globale unique, inchangée — la personnalisation ne porte que sur *quoi* scanner, pas sur qui voit quoi dans les résultats.
+
 ## 5. Interactions avec Supabase
 
 Détail complet des tables, policies RLS et RPC dans [DATABASE.md](DATABASE.md). Résumé de qui accède à quoi :

@@ -9,6 +9,7 @@ import {
   observationLookbackSince,
 } from "./opportunity-engine";
 import type { ScrapedItem } from "./types";
+import { dedupeWatchlist, type WatchlistRow } from "./watchlistDedup";
 
 // Present uniquement quand ce script est declenche via workflow_dispatch
 // depuis "Scanner maintenant" (voir supabase/functions/scan-market et
@@ -250,16 +251,6 @@ async function scanSearch(page: Page, search: string) {
   return relevantItems;
 }
 
-interface WatchlistRow {
-  id: string;
-  brand: string;
-  model: string;
-  category: string;
-  priority: number;
-  min_profit: number;
-  min_roi: number;
-}
-
 interface ScoredOpportunity extends ScrapedItem {
   category: string;
   market_price: number;
@@ -309,8 +300,13 @@ async function main() {
       return;
     }
 
-    const watchlistRows = (watchlist ?? []) as WatchlistRow[];
-    console.log(`Watchlist chargée : ${watchlistRows.length} recherches`);
+    // watchlist est desormais personnelle (voir migration
+    // personalize_watchlist) - plusieurs utilisateurs peuvent suivre la
+    // meme paire marque/modele. dedupeWatchlist() fusionne les lignes en
+    // double avant de lancer le moindre scan, pour ne jamais payer le cout
+    // d'une recherche identique plusieurs fois - voir scripts/watchlistDedup.ts.
+    const watchlistRows = dedupeWatchlist((watchlist ?? []) as WatchlistRow[]);
+    console.log(`Watchlist chargée : ${watchlistRows.length} recherches (après dédoublonnage)`);
 
     // Passe 1 - scrape uniquement. Le score de demande relative (voir
     // opportunity-engine/scoring.ts) a besoin de voir tout le batch avant de

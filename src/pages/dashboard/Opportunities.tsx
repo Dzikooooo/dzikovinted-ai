@@ -3,6 +3,7 @@ import { ArrowRight, ArrowUpRight, Heart, RefreshCw, Search, Sparkles } from "lu
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import type { MarketOpportunity, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
+import { OPPORTUNITY_CATEGORIES } from "../../lib/opportunityCategories";
 import { StatCard } from "../../components/ui/StatCard";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -12,7 +13,7 @@ import ScanProgressModal from "../../components/opportunities/ScanProgressModal"
 import OpportunityFilterPanel from "../../components/opportunities/OpportunityFilterPanel";
 
 type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
-type CategoryFilter = "all" | "Sneakers" | "Jackets" | "Sweat" | "Fleece" | "Jeans" | "Shoes";
+type CategoryFilter = "all" | (typeof OPPORTUNITY_CATEGORIES)[number];
 
 const TIERS = [
   { min: 150, label: "Exceptionnel", className: "bg-neon-500 text-black" },
@@ -29,6 +30,12 @@ const RISK_BADGE: Record<OpportunityRiskLevel, { label: string; className: strin
 
 function getTier(roi: number) {
   return TIERS.find((t) => roi >= t.min) ?? TIERS[TIERS.length - 1];
+}
+
+function daysSince(iso: string): string {
+  const days = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000)));
+  if (days === 0) return "aujourd'hui";
+  return `${days} jour${days > 1 ? "s" : ""}`;
 }
 
 const EMPTY_FILTERS: OpportunityFilters = {
@@ -236,15 +243,7 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
     };
   }, [filteredProducts]);
 
-  const categories: CategoryFilter[] = [
-    "all",
-    "Sneakers",
-    "Jackets",
-    "Sweat",
-    "Fleece",
-    "Jeans",
-    "Shoes",
-  ];
+  const categories: CategoryFilter[] = ["all", ...OPPORTUNITY_CATEGORIES];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -465,6 +464,10 @@ function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityC
 
         <p className="text-[11px] text-gray-600 mt-3">
           Confiance du modèle {item.confidence ?? "--"}% · {item.price_source ?? "estimation IA"}
+          {item.competing_listings_count !== null && item.competing_listings_count > 0
+            ? ` · ${item.competing_listings_count} annonce${item.competing_listings_count > 1 ? "s" : ""} comparable${item.competing_listings_count > 1 ? "s" : ""}`
+            : ""}
+          {item.first_observed_at ? ` · vue depuis ${daysSince(item.first_observed_at)}` : ""}
         </p>
 
         {risk && (

@@ -3,6 +3,7 @@ export type DashboardPage =
   | 'home'
   | 'generator'
   | 'opportunities'
+  | 'watchlist'
   | 'stock'
   | 'expenses'
   | 'accounting'
@@ -152,6 +153,19 @@ export interface OpportunityFilters {
   maxBudget: number | null;
   maxResaleDays: number | null;
   riskLevels: OpportunityRiskLevel[];
+}
+
+export interface WatchlistEntry {
+  id: string;
+  user_id: string | null; // null = recherche plateforme (lecture seule)
+  brand: string;
+  model: string;
+  category: string;
+  priority: number; // 1-3
+  active: boolean;
+  min_profit: number;
+  min_roi: number;
+  created_at: string;
 }
 
 export interface VintedAccount {

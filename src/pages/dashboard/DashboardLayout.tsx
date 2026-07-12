@@ -16,7 +16,8 @@ import {
   Search,
   Puzzle,
   Receipt,
-  Activity
+  Activity,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
@@ -35,6 +36,7 @@ const StatsPage = lazy(() => import('./StatsPage'));
 const SubscriptionPage = lazy(() => import('./SubscriptionPage'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
 const Opportunities = lazy(() => import('./Opportunities'));
+const WatchlistPage = lazy(() => import('./WatchlistPage'));
 
 function PageFallback() {
   return (
@@ -52,6 +54,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
   { page: 'opportunities', icon: Search, label: 'Opportunités' },
+  { page: 'watchlist', icon: Eye, label: 'Watchlist' },
   { page: 'stock', icon: History, label: 'Stock' },
   { page: 'vinted-account', icon: Puzzle, label: 'Compte Vinted' },
   { page: 'actions', icon: Activity, label: 'Centre des Actions' },
@@ -240,6 +243,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
               {activePage === 'generator' && <GeneratorPage />}
               {activePage === 'opportunities' && <Opportunities onViewAction={handleViewAction} />}
+              {activePage === 'watchlist' && <WatchlistPage />}
               {activePage === 'stock' && <StockPage onViewAction={handleViewAction} />}
               {activePage === 'vinted-account' && <VintedAccountPage />}
               {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}
