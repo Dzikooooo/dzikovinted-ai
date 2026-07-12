@@ -6,6 +6,7 @@ import { useInsights } from '../../hooks/useInsights';
 import { useActionEngine } from '../../hooks/useActionEngine';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
+import { PLAN_PHOTO_LIMITS } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -67,7 +68,9 @@ interface StockPageProps {
 }
 
 export default function StockPage({ onViewAction }: StockPageProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  const photoLimit = isAdmin ? PLAN_PHOTO_LIMITS.pro : PLAN_PHOTO_LIMITS[profile?.plan ?? 'free'];
   const {
     accounts,
     selectedAccountId,
@@ -285,6 +288,17 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   const isAging = (item: Listing) =>
     item.status !== 'vendu' && Date.now() - new Date(item.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000;
 
+  // Code couleur de "Derniere synchro" : gris = fiable, ambre = a surveiller,
+  // rouge = perime -- memes seuils que le bandeau de fraicheur du Copilote
+  // (DashboardHome.tsx) pour rester coherent sur toute l'app.
+  const syncFreshnessClass = (iso: string | null) => {
+    if (!iso) return 'text-red-400';
+    const hours = (Date.now() - new Date(iso).getTime()) / 3_600_000;
+    if (hours > 48) return 'text-red-400';
+    if (hours > 24) return 'text-amber-400';
+    return 'text-gray-600';
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-6">
@@ -339,7 +353,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
             {extensionState === 'ready' && 'Extension connectée'}
             {extensionState === 'checking' && "Vérification de l'extension..."}
             {extensionState === 'not-installed' && 'Extension non détectée'}
-            <span className="text-gray-600">· Dernière synchro : {formatRelativeSync(lastSyncedAt)}</span>
+            <span className={syncFreshnessClass(lastSyncedAt)}>· Dernière synchro : {formatRelativeSync(lastSyncedAt)}</span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             {syncHint && <p className="text-xs text-amber-400 max-w-sm">{syncHint}</p>}
@@ -606,6 +620,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           listing={editingItem}
           onClose={() => setEditingItem(null)}
           canPublish={!!selectedAccount}
+          photoLimit={photoLimit}
           onSaved={(updated, publish) => {
             setEditingItem(null);
             load();

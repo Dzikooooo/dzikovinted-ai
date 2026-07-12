@@ -4,6 +4,7 @@ import { AlertCircle, ChevronDown, ChevronUp, Clock, GripVertical, ImageIcon, Sp
 interface UploadStepProps {
   images: string[];
   onImagesChange: (images: string[]) => void;
+  photoLimit: number;
   error: string | null;
   isLimitReached: boolean;
   credits: number;
@@ -22,6 +23,7 @@ const PHOTO_STYLES = [
 export function UploadStep({
   images,
   onImagesChange,
+  photoLimit,
   error,
   isLimitReached,
   credits,
@@ -37,11 +39,11 @@ export function UploadStep({
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files) return;
     const newUrls: string[] = [];
-    Array.from(files).slice(0, 4 - images.length).forEach((f) => {
+    Array.from(files).slice(0, photoLimit - images.length).forEach((f) => {
       if (f.type.startsWith('image/')) newUrls.push(URL.createObjectURL(f));
     });
-    onImagesChange([...images, ...newUrls].slice(0, 4));
-  }, [images, onImagesChange]);
+    onImagesChange([...images, ...newUrls].slice(0, photoLimit));
+  }, [images, onImagesChange, photoLimit]);
 
   const moveImage = (from: number, to: number) => {
     if (to < 0 || to >= images.length) return;
@@ -73,7 +75,7 @@ export function UploadStep({
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl sm:text-3xl font-black mb-2">Generateur <span className="text-neon-500">IA</span></h1>
-            <p className="text-gray-400 text-sm">Uploade 1 a 4 photos de ton vetement et laisse l'IA creer ton annonce Vinted parfaite.</p>
+            <p className="text-gray-400 text-sm">Uploade 1 a {photoLimit} photo{photoLimit > 1 ? 's' : ''} de ton vetement et laisse l'IA creer ton annonce Vinted parfaite.</p>
           </div>
           {(limit !== null || isAdmin) && (
             <div className="hidden sm:flex items-center gap-2 bg-surface border border-white/5 rounded-xl px-4 py-2.5">
@@ -131,7 +133,7 @@ export function UploadStep({
             </div>
             <p className="text-base font-semibold mb-1">Glisse tes photos ici</p>
             <p className="text-sm text-gray-500 mb-4">ou clique pour parcourir</p>
-            <p className="text-xs text-gray-600">PNG, JPG, WEBP &middot; 1 a 4 photos</p>
+            <p className="text-xs text-gray-600">PNG, JPG, WEBP &middot; 1 a {photoLimit} photo{photoLimit > 1 ? 's' : ''}</p>
             <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
           </label>
         ) : (
@@ -197,7 +199,7 @@ export function UploadStep({
                   </div>
                 </div>
               ))}
-              {images.length < 4 && (
+              {images.length < photoLimit && (
                 <label className="aspect-square rounded-xl border-2 border-dashed border-gray-700 flex flex-col items-center justify-center cursor-pointer hover:border-neon-500/40 hover:bg-neon-500/5 transition-all group">
                   <ImageIcon className="w-5 h-5 text-gray-600 group-hover:text-neon-500 mb-1 transition-colors" />
                   <span className="text-xs text-gray-600 group-hover:text-neon-500 transition-colors">Ajouter</span>

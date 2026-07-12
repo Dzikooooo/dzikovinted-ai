@@ -66,9 +66,12 @@ interface EditListingModalProps {
   // (StockPage.tsx) : un compte Vinted precis doit etre selectionne pour
   // pouvoir enchainer sur la publication.
   canPublish: boolean;
+  // Plafond de photos selon le plan de l'utilisateur (voir
+  // PLAN_PHOTO_LIMITS, src/lib/types.ts) -- meme logique que UploadStep.tsx.
+  photoLimit: number;
 }
 
-export function EditListingModal({ listing, onClose, onSaved, canPublish }: EditListingModalProps) {
+export function EditListingModal({ listing, onClose, onSaved, canPublish, photoLimit }: EditListingModalProps) {
   const [form, setForm] = useState<EditForm>(() => toEditForm(listing));
   const [images, setImages] = useState<string[]>(listing.image_urls);
   const [saving, setSaving] = useState(false);
@@ -87,7 +90,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish }: Edit
     Array.from(files).forEach((f) => {
       if (f.type.startsWith('image/')) next.push(URL.createObjectURL(f));
     });
-    setImages((prev) => [...prev, ...next].slice(0, 4));
+    setImages((prev) => [...prev, ...next].slice(0, photoLimit));
   };
 
   const handleRegenerateText = async () => {
@@ -204,7 +207,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish }: Edit
                 </button>
               </div>
             ))}
-            {images.length < 4 && (
+            {images.length < photoLimit && (
               <label className="aspect-square rounded-xl border-2 border-dashed border-gray-700 flex flex-col items-center justify-center cursor-pointer hover:border-neon-500/40 hover:bg-neon-500/5 transition-all">
                 <ImageIcon className="w-4 h-4 text-gray-600" />
                 <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />

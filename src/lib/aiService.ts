@@ -86,12 +86,13 @@ export async function analyzeWithAI({
       };
     } catch (err) {
       console.error('Edge function call failed:', err);
-     if (geminiKey) {
-        throw err;
-      }
-     throw new Error("Analyse IA indisponible : la fonction Supabase a échoué.");
+      // Toujours propager le message reel (deja extrait de errBody.error
+      // plus haut quand la reponse HTTP est en erreur) -- jamais de
+      // fallback generique qui masquerait une cause exploitable
+      // (credits epuises, cle Gemini manquante, erreur Gemini precise...).
+      throw err instanceof Error ? err : new Error('Analyse IA indisponible : erreur inconnue.');
     }
   }
 
-  throw new Error("Analyse IA indisponible : la fonction Supabase a échoué.");
+  throw new Error('Analyse IA indisponible : aucune session utilisateur active.');
 }

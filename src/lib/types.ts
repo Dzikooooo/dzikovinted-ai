@@ -220,3 +220,14 @@ export const PLAN_LIMITS: Record<Plan, number | null> = {
   pro: null,
   team: null,
 };
+
+// Nombre max de photos par annonce -- deja promis en toutes lettres sur
+// Pricing.tsx/SubscriptionPage.tsx ("1 photo par annonce" / "10 photos
+// par annonce") mais jamais reellement applique nulle part avant ce
+// correctif (le Generateur/la modale d'edition bridaient tout le monde a
+// 4, quel que soit le plan).
+export const PLAN_PHOTO_LIMITS: Record<Plan, number> = {
+  free: 1,
+  pro: 10,
+  team: 10,
+};

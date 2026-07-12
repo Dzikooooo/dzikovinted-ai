@@ -9,8 +9,14 @@ import { PLAN_LIMITS } from '../../lib/types';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 import { isActivelyInStock } from '../../lib/listingStatus';
 import { startOfLocalDayISO, toLocalDateString } from '../../lib/date';
+import { formatRelativeSync } from '../../lib/formatRelativeTime';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
+
+// Au-dela de ce seuil, une synchro Vinted est consideree trop ancienne pour
+// que le Copilote affiche ses chiffres comme fiables -- meme convention que
+// StockPage.tsx (code couleur "Derniere synchro").
+const STALE_SYNC_THRESHOLD_HOURS = 48;
 
 interface DashboardHomeProps {
   onNavigate: (page: DashboardPage) => void;
@@ -151,6 +157,23 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     };
   }, [listings]);
 
+  // Fraicheur de synchro pertinente pour la vue actuelle : tous les comptes
+  // connectes si "Tous les comptes" est selectionne, sinon uniquement le
+  // compte selectionne. Un seul compte jamais synchronise (ou l'absence de
+  // compte connecte) rend l'ensemble non fiable -- ne jamais laisser croire
+  // que les chiffres sont a jour si un seul maillon manque.
+  const relevantAccounts = accounts
+    .filter((a) => a.connected)
+    .filter((a) => selectedAccountId === 'all' || a.id === selectedAccountId);
+  const hasNeverSyncedAccount = relevantAccounts.some((a) => !a.last_synced_at);
+  const oldestSync = hasNeverSyncedAccount || relevantAccounts.length === 0
+    ? null
+    : relevantAccounts.reduce<string>((oldest, a) => (a.last_synced_at! < oldest ? a.last_synced_at! : oldest), relevantAccounts[0].last_synced_at!);
+  const syncStaleHours = oldestSync ? (Date.now() - new Date(oldestSync).getTime()) / 3_600_000 : null;
+  const isSyncStale = relevantAccounts.length > 0 && (oldestSync === null || syncStaleHours! > STALE_SYNC_THRESHOLD_HOURS);
+  const hasNarrativeContent = !!insights && (insights.narratives.length > 0 || insights.priorities.length > 0);
+  const showCopilote = hasNarrativeContent || (relevantAccounts.length > 0 && isSyncStale);
+
   const todayCards = [
     {
       icon: ShoppingBag,
@@ -258,14 +281,34 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       )}
 
       {/* Copilote */}
-      {insights && (insights.narratives.length > 0 || insights.priorities.length > 0) && (
+      {showCopilote && (
         <div className="mb-8 bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-neon-500/20 rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Lightbulb className="w-4 h-4 text-neon-500" />
-            <h2 className="font-bold text-sm text-gray-200">Copilote</h2>
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-neon-500" />
+              <h2 className="font-bold text-sm text-gray-200">Copilote</h2>
+            </div>
+            {relevantAccounts.length > 0 && (
+              <span className={`text-[10px] font-mono ${isSyncStale ? 'text-amber-400' : 'text-gray-500'}`}>
+                {isSyncStale
+                  ? oldestSync
+                    ? `Dernière synchro : ${formatRelativeSync(oldestSync)}`
+                    : 'Jamais synchronisé'
+                  : `Dernière synchro : ${formatRelativeSync(oldestSync)}`}
+              </span>
+            )}
           </div>
 
-          {insights.narratives.length > 0 && (
+          {isSyncStale && relevantAccounts.length > 0 && (
+            <div className="flex items-start gap-2.5 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3 mb-4">
+              <p className="text-xs text-amber-300">
+                Données non synchronisées{oldestSync ? ` depuis ${formatRelativeSync(oldestSync)}` : ''} — synchronise
+                depuis Stock pour des chiffres à jour.
+              </p>
+            </div>
+          )}
+
+          {!!insights?.narratives.length && (
             <div className="space-y-1.5 mb-4">
               {insights.narratives.map((n, i) => (
                 <p key={i} className="text-sm text-gray-300">{n.message}</p>
@@ -273,7 +316,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             </div>
           )}
 
-          {insights.priorities.length > 0 && (
+          {!!insights?.priorities.length && (
             <div>
               <p className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-2">Priorités du jour</p>
               <div className="space-y-1.5">
