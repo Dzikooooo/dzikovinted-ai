@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb, UploadCloud } from 'lucide-react';
+import { Search, X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb, Pencil, UploadCloud } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
@@ -15,9 +15,12 @@ import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 import PublishConfirmationModal, { type PackageSize } from '../../components/publish/PublishConfirmationModal';
 import PublishProgressModal from '../../components/publish/PublishProgressModal';
+import { EditListingModal } from '../../components/stock/EditListingModal';
 import { isExtensionConfigured, pingExtension } from '../../lib/extensionBridge';
 import { formatRelativeSync } from '../../lib/formatRelativeTime';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
+import { isActivelyInStock } from '../../lib/listingStatus';
+import { toLocalDateString } from '../../lib/date';
 import { isPublishStep, type PublishStep } from '../../lib/actions/publishSteps';
 import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
 import type { VintedAccount } from '../../lib/types';
@@ -85,6 +88,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   const [syncing, setSyncing] = useState(false);
   const [syncHint, setSyncHint] = useState<string | null>(null);
   const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
+  const [editingItem, setEditingItem] = useState<Listing | null>(null);
   const [publishState, setPublishState] = useState<{
     step: PublishStep | 'done' | null;
     error: string | null;
@@ -142,7 +146,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         status: 'vendu',
         sold_price: Number(soldPrice || 0),
         fees: Number(fees || 0),
-        sold_date: new Date().toISOString().slice(0, 10),
+        sold_date: toLocalDateString(new Date()),
       })
       .eq('id', sellingItem.id);
 
@@ -240,7 +244,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     return matchesSearch && matchesFilter;
   });
 
-  const stockItems = items.filter((item) => item.status !== 'vendu');
+  const stockItems = items.filter(isActivelyInStock);
   const soldItems = items.filter((item) => item.status === 'vendu');
 
   const stockValue = stockItems.reduce((sum, item) => sum + Number(item.price || 0), 0);
@@ -481,6 +485,15 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {!isSold && (
+                        <button
+                          onClick={() => setEditingItem(item)}
+                          className="flex items-center gap-1.5 text-xs font-semibold bg-dark-400 border border-white/10 text-gray-200 px-3 py-2 rounded-xl hover:border-neon-500/40 transition-all"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Modifier
+                        </button>
+                      )}
                       {!isSold && item.vinted_account_id === null && selectedAccount && (
                         <button
                           onClick={() => setPublishingItem(item)}
@@ -585,6 +598,19 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                 }
               : undefined
           }
+        />
+      )}
+
+      {editingItem && (
+        <EditListingModal
+          listing={editingItem}
+          onClose={() => setEditingItem(null)}
+          canPublish={!!selectedAccount}
+          onSaved={(updated, publish) => {
+            setEditingItem(null);
+            load();
+            if (publish) setPublishingItem(updated);
+          }}
         />
       )}
     </div>

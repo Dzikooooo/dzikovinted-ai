@@ -22,6 +22,7 @@ export interface Profile {
   full_name: string | null;
   plan: Plan;
   credits: number;
+  role: 'user' | 'admin';
   avatar_url: string | null;
   created_at: string;
 }
@@ -82,6 +83,11 @@ fees: number;
   favourites: number | null;
   views: number | null;
   synced_at: string | null;
+
+  // Horodatage de la derniere edition manuelle depuis ResellOS (modale
+  // "Modifier l'annonce", StockPage.tsx) -- null tant que l'annonce n'a
+  // jamais ete editee apres sa creation.
+  last_edited_at: string | null;
 }
 export interface GeneratedListing {
   title: string;

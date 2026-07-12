@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
+import { isActivelyInStock } from '../../lib/listingStatus';
+import { startOfLocalDayISO, toLocalDateString } from '../../lib/date';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 
@@ -35,7 +37,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     (async () => {
       setLoading(true);
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const todayStart = new Date().toISOString().slice(0, 10);
+      const todayStart = startOfLocalDayISO(new Date());
       // `.or(...)` plutot qu'un simple `.neq('vinted_status','deleted')` :
       // un neq seul exclurait aussi les articles jamais lies a Vinted
       // (vinted_status null), pas seulement les annonces reellement
@@ -100,7 +102,8 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
-  const limit = PLAN_LIMITS[plan];
+  const isAdmin = profile?.role === 'admin';
+  const limit = isAdmin ? null : PLAN_LIMITS[plan];
   const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'la';
 
   const greeting = () => {
@@ -111,13 +114,13 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   };
 
   const metrics = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateString(new Date());
     const monthStart = new Date();
     monthStart.setDate(1);
-    const monthStartStr = monthStart.toISOString().slice(0, 10);
+    const monthStartStr = toLocalDateString(monthStart);
 
     const soldItems = listings.filter((l) => l.status === 'vendu');
-    const stockItems = listings.filter((l) => l.status !== 'vendu');
+    const stockItems = listings.filter(isActivelyInStock);
 
     const soldToday = soldItems.filter((l) => l.sold_date === today);
     const soldThisMonth = soldItems.filter((l) => l.sold_date && l.sold_date >= monthStartStr);
@@ -132,7 +135,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     const agingStock = stockItems.filter(
       (l) => Date.now() - new Date(l.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000
     );
-    const newListingsToday = listings.filter((l) => l.created_at.slice(0, 10) === today).length;
+    const newListingsToday = listings.filter((l) => toLocalDateString(new Date(l.created_at)) === today).length;
 
     return {
       soldTodayCount: soldToday.length,
@@ -205,7 +208,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       </div>
 
       {/* Credits banner */}
-      {limit !== null && (
+      {(limit !== null || isAdmin) && (
         <div className="bg-gradient-to-r from-surface to-surface border border-white/5 rounded-2xl p-5 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -215,33 +218,41 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
               <div>
                 <p className="text-sm font-semibold text-gray-200">Credits restants</p>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-3xl font-black text-neon-500">{credits}</span>
-                  <span className="text-sm text-gray-500">/ {limit} ce mois</span>
+                  {isAdmin ? (
+                    <span className="text-3xl font-black text-neon-500">Illimité</span>
+                  ) : (
+                    <>
+                      <span className="text-3xl font-black text-neon-500">{credits}</span>
+                      <span className="text-sm text-gray-500">/ {limit} ce mois</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
-            <div className="flex-1 max-w-xs">
-              <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700 ease-out"
-                  style={{
-                    width: `${Math.min((credits / limit) * 100, 100)}%`,
-                    background: credits > 3 ? '#FFC400' : credits > 0 ? '#f59e0b' : '#ef4444',
-                  }}
-                />
+            {!isAdmin && limit !== null && (
+              <div className="flex-1 max-w-xs">
+                <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-700 ease-out"
+                    style={{
+                      width: `${Math.min((credits / limit) * 100, 100)}%`,
+                      background: credits > 3 ? '#FFC400' : credits > 0 ? '#f59e0b' : '#ef4444',
+                    }}
+                  />
+                </div>
+                {credits <= 0 && (
+                  <p className="text-xs text-red-400 mt-2">
+                    Limite atteinte.{' '}
+                    <button onClick={() => onNavigate('subscription')} className="underline hover:text-red-300">
+                      Passer au Pro
+                    </button>
+                  </p>
+                )}
+                {credits > 0 && credits <= 3 && (
+                  <p className="text-xs text-amber-400 mt-2">Plus que {credits} credit{credits > 1 ? 's' : ''} disponible{credits > 1 ? 's' : ''}.</p>
+                )}
               </div>
-              {credits <= 0 && (
-                <p className="text-xs text-red-400 mt-2">
-                  Limite atteinte.{' '}
-                  <button onClick={() => onNavigate('subscription')} className="underline hover:text-red-300">
-                    Passer au Pro
-                  </button>
-                </p>
-              )}
-              {credits > 0 && credits <= 3 && (
-                <p className="text-xs text-amber-400 mt-2">Plus que {credits} credit{credits > 1 ? 's' : ''} disponible{credits > 1 ? 's' : ''}.</p>
-              )}
-            </div>
+            )}
           </div>
         </div>
       )}

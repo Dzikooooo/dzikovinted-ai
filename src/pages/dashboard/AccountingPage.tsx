@@ -7,6 +7,7 @@ import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { toLocalDateString } from '../../lib/date';
 
 const VAT_RATE = 0.2;
 const URSSAF_RATE = 0.123;
@@ -56,7 +57,7 @@ export default function AccountingPage() {
   const monthStart = useMemo(() => {
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().slice(0, 10);
+    return toLocalDateString(d);
   }, []);
 
   const stats = useMemo(() => {

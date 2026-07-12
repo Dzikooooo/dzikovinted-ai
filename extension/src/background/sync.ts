@@ -2,6 +2,7 @@ import { supabaseWithToken } from "./supabaseClient";
 import { logger } from "./logger";
 import { withRetry } from "./retry";
 import { getValidAccessToken } from "./session";
+import { toLocalDateString } from "../lib/date";
 import type { ListingPayload } from "../lib/messages";
 
 // Ecritures declenchees par les content scripts (lecture automatique du
@@ -150,7 +151,9 @@ export async function recordListings(
     });
 
     const existingByItemId = new Map(existingRows.map((r) => [r.vinted_item_id, r]));
-    const syncedAt = new Date().toISOString();
+    const now = new Date();
+    const syncedAt = now.toISOString();
+    const todayLocal = toLocalDateString(now);
 
     const toInsert: Record<string, unknown>[] = [];
     const toUpdate: { id: string; payload: Record<string, unknown> }[] = [];
@@ -175,7 +178,7 @@ export async function recordListings(
           synced_at: syncedAt,
           purchase_price: null,
           status: deriveResellOsStatus(l.status),
-          sold_date: l.status === "sold_completed" ? syncedAt.slice(0, 10) : null,
+          sold_date: l.status === "sold_completed" ? todayLocal : null,
           sold_price: l.status === "sold_completed" ? l.price : null,
           fees: 0,
           is_favorite: false,
@@ -200,7 +203,7 @@ export async function recordListings(
         payload.status = "vendu";
         if (existing.sold_price === null) {
           payload.sold_price = l.price;
-          payload.sold_date = syncedAt.slice(0, 10);
+          payload.sold_date = todayLocal;
         }
       }
 

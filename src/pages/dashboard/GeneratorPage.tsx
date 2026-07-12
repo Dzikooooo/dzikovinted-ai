@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { analyzeWithAI } from '../../lib/aiService';
+import { uploadListingPhotos } from '../../lib/storage';
 import type { GeneratedListing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { UploadStep } from './generator/UploadStep';
@@ -14,8 +15,11 @@ type GenStep = 'upload' | 'loading' | 'result' | 'edit';
 export default function GeneratorPage() {
   const [step, setStep] = useState<GenStep>('upload');
   const [images, setImages] = useState<string[]>([]);
-  const [photoStyle, setPhotoStyle] = useState("white");
-  const [enhancePhoto, setEnhancePhoto] = useState(true);
+  // Reglages non encore branches cote backend (voir UploadStep.tsx) --
+  // valeurs fixes plutot que du state editable tant qu'ils n'ont aucun
+  // effet reel sur la generation.
+  const photoStyle = 'white';
+  const enhancePhoto = true;
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<GeneratedListing | null>(null);
   const [editForm, setEditForm] = useState<GeneratedListing | null>(null);
@@ -26,7 +30,8 @@ export default function GeneratorPage() {
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
-  const limit = PLAN_LIMITS[plan];
+  const isAdmin = profile?.role === 'admin';
+  const limit = isAdmin ? null : PLAN_LIMITS[plan];
   const isLimitReached = limit !== null && credits <= 0;
 
   const handleGenerate = async () => {
@@ -70,29 +75,38 @@ export default function GeneratorPage() {
   const handleSave = async () => {
     if (!editForm || !user) return;
     setSaving(true);
-    const { error: insertError } = await supabase.from('listings').insert({
-      user_id: user.id,
-      title: editForm.title,
-      description: editForm.description,
-      brand: editForm.brand,
-      category: editForm.category,
-      color: editForm.color,
-      size: editForm.size,
-      material: editForm.material,
-      condition: editForm.condition,
-      price: editForm.price,
-      quick_price: editForm.quick_price,
-      premium_price: editForm.premium_price,
-      keywords: editForm.keywords,
-      vinted_filters: editForm.vinted_filters,
-      image_urls: images,
-    });
-    setSaving(false);
-    if (insertError) {
-      console.error('Listing save error:', insertError);
-      setError('Erreur lors de la sauvegarde: ' + insertError.message);
-    } else {
-      setSaved(true);
+    setError(null);
+    try {
+      const durableImageUrls = await uploadListingPhotos(user.id, images);
+      const { error: insertError } = await supabase.from('listings').insert({
+        user_id: user.id,
+        title: editForm.title,
+        description: editForm.description,
+        brand: editForm.brand,
+        category: editForm.category,
+        color: editForm.color,
+        size: editForm.size,
+        material: editForm.material,
+        condition: editForm.condition,
+        price: editForm.price,
+        quick_price: editForm.quick_price,
+        premium_price: editForm.premium_price,
+        keywords: editForm.keywords,
+        vinted_filters: editForm.vinted_filters,
+        image_urls: durableImageUrls,
+      });
+      if (insertError) {
+        console.error('Listing save error:', insertError);
+        setError('Erreur lors de la sauvegarde: ' + insertError.message);
+      } else {
+        setSaved(true);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur lors de l\'envoi des photos';
+      console.error('Photo upload error:', msg);
+      setError(msg);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -110,14 +124,11 @@ export default function GeneratorPage() {
       <UploadStep
         images={images}
         onImagesChange={setImages}
-        photoStyle={photoStyle}
-        onPhotoStyleChange={setPhotoStyle}
-        enhancePhoto={enhancePhoto}
-        onEnhancePhotoChange={setEnhancePhoto}
         error={error}
         isLimitReached={isLimitReached}
         credits={credits}
         limit={limit}
+        isAdmin={isAdmin}
         onGenerate={handleGenerate}
       />
     );
@@ -132,6 +143,7 @@ export default function GeneratorPage() {
       <ResultStep
         result={result}
         images={images}
+        error={error}
         onReset={resetAll}
         onEdit={() => setStep('edit')}
         onSave={handleSave}

@@ -36,24 +36,10 @@ une annonce optimisée, estime le meilleur prix et met à jour votre stock en qu
           </button>
           <p className="text-sm text-gray-500">Sans carte bancaire · 10 analyses offertes</p>
         </div>
-        <div className="mt-16 grid grid-cols-3 max-w-sm mx-auto gap-6">
-      {[
-  ['+2 400', 'annonces générées'],
-  ['+500€', 'CA suivi'],
-  ['+320h', 'temps économisé']
-].map(([v, l]) => (
-            <div key={l} className="text-center">
-              <p
-  className="text-2xl font-black text-neon-500 whitespace-nowrap"
-  style={{ textShadow: "0 0 40px rgba(255,196,0,.25)" }}
->
-  {v}
-</p>
-              <p className="text-xs text-gray-500 mt-1">{l}</p>
-            </div>
-          ))}
-        </div>
         <div className="mt-16 max-w-5xl mx-auto bg-surface border border-white/10 rounded-3xl p-6 shadow-[0_0_80px_shadow-[0_0_80px_rgba(255,196,0,0.08)]">
+  <span className="inline-block text-[10px] font-mono uppercase tracking-wider text-gray-500 bg-white/5 border border-white/10 px-2.5 py-1 rounded-md mb-4">
+    Aperçu — exemple
+  </span>
   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
     <div className="bg-black/60 rounded-2xl p-5 border border-white/10">

@@ -356,6 +356,20 @@ Background → runAction() : ajoute ici un vrai handler 'republish_listing', sui
   → ferme l'onglet si il a été ouvert pour l'occasion
 ```
 
+### 6.2bis Édition d'une annonce côté app (implémentée le 2026-07-13, aucune automatisation Vinted)
+
+`EditListingModal.tsx` (`src/components/stock/`) permet de modifier une annonce **déjà persistée** (`Listing`, avec `id`) directement depuis `StockPage.tsx` — jusqu'ici seul `GeneratorPage.tsx`/`EditStep.tsx` permettait d'éditer un `GeneratedListing` *avant* le premier `insert`, aucun chemin `update` n'existait. Toujours une édition **en place** (`UPDATE ... WHERE id = ...`), pas de table de versions.
+
+**L'UPDATE ne touche que les champs propriétaire de l'app**, en miroir strict de la règle de propriété décrite en §5 (`title`, `description`, `brand`, `category`, `color`, `size`, `material`, `condition`, `price`, `quick_price`, `premium_price`, `keywords`, `vinted_filters`, `image_urls`, plus un nouveau `last_edited_at`) — **jamais** `vinted_status`/`favourites`/`views`/`synced_at`/`vinted_url`/`vinted_account_id`/`vinted_item_id`, qui restent l'exclusivité de `recordListings()` (`sync.ts`). C'est la seule connexion de code entre cette fonctionnalité et l'extension cette phase : éviter qu'une édition manuelle et une resynchro se marchent dessus.
+
+**Piège documenté explicitement dans l'UI** : `price` fait partie des champs "toujours rafraîchis à chaque synchro" (§5) — éditer le prix d'une annonce déjà liée à un compte Vinted (`vinted_account_id !== null`) "collera" visuellement jusqu'à la prochaine synchro, puis reviendra silencieusement au prix réel observé sur Vinted, puisqu'il n'existe aucune écriture app→Vinted pour le prix. La modale affiche cet avertissement explicitement plutôt que de laisser l'utilisateur découvrir la réécriture silencieuse.
+
+**"Relancer titre/description/prix"** réutilise directement `analyzeWithAI`/`analyze-clothing` (mêmes images, nouvelle analyse) — aucune action Vinted, aucun nouveau contrat de données.
+
+**"Préparer une version prête à republier"** ne déclenche **aucune automatisation nouvelle** : si l'annonce n'est jamais liée à Vinted (`vinted_account_id === null`, même garde que le bouton "Publier sur Vinted" existant), enregistrer rouvre simplement le flux `publish_listing` déjà existant (§6.1) avec l'annonce fraîchement sauvegardée. Si l'annonce est déjà en ligne, la modale affiche un message honnête ("republication automatique pas encore disponible") au lieu de proposer un bouton qui ne ferait rien — cohérent avec §8 (jamais d'automatisation silencieuse).
+
+**Contrat de données qu'une future action `edit_listing`/`republish_listing` (§6.2, toujours pas codée) devrait avoir** : `ActionKind` les déclare déjà (`extension/src/lib/messages.ts`) mais sans handler. Un vrai push app→Vinted du prix/titre/description nécessiterait un payload proche de `PublishListingPayload` (§6.1) mais ciblant le formulaire *d'édition* d'une annonce existante sur Vinted (`vinted.fr/items/{id}/edit`), pas le formulaire de création (`items/new`) utilisé par `publish_listing` — sélecteurs DOM et flux de navigation entièrement différents, non réutilisables tels quels. Reste un chantier non commencé.
+
 ### 6.3 Vues / favoris en temps réel (MVP, §10)
 
 Périodiquement (alarm, §7), le background demande au content script (si un onglet Vinted est ouvert, sinon en ouvre un discret) de lire les compteurs vues/favoris de la page « Mes annonces » de l'utilisateur, puis met à jour `listings` avec les valeurs trouvées. Remplace l'attente d'un scan externe pour cette donnée précise — c'est une lecture, pas une action, donc plus simple et moins risqué que la republication.

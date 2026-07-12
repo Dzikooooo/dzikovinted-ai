@@ -1,6 +1,7 @@
 import type { EngineContext, NarrativeInsight } from './types';
 import { MIN_SAMPLE_SIZE_FOR_COMPARISON } from './constants';
 import { daysBetween } from './math';
+import { toLocalDateString } from '../date';
 
 // Phrases generees par templates a partir d'agregats reels deja calcules
 // dans le contexte - jamais d'appel LLM (voir plan : Gemini n'est utilise
@@ -13,23 +14,28 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function weeklySalesByAccount(ctx: EngineContext): string[] {
+// Comparaison de chaines YYYY-MM-DD (jour calendaire local) plutot que de
+// `Date` : `sold_date` est une date-seule stockee en jour local (voir
+// StockPage.tsx/sync.ts), la comparer contre un `Date` precis reintroduirait
+// exactement le bug corrige ici (fenetre glissante qui varie selon l'heure
+// de la journee a cause du parsing UTC-minuit d'une date-seule).
+function salesByAccountWithinDays(ctx: EngineContext, days: number, label: string): string[] {
   const messages: string[] = [];
-  const weekAgo = new Date(ctx.now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const sinceStr = toLocalDateString(new Date(ctx.now.getTime() - days * 24 * 60 * 60 * 1000));
 
   for (const account of ctx.accounts) {
-    const soldThisWeek = ctx.listings.filter(
+    const soldInWindow = ctx.listings.filter(
       (l) =>
         l.vinted_account_id === account.id &&
         l.status === 'vendu' &&
         l.sold_date &&
-        new Date(l.sold_date) >= weekAgo
+        l.sold_date >= sinceStr
     );
-    if (soldThisWeek.length === 0) continue;
+    if (soldInWindow.length === 0) continue;
 
-    const withCost = soldThisWeek.filter((l) => l.purchase_price !== null && l.sold_price !== null);
+    const withCost = soldInWindow.filter((l) => l.purchase_price !== null && l.sold_price !== null);
     if (withCost.length === 0) {
-      messages.push(`Cette semaine, ${account.label} a vendu ${soldThisWeek.length} article${soldThisWeek.length > 1 ? 's' : ''}.`);
+      messages.push(`${label}, ${account.label} a vendu ${soldInWindow.length} article${soldInWindow.length > 1 ? 's' : ''}.`);
       continue;
     }
 
@@ -41,11 +47,19 @@ function weeklySalesByAccount(ctx: EngineContext): string[] {
       }, 0) / withCost.length;
 
     messages.push(
-      `Cette semaine, ${account.label} a vendu ${soldThisWeek.length} article${soldThisWeek.length > 1 ? 's' : ''} avec un ROI moyen de ${Math.round(avgRoi)} %.`
+      `${label}, ${account.label} a vendu ${soldInWindow.length} article${soldInWindow.length > 1 ? 's' : ''} avec un ROI moyen de ${Math.round(avgRoi)} %.`
     );
   }
 
   return messages;
+}
+
+function weeklySalesByAccount(ctx: EngineContext): string[] {
+  return salesByAccountWithinDays(ctx, 7, 'Cette semaine');
+}
+
+function monthlySalesByAccount(ctx: EngineContext): string[] {
+  return salesByAccountWithinDays(ctx, 30, 'Ces 30 derniers jours');
 }
 
 function bestPerformingBrand(ctx: EngineContext): string | null {
@@ -105,6 +119,7 @@ function bestPerformingAccount(ctx: EngineContext): string | null {
 
 const NARRATIVE_BUILDERS: ((ctx: EngineContext) => string | string[] | null)[] = [
   weeklySalesByAccount,
+  monthlySalesByAccount,
   bestPerformingBrand,
   bestMarginCategory,
   recentListingsShareOfSales,

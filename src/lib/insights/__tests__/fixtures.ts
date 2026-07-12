@@ -40,6 +40,7 @@ export function makeListing(overrides: Partial<Listing> = {}): Listing {
     favourites: null,
     views: null,
     synced_at: null,
+    last_edited_at: null,
     ...overrides,
   };
 }

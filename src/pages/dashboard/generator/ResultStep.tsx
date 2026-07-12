@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy, DollarSign, Filter, Layers, Palette, Pencil, Ruler, Save, Star, Tag } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Copy, DollarSign, Filter, Layers, Palette, Pencil, Ruler, Save, Star, Tag } from 'lucide-react';
 import type { GeneratedListing } from '../../../lib/types';
 import { CopyBtn } from '../../../components/ui/CopyBtn';
 import { FieldCard } from '../../../components/ui/FieldCard';
@@ -6,6 +6,7 @@ import { FieldCard } from '../../../components/ui/FieldCard';
 interface ResultStepProps {
   result: GeneratedListing;
   images: string[];
+  error: string | null;
   onReset: () => void;
   onEdit: () => void;
   onSave: () => void;
@@ -13,7 +14,7 @@ interface ResultStepProps {
   saved: boolean;
 }
 
-export function ResultStep({ result, images, onReset, onEdit, onSave, saving, saved }: ResultStepProps) {
+export function ResultStep({ result, images, error, onReset, onEdit, onSave, saving, saved }: ResultStepProps) {
   const handleCopyAll = () => {
     const t = [
       result.title, '',
@@ -61,6 +62,13 @@ export function ResultStep({ result, images, onReset, onEdit, onSave, saving, sa
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
+          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
 
       {/* Image preview strip */}
       {images.length > 0 && (

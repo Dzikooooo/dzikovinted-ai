@@ -75,11 +75,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // Quota serveur : seul le plan free est limite en credits (pro/team =
-    // illimite). Duplique de PLAN_LIMITS (src/lib/types.ts) -- pas d'import
-    // cross-runtime possible entre Vite (src/) et Deno (supabase/functions/).
+    // illimite), et un compte role='admin' est toujours illimite quel que
+    // soit son plan. Duplique de PLAN_LIMITS (src/lib/types.ts) -- pas
+    // d'import cross-runtime possible entre Vite (src/) et Deno
+    // (supabase/functions/).
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("plan, role")
       .eq("id", user.id)
       .single();
 
@@ -90,7 +92,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const isMetered = profile.plan === "free";
+    const isMetered = profile.plan === "free" && profile.role !== "admin";
 
     if (isMetered) {
       const { error: reserveError } = await supabase.rpc("decrement_credit", {

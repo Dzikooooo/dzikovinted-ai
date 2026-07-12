@@ -59,7 +59,8 @@ function groupBy<T>(items: Listing[], keyOf: (l: Listing) => T | null): Map<T, L
 export function buildContext(
   listings: Listing[],
   accounts: VintedAccount[],
-  snapshots: ListingMetricSnapshot[]
+  snapshots: ListingMetricSnapshot[],
+  now: Date = new Date()
 ): EngineContext {
   const soldItems = listings.filter((l) => l.status === 'vendu');
 
@@ -93,7 +94,7 @@ export function buildContext(
   );
 
   return {
-    now: new Date(),
+    now,
     listings,
     accounts,
     snapshotsByListingId,

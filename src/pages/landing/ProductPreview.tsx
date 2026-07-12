@@ -21,6 +21,10 @@ export function ProductPreview() {
             Créez vos annonces, estimez vos prix, détectez les meilleures opportunités
             et pilotez votre business depuis une seule interface.
           </p>
+
+          <span className="inline-block mt-6 text-[10px] font-mono uppercase tracking-wider text-gray-500 bg-white/5 border border-white/10 px-2.5 py-1 rounded-md">
+            Aperçu — exemple, pas des données réelles
+          </span>
         </div>
 
         <div className="relative rounded-[36px] border border-neon-500/25 bg-gradient-to-b from-[#1A1A1A] to-[#0B0B0B] p-3 shadow-[0_50px_140px_rgba(0,0,0,.7),0_0_80px_rgba(255,196,0,.08)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_60px_160px_rgba(0,0,0,.8),0_0_120px_rgba(255,196,0,.12)]">

@@ -1,17 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, GripVertical, ImageIcon, Sparkles, Upload, X, Zap } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, Clock, GripVertical, ImageIcon, Sparkles, Upload, X, Zap } from 'lucide-react';
 
 interface UploadStepProps {
   images: string[];
   onImagesChange: (images: string[]) => void;
-  photoStyle: string;
-  onPhotoStyleChange: (style: string) => void;
-  enhancePhoto: boolean;
-  onEnhancePhotoChange: (value: boolean) => void;
   error: string | null;
   isLimitReached: boolean;
   credits: number;
   limit: number | null;
+  isAdmin: boolean;
   onGenerate: () => void;
 }
 
@@ -25,14 +22,11 @@ const PHOTO_STYLES = [
 export function UploadStep({
   images,
   onImagesChange,
-  photoStyle,
-  onPhotoStyleChange,
-  enhancePhoto,
-  onEnhancePhotoChange,
   error,
   isLimitReached,
   credits,
   limit,
+  isAdmin,
   onGenerate,
 }: UploadStepProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -81,21 +75,27 @@ export function UploadStep({
             <h1 className="text-2xl sm:text-3xl font-black mb-2">Generateur <span className="text-neon-500">IA</span></h1>
             <p className="text-gray-400 text-sm">Uploade 1 a 4 photos de ton vetement et laisse l'IA creer ton annonce Vinted parfaite.</p>
           </div>
-          {limit !== null && (
+          {(limit !== null || isAdmin) && (
             <div className="hidden sm:flex items-center gap-2 bg-surface border border-white/5 rounded-xl px-4 py-2.5">
               <Zap className="w-4 h-4 text-neon-500" />
               <div>
                 <p className="text-xs text-gray-500">Credits restants</p>
-                <p className="text-sm font-bold text-neon-500">{credits} <span className="text-gray-600 font-normal">/ {limit}</span></p>
+                <p className="text-sm font-bold text-neon-500">
+                  {isAdmin ? 'Illimité' : <>{credits} <span className="text-gray-600 font-normal">/ {limit}</span></>}
+                </p>
               </div>
             </div>
           )}
         </div>
 
-        {limit !== null && (
+        {(limit !== null || isAdmin) && (
           <div className="sm:hidden flex items-center gap-2 bg-surface border border-white/5 rounded-xl px-4 py-2.5 mt-4">
             <Zap className="w-4 h-4 text-neon-500" />
-            <p className="text-sm"><span className="font-bold text-neon-500">{credits}</span> <span className="text-gray-500">credits restants sur {limit}</span></p>
+            {isAdmin ? (
+              <p className="text-sm font-bold text-neon-500">Illimité</p>
+            ) : (
+              <p className="text-sm"><span className="font-bold text-neon-500">{credits}</span> <span className="text-gray-500">credits restants sur {limit}</span></p>
+            )}
           </div>
         )}
       </div>
@@ -206,33 +206,31 @@ export function UploadStep({
               )}
             </div>
             <div className="mb-5 bg-dark-400 border border-white/5 rounded-xl p-4">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-3">
-                Options IA Photo
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500">
+                  Options IA Photo
+                </p>
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
+                  <Clock className="w-2.5 h-2.5" /> Bientôt disponible
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Ces réglages ne modifient pas encore la photo : tes images sont utilisées telles quelles.
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 opacity-50 pointer-events-none" aria-disabled="true">
                 {PHOTO_STYLES.map((style) => (
-                  <button
+                  <span
                     key={style.id}
-                    onClick={() => onPhotoStyleChange(style.id)}
-                    className={`rounded-xl px-3 py-2 text-xs font-bold border transition ${
-                      photoStyle === style.id
-                        ? "bg-neon-500 text-black border-neon-500"
-                        : "bg-surface text-gray-400 border-white/10"
-                    }`}
+                    className="rounded-xl px-3 py-2 text-xs font-bold border bg-surface text-gray-400 border-white/10 text-center"
                   >
                     {style.label}
-                  </button>
+                  </span>
                 ))}
               </div>
 
-              <label className="flex items-center gap-3 text-sm text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={enhancePhoto}
-                  onChange={(e) => onEnhancePhotoChange(e.target.checked)}
-                  className="accent-neon-500"
-                />
+              <label className="flex items-center gap-3 text-sm text-gray-500 opacity-50 pointer-events-none" aria-disabled="true">
+                <input type="checkbox" checked={false} disabled className="accent-neon-500" />
                 Améliorer automatiquement la qualité
               </label>
             </div>
