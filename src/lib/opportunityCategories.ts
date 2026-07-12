@@ -9,5 +9,3 @@ export const OPPORTUNITY_CATEGORIES = [
   "Jeans",
   "Shoes",
 ] as const;
-
-export type OpportunityCategory = (typeof OPPORTUNITY_CATEGORIES)[number];

@@ -77,8 +77,14 @@ Vinted n'a pas d'API publique : publier/republier une annonce, gérer les messag
 
 ## Phase 4 — Alertes, Dashboard premium (priorités produit 2026-07-12, pas commencées)
 
+**⏸ Phase en pause depuis le 2026-07-12** — l'utilisateur teste le produit en conditions réelles (UX, pertinence des recommandations, workflow) avant d'ouvrir un nouveau chantier. Ne pas commencer les points ci-dessous sans nouvelle demande explicite.
+
 Priorités classées par l'utilisateur pour la phase produit ouverte le 2026-07-12, après la Watchlist personnelle (ci-dessus) et le renforcement UX (composants partagés, favoris — voir commits `1fe8094`/`db7c518`) :
 
 1. **Alertes (email/Discord/Telegram)** — pas commencée. Décisions à trancher avant de planifier : fournisseur email (Resend/Postmark/SMTP), Discord via webhook (pas de bot à héberger) vs bot complet, gestion du secret du bot Telegram (Edge Function côté serveur, jamais côté client). Se déclenche probablement sur nouvelles opportunités matchant la watchlist personnelle de l'utilisateur — dépend directement de la Watchlist personnelle ci-dessus.
 2. **Dashboard premium** — pas commencée. Tendance des opportunités et top marques déjà notées en P1 lors de la passe UX précédente restent pertinentes, à enrichir avec des métriques tirées de la watchlist personnelle (ex. nouvelles opportunités sur les recherches suivies aujourd'hui). Nécessite de choisir une librairie de graphiques (toujours aucune dans le projet).
 3. **Optimisation UX continue** — pas un chantier ponctuel, à traiter en continu à mesure que de vrais points de friction apparaissent en usage réel.
+
+### Audit de polish rapide (2026-07-12, avant la pause) — rien de critique trouvé
+
+Passe de vérification demandée par l'utilisateur avant de mettre le produit en test réel : aucun TODO/code mort/commentaire temporaire lié aux phases Watchlist/Opportunity Intelligence (un seul export réellement mort trouvé et supprimé, `OpportunityCategory` dans `opportunityCategories.ts`, jamais consommé). Walkthrough desktop + mobile sur Dashboard, Opportunités, Watchlist, Stock — rien de cassé, rien d'assez évident pour justifier une correction pendant cette passe. Un seul point cosmétique mineur noté, pas assez évident pour être corrigé maintenant : sur `WatchlistPage.tsx` en desktop large, les 2 `StatCard` ("Recherches actives"/"Recherches suivies") s'étirent sur toute la largeur du conteneur `max-w-7xl` avec beaucoup d'espace vide interne — à surveiller si une 3ᵉ métrique pertinente apparaît naturellement (pas une raison suffisante pour en inventer une maintenant). **P3.**
