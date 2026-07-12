@@ -4,6 +4,7 @@ import { useExpenses } from '../../hooks/useExpenses';
 import { StatCard } from '../../components/ui/StatCard';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Modal } from '../../components/ui/Modal';
 
 const CATEGORIES = [
   'Emballage',
@@ -115,20 +116,19 @@ export default function ExpensesPage() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md bg-surface border border-white/10 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-black">Nouvelle depense</h2>
-              <button
-                onClick={() => setShowForm(false)}
-                aria-label="Fermer"
-                className="p-1.5 rounded-lg hover:bg-white/5"
-              >
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-            </div>
+        <Modal onClose={() => setShowForm(false)} size="md">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-black">Nouvelle depense</h2>
+            <button
+              onClick={() => setShowForm(false)}
+              aria-label="Fermer"
+              className="p-1.5 rounded-lg hover:bg-white/5"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
 
-            <div className="space-y-4">
+          <div className="space-y-4">
               <div>
                 <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">
                   Categorie
@@ -179,9 +179,8 @@ export default function ExpensesPage() {
               >
                 {saving ? 'Enregistrement...' : 'Ajouter la depense'}
               </button>
-            </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

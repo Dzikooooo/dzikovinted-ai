@@ -3,6 +3,7 @@ import { BarChart2, TrendingUp, Tag, Sparkles, DollarSign, Star, Layers } from '
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
+import { Skeleton } from '../../components/ui/Skeleton';
 import type { Listing } from '../../lib/types';
 
 export default function StatsPage() {
@@ -65,10 +66,10 @@ export default function StatsPage() {
   if (loading) return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-28 bg-surface rounded-2xl animate-pulse" />)}
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} shape="block" className="h-28" />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-52 bg-surface rounded-2xl animate-pulse" />)}
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} shape="block" className="h-52" />)}
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { StatCard } from '../../components/ui/StatCard';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Modal } from '../../components/ui/Modal';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 import PublishConfirmationModal, { type PackageSize } from '../../components/publish/PublishConfirmationModal';
@@ -511,56 +512,54 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       )}
 
       {sellingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md bg-surface border border-white/10 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h2 className="text-lg font-black">Marquer comme vendu</h2>
-                <p className="text-xs text-gray-500 mt-1">{sellingItem.title}</p>
-              </div>
-              <button
-                onClick={() => setSellingItem(null)}
-                aria-label="Fermer"
-                className="p-1.5 rounded-lg hover:bg-white/5"
-              >
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
+        <Modal onClose={() => setSellingItem(null)} size="md">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-lg font-black">Marquer comme vendu</h2>
+              <p className="text-xs text-gray-500 mt-1">{sellingItem.title}</p>
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">
-                  Prix de vente
-                </label>
-                <input
-                  type="number"
-                  value={soldPrice}
-                  onChange={(e) => setSoldPrice(e.target.value)}
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">
-                  Frais
-                </label>
-                <input
-                  type="number"
-                  value={fees}
-                  onChange={(e) => setFees(e.target.value)}
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
-                />
-              </div>
-
-              <button
-                onClick={markAsSold}
-                className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
-              >
-                Confirmer la vente
-              </button>
-            </div>
+            <button
+              onClick={() => setSellingItem(null)}
+              aria-label="Fermer"
+              className="p-1.5 rounded-lg hover:bg-white/5"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
           </div>
-        </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">
+                Prix de vente
+              </label>
+              <input
+                type="number"
+                value={soldPrice}
+                onChange={(e) => setSoldPrice(e.target.value)}
+                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">
+                Frais
+              </label>
+              <input
+                type="number"
+                value={fees}
+                onChange={(e) => setFees(e.target.value)}
+                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+              />
+            </div>
+
+            <button
+              onClick={markAsSold}
+              className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
+            >
+              Confirmer la vente
+            </button>
+          </div>
+        </Modal>
       )}
 
       {publishingItem && selectedAccount && (

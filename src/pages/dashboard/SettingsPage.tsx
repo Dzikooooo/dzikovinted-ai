@@ -7,6 +7,7 @@ import AccountAvatar from '../../components/ui/AccountAvatar';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Modal } from '../../components/ui/Modal';
 import type { SettingsTab, VintedAccount } from '../../lib/types';
 
 interface SettingsPageProps {
@@ -358,47 +359,45 @@ function AccountsManager() {
       </p>
 
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md bg-surface border border-white/10 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h2 className="text-lg font-black">Supprimer ce compte ?</h2>
-                <p className="text-xs text-gray-500 mt-1">{deleteTarget.label}</p>
-              </div>
-              <button
-                onClick={() => setDeleteTarget(null)}
-                aria-label="Fermer"
-                className="p-1.5 rounded-lg hover:bg-white/5"
-              >
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
+        <Modal onClose={() => setDeleteTarget(null)} size="md">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-lg font-black">Supprimer ce compte ?</h2>
+              <p className="text-xs text-gray-500 mt-1">{deleteTarget.label}</p>
             </div>
-
-            <p className="text-sm text-gray-400 mb-5">
-              {deleteListingsCount === null
-                ? 'Vérification des annonces synchronisées...'
-                : deleteListingsCount > 0
-                  ? `Cette action supprimera aussi les ${deleteListingsCount} annonce${deleteListingsCount > 1 ? 's' : ''} synchronisée${deleteListingsCount > 1 ? 's' : ''} de ce compte. Cette action est irréversible.`
-                  : 'Cette action est irréversible.'}
-            </p>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-white/5 text-gray-300 font-medium py-2.5 rounded-xl hover:bg-white/10 transition-all text-sm"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleting || deleteListingsCount === null}
-                className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 font-bold py-2.5 rounded-xl hover:bg-red-500/20 transition-all text-sm disabled:opacity-50"
-              >
-                {deleting ? 'Suppression...' : 'Supprimer'}
-              </button>
-            </div>
+            <button
+              onClick={() => setDeleteTarget(null)}
+              aria-label="Fermer"
+              className="p-1.5 rounded-lg hover:bg-white/5"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
           </div>
-        </div>
+
+          <p className="text-sm text-gray-400 mb-5">
+            {deleteListingsCount === null
+              ? 'Vérification des annonces synchronisées...'
+              : deleteListingsCount > 0
+                ? `Cette action supprimera aussi les ${deleteListingsCount} annonce${deleteListingsCount > 1 ? 's' : ''} synchronisée${deleteListingsCount > 1 ? 's' : ''} de ce compte. Cette action est irréversible.`
+                : 'Cette action est irréversible.'}
+          </p>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 bg-white/5 text-gray-300 font-medium py-2.5 rounded-xl hover:bg-white/10 transition-all text-sm"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={confirmDelete}
+              disabled={deleting || deleteListingsCount === null}
+              className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 font-bold py-2.5 rounded-xl hover:bg-red-500/20 transition-all text-sm disabled:opacity-50"
+            >
+              {deleting ? 'Suppression...' : 'Supprimer'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

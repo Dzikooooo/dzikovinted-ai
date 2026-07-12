@@ -11,6 +11,7 @@ import ActionStepTimeline, { type ActionStepTimelineRow } from '../../components
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { Modal } from '../../components/ui/Modal';
 
 const PERIOD_FILTERS: { key: ActionPeriod; label: string }[] = [
   { key: 'today', label: "Aujourd'hui" },
@@ -253,48 +254,46 @@ function ActionDetailPanel({ row, onClose }: { row: ActionHistoryRow; onClose: (
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-      <div className="w-full max-w-lg bg-surface border border-white/10 rounded-2xl p-5 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Icon className="w-4 h-4 text-neon-500" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-lg font-black truncate">{ACTION_KIND_LABELS[row.kind]}</h2>
-              {row.listingTitle && <p className="text-xs text-gray-500 truncate">{row.listingTitle}</p>}
-            </div>
+    <Modal onClose={onClose} size="lg" className="max-h-[85vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Icon className="w-4 h-4 text-neon-500" />
           </div>
-          <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5 flex-shrink-0">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 mb-5">
-          <ActionStatusBadge status={row.status} />
-          <span className="text-[10px] text-gray-500">Durée : {formatDuration(row.durationMs)}</span>
-          {row.vintedAccountLabel && (
-            <span className="flex items-center gap-1 text-[10px] text-gray-500">
-              <AccountAvatar label={row.vintedAccountLabel} size="sm" />
-              {row.vintedAccountLabel}
-            </span>
-          )}
-        </div>
-
-        {row.status === 'error' && row.errorMessage && (
-          <div className="mb-5 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300">{row.errorMessage}</p>
+          <div className="min-w-0">
+            <h2 className="text-lg font-black truncate">{ACTION_KIND_LABELS[row.kind]}</h2>
+            {row.listingTitle && <p className="text-xs text-gray-500 truncate">{row.listingTitle}</p>}
           </div>
-        )}
+        </div>
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5 flex-shrink-0">
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
+      </div>
 
-        <h3 className="text-[10px] uppercase tracking-wider text-gray-500 mb-3">Journal</h3>
-        {timelineRows.length === 0 ? (
-          <p className="text-sm text-gray-600">Aucune entrée pour le moment.</p>
-        ) : (
-          <ActionStepTimeline rows={timelineRows} />
+      <div className="flex items-center gap-2 mb-5">
+        <ActionStatusBadge status={row.status} />
+        <span className="text-[10px] text-gray-500">Durée : {formatDuration(row.durationMs)}</span>
+        {row.vintedAccountLabel && (
+          <span className="flex items-center gap-1 text-[10px] text-gray-500">
+            <AccountAvatar label={row.vintedAccountLabel} size="sm" />
+            {row.vintedAccountLabel}
+          </span>
         )}
       </div>
-    </div>
+
+      {row.status === 'error' && row.errorMessage && (
+        <div className="mb-5 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-300">{row.errorMessage}</p>
+        </div>
+      )}
+
+      <h3 className="text-[10px] uppercase tracking-wider text-gray-500 mb-3">Journal</h3>
+      {timelineRows.length === 0 ? (
+        <p className="text-sm text-gray-600">Aucune entrée pour le moment.</p>
+      ) : (
+        <ActionStepTimeline rows={timelineRows} />
+      )}
+    </Modal>
   );
 }

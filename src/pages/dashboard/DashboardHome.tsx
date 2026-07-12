@@ -8,6 +8,7 @@ import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Skeleton } from '../../components/ui/Skeleton';
 
 interface DashboardHomeProps {
   onNavigate: (page: DashboardPage) => void;
@@ -415,7 +416,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           )}
         </div>
         {loading ? (
-          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-14 bg-surface rounded-xl animate-pulse" />)}</div>
+          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} shape="block" className="h-14" />)}</div>
         ) : metrics.recentListings.length === 0 ? (
           <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-10 text-center">
             <Sparkles className="w-8 h-8 text-gray-700 mx-auto mb-3" />
