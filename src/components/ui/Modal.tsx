@@ -78,7 +78,7 @@ export function Modal({ onClose, dismissible = true, size = 'sm', children, clas
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
-        className={`w-full ${SIZE_CLASSES[size]} bg-surface border border-white/10 rounded-2xl p-5 ${className}`}
+        className={`w-full ${SIZE_CLASSES[size]} max-h-[90vh] overflow-y-auto bg-surface border border-white/10 rounded-2xl p-5 ${className}`}
       >
         {children}
       </div>

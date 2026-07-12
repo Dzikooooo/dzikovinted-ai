@@ -112,6 +112,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   <input
                     type="text"
                     required
+                    autoComplete="name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Jean Dupont"
@@ -128,6 +129,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                 <input
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="toi@example.com"
@@ -144,6 +146,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -164,6 +167,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
