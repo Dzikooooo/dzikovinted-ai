@@ -472,7 +472,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-5 flex-shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-3 sm:gap-5 flex-shrink-0">
                     <div className="grid grid-cols-4 gap-3 text-right">
                       <MiniValue label={isSold ? 'Vente' : 'Valeur'} value={`${isSold ? item.sold_price ?? 0 : item.price ?? 0} €`} />
                       <MiniValue label="Achat" value={hasCost ? `${item.purchase_price} €` : '—'} />
