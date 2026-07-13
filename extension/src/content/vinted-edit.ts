@@ -28,6 +28,17 @@ import {
 import { isContentCommand } from "../lib/messages";
 import type { EditListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
 
+// Journalisation par etape avec l'identifiant d'action unique (demande
+// utilisateur, 2026-07-13, diagnostic prix non reporte sur Vinted) --
+// prefixe "[historyId]" pour correler avec les logs du background/de
+// l'app pour le meme run. `console.log` (pas le logger de l'extension,
+// reserve au background/service worker) : ce fichier tourne dans le
+// contexte de la page Vinted elle-meme, visible dans les DevTools de cet
+// onglet precis.
+function log(historyId: string | undefined, message: string, detail?: unknown): void {
+  console.log(`[ResellOS][edit][${historyId ?? "?"}]`, message, detail ?? "");
+}
+
 function reportProgress(step: PublishStep): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PROGRESS", step });
 }
@@ -36,12 +47,14 @@ function reportResult(outcome: RunActionOutcome): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_RESULT", outcome });
 }
 
-async function submitEdit(): Promise<{ vintedItemId: string; vintedUrl: string }> {
+async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId: string; vintedUrl: string }> {
   // Hypothese : le formulaire d'edition partage le meme bouton de
   // sauvegarde que la creation -- a reconfirmer en test live (peut-etre
   // "Enregistrer" plutot que "Ajouter" sur l'edition).
   const saveButton = await waitForElement<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
+  log(historyId, "bouton de sauvegarde trouve", { disabled: saveButton.disabled, text: saveButton.textContent });
   await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true");
+  log(historyId, "bouton de sauvegarde pret (non disabled), clic");
   saveButton.click();
 
   // Une sauvegarde d'edition redirige probablement vers /items/{id} (la
@@ -49,6 +62,7 @@ async function submitEdit(): Promise<{ vintedItemId: string; vintedUrl: string }
   // l'id est deja connu (payload.vintedItemId) et sert uniquement a
   // confirmer que Vinted a bien traite la soumission.
   await waitForCondition(() => /\/items\/\d+/.test(location.pathname), { timeoutMs: 20000 });
+  log(historyId, "redirection detectee apres soumission", { pathname: location.pathname });
 
   const match = location.pathname.match(/\/items\/(\d+)/);
   if (!match) {
@@ -58,27 +72,64 @@ async function submitEdit(): Promise<{ vintedItemId: string; vintedUrl: string }
 }
 
 async function runEdit(payload: EditListingPayload): Promise<void> {
+  const historyId = payload.historyId;
+  log(historyId, "runEdit demarre", { vintedItemId: payload.vintedItemId, price: payload.price, url: location.href });
   try {
     reportProgress("connecting");
     await waitForElement(sel.TITLE_INPUT_SELECTOR);
+    log(historyId, "champ titre detecte, page consideree chargee");
     await verifyLoggedInAccount(payload.expectedVintedUsername);
+    log(historyId, "compte connecte verifie", { expected: payload.expectedVintedUsername });
 
     reportProgress("filling_form");
+
+    // Champs texte (titre/description/prix) remplis en un bloc par
+    // fillTextFields -- verification de lecture immediatement apres pour
+    // prouver que l'ecriture a reellement pris (pas juste "envoyee").
     await fillTextFields(payload);
+    const priceInputAfterWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+    log(historyId, "champ prix apres ecriture (lecture DOM immediate)", {
+      valeurAttendue: payload.price,
+      valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
+    });
+    const titleInputAfterWrite = document.querySelector<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
+    log(historyId, "champ titre apres ecriture (lecture DOM immediate)", {
+      valeurAttendue: payload.title,
+      valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
+    });
+
+    log(historyId, "resolution categorie", { categorie: payload.category });
     await resolveCategory(payload.category);
+    log(historyId, "selection etat", { etat: payload.condition });
     await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, payload.condition, { required: true });
+    log(historyId, "selection taille", { taille: payload.size });
     await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, payload.size, { required: false });
+    log(historyId, "selection marque", { marque: payload.brand });
     await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, payload.brand, { required: false });
+    log(historyId, "selection couleur", { couleur: payload.color });
     await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, payload.color, { required: false });
+    log(historyId, "selection matiere", { matiere: payload.material });
     await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
 
+    // Relecture finale juste avant soumission : confirme que rien
+    // (navigation dans les pickers, re-render React...) n'a fait revenir
+    // le prix a son ancienne valeur entre l'ecriture et le clic sur
+    // Enregistrer.
+    const priceInputBeforeSubmit = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+    log(historyId, "champ prix juste avant soumission (derniere verification)", {
+      valeurAttendue: payload.price,
+      valeurLueDansLeDom: priceInputBeforeSubmit?.value ?? "(champ introuvable)",
+    });
+
     reportProgress("publishing");
-    const { vintedItemId, vintedUrl } = await submitEdit();
+    const { vintedItemId, vintedUrl } = await submitEdit(historyId);
+    log(historyId, "soumission confirmee", { vintedItemId, vintedUrl });
 
     reportResult({ status: "success", resultPayload: { vintedItemId, vintedUrl } });
   } catch (err) {
     if (err instanceof WaitTimeoutError) {
       const looksLikeLoginPage = /\/(login|auth)/i.test(location.pathname);
+      log(historyId, "echec : timeout d'attente DOM", { message: err.message, looksLikeLoginPage });
       reportResult({
         status: "error",
         errorMessage: looksLikeLoginPage
@@ -88,9 +139,11 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
       return;
     }
     if (err instanceof PublishError) {
+      log(historyId, "echec : erreur de remplissage", { code: err.code, message: err.message });
       reportResult({ status: "error", errorMessage: err.message });
       return;
     }
+    log(historyId, "echec : erreur inattendue", err);
     reportResult({ status: "error", errorMessage: err instanceof Error ? err.message : String(err) });
   }
 }

@@ -83,6 +83,13 @@ export interface EditListingPayload {
   color: string | null;
   material: string | null;
   expectedVintedUsername: string;
+  // Identifiant de l'action (RunActionRequest.historyId, meme ligne
+  // action_log cote app) -- injecte par handleEditListing.ts (le payload
+  // app ne le porte pas, il vit deja au niveau RunActionRequest). Sert
+  // uniquement a correler les logs du content script avec ceux du
+  // background/de l'app pour un meme run -- jamais utilise pour la logique
+  // metier elle-meme.
+  historyId?: string;
 }
 
 // Background -> content script, via chrome.tabs.sendMessage.

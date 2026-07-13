@@ -6,6 +6,7 @@
 // (commande EDIT_LISTING).
 
 import { withRetry } from "../retry";
+import { logger } from "../logger";
 import { isContentReport } from "../../lib/messages";
 import type { ContentCommand, EditListingPayload, PublishStep, RunActionOutcome, RunActionRequest } from "../../lib/messages";
 
@@ -36,7 +37,16 @@ export async function handleEditListing(
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void
 ): Promise<RunActionOutcome> {
-  const payload = request.payload as unknown as EditListingPayload;
+  const historyId = request.historyId;
+  // historyId injecte dans le payload uniquement pour que le content
+  // script (vinted-edit.ts) puisse taguer ses propres logs avec le meme
+  // identifiant -- jamais utilise pour la logique metier.
+  const payload: EditListingPayload = { ...(request.payload as unknown as EditListingPayload), historyId };
+
+  logger.info(`[${historyId}] handleEditListing: demarrage`, {
+    vintedItemId: payload.vintedItemId,
+    price: payload.price,
+  });
 
   onProgress("preparing");
 
@@ -45,10 +55,13 @@ export async function handleEditListing(
   let tab: chrome.tabs.Tab;
   try {
     tab = await chrome.tabs.create({ url: editUrl, active: false });
+    logger.debug(`[${historyId}] handleEditListing: onglet ouvert`, { editUrl, tabId: tab.id });
   } catch (err) {
+    logger.error(`[${historyId}] handleEditListing: chrome.tabs.create a echoue`, errorMessage(err));
     return { status: "error", errorMessage: `Impossible d'ouvrir un onglet Vinted : ${errorMessage(err)}` };
   }
   if (tab.id === undefined) {
+    logger.error(`[${historyId}] handleEditListing: onglet cree sans id`);
     return { status: "error", errorMessage: "Onglet Vinted invalide" };
   }
   const tabId: number = tab.id;
@@ -60,8 +73,10 @@ export async function handleEditListing(
     function onMessage(message: unknown, sender: chrome.runtime.MessageSender): boolean {
       if (sender.tab?.id !== tabId || !isContentReport(message)) return false;
       if (message.type === "PUBLISH_PROGRESS") {
+        logger.debug(`[${historyId}] handleEditListing: progression`, { step: message.step });
         onProgress(message.step);
       } else if (message.type === "PUBLISH_RESULT") {
+        logger.info(`[${historyId}] handleEditListing: resultat recu du content script`, message.outcome);
         settle(message.outcome);
       }
       return false;
@@ -69,6 +84,7 @@ export async function handleEditListing(
 
     function onRemoved(removedTabId: number): void {
       if (removedTabId !== tabId || tabClosedByHandler) return;
+      logger.warn(`[${historyId}] handleEditListing: onglet ferme avant la fin`);
       settle({ status: "error", errorMessage: "Modification interrompue (onglet fermé)" });
     }
 
@@ -84,21 +100,26 @@ export async function handleEditListing(
       cleanup();
       tabClosedByHandler = true;
       chrome.tabs.remove(tabId).catch(() => {});
+      logger.info(`[${historyId}] handleEditListing: termine`, { status: outcome.status });
       resolve(outcome);
     }
 
     const globalTimeout = setTimeout(() => {
+      logger.error(`[${historyId}] handleEditListing: delai depasse (${GLOBAL_TIMEOUT_MS}ms)`);
       settle({ status: "error", errorMessage: "Délai dépassé : la modification n'a pas abouti" });
     }, GLOBAL_TIMEOUT_MS);
 
     chrome.runtime.onMessage.addListener(onMessage);
     chrome.tabs.onRemoved.addListener(onRemoved);
 
-    sendCommandWhenReady(tabId, payload).catch((err) => {
-      settle({
-        status: "error",
-        errorMessage: `Impossible de communiquer avec la page Vinted : ${errorMessage(err)}`,
+    sendCommandWhenReady(tabId, payload)
+      .then(() => logger.debug(`[${historyId}] handleEditListing: commande EDIT_LISTING envoyee au content script`))
+      .catch((err) => {
+        logger.error(`[${historyId}] handleEditListing: envoi de la commande a echoue`, errorMessage(err));
+        settle({
+          status: "error",
+          errorMessage: `Impossible de communiquer avec la page Vinted : ${errorMessage(err)}`,
+        });
       });
-    });
   });
 }

@@ -19,14 +19,27 @@ export class PublishError extends Error {
 }
 
 // Positionne la valeur d'un champ controle React : passer par le setter
-// natif puis emettre un evenement "input" bouillonnant, seule methode
-// fiable pour qu'un input controle par React detecte le changement
-// (assigner .value directement est ignore par React).
+// natif puis emettre "input" bouillonnant, seule methode fiable pour qu'un
+// input controle par React detecte le changement (assigner .value
+// directement est ignore par React).
+//
+// BUG REEL suspecte le 2026-07-13 (prix modifie dans ResellOS jamais
+// reporte sur Vinted, sans erreur visible -- le formulaire se soumettait
+// "avec succes" mais gardait l'ancien prix) : "input" seul suffit pour la
+// plupart des champs, mais un champ prix/monetaire reformate ou valide
+// tres souvent sur "change"/"blur" plutot que sur "input" seul (masque de
+// devise, arrondi...) -- si Vinted fait ca, notre ecriture restait
+// visuellement correcte dans le DOM mais jamais "confirmee" par l'etat
+// interne React avant le clic sur Enregistrer. Ajoute "change" et "blur"
+// en plus de "input" : ne peut pas casser un champ qui n'ecoutait dejà
+// que "input", ne peut qu'aider un champ qui a besoin de plus.
 export function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   setter?.call(el, value);
   el.dispatchEvent(new Event("input", { bubbles: true }));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  el.dispatchEvent(new Event("blur", { bubbles: true }));
 }
 
 export async function fillTextFields(fields: { title: string; description: string; price: number }): Promise<void> {

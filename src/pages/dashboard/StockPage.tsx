@@ -188,19 +188,30 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   // Partagee entre publish_listing (annonce pas encore liee) et edit_listing
   // (annonce deja liee, Partie 4) -- meme pipeline prepare/confirm, seul le
   // payload et l'ActionKind different selon l'appelant.
+  //
+  // Logs prefixes [ResellOS][action][historyId] (demande utilisateur,
+  // 2026-07-13) : historyId = PreparedAction.id = meme ligne action_log,
+  // meme identifiant que celui reinjecte cote extension (voir
+  // handleEditListing.ts) -- correle les trois couches (app/background/
+  // content script) pour un meme run dans la console du navigateur.
   const runVintedAction = async (kind: ActionKind, payload: PublishListingPayload | EditListingPayload, listing: Listing) => {
     setPublishState({ step: 'preparing', error: null, historyId: null });
+    console.log(`[ResellOS][action] prepareAction('${kind}')`, { listingId: listing.id, payload });
 
     const prepared = await prepareAction(kind, payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
+      console.warn('[ResellOS][action] prepare() refuse par les checks :', prepared.failure);
       setPublishState({ step: null, error: prepared.failure.message, historyId: null });
       return;
     }
     const historyId = prepared.prepared.id;
+    console.log(`[ResellOS][action][${historyId}] prepare() ok, confirmAction() lance`);
 
     const result = await confirmAction(prepared.prepared, (step) => {
+      console.log(`[ResellOS][action][${historyId}] progression :`, step);
       if (isPublishStep(step)) setPublishState({ step, error: null, historyId });
     });
+    console.log(`[ResellOS][action][${historyId}] resultat :`, result.outcome);
 
     if (result.outcome.status === 'success') {
       setPublishState({ step: 'syncing', error: null, historyId });
