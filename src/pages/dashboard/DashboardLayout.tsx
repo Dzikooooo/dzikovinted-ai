@@ -24,6 +24,7 @@ import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterC
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import AccountSwitcher from '../../components/ui/AccountSwitcher';
 import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
+import { supabase } from '../../lib/supabase';
 import type { DashboardPage, AppPage, SettingsTab } from '../../lib/types';
 
 const DashboardHome = lazy(() => import('./DashboardHome'));
@@ -84,8 +85,20 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   // manuelle. Best-effort et silencieux : aucune erreur affichée si
   // l'extension n'est pas installée ou pas encore détectable, ce n'est pas
   // le rôle de ce composant de le signaler (VintedAccountPage.tsx le fait déjà).
+  //
+  // BUG REEL corrige le 2026-07-13 : la premiere version envoyait
+  // `session.access_token`/`refresh_token` directement depuis l'etat React
+  // (useAuth()) -- un instantane qui peut retarder sur la session Supabase
+  // reelle. Si son access_token etait deja expire au moment du declenchement
+  // (onglet reste ouvert un moment), supabase.auth.getUser(accessToken) cote
+  // extension (pairing.ts::pair()) echouait a chaque tentative, de facon
+  // parfaitement reproductible -- exactement le pattern deja documente et
+  // deja evite par handleConnect() ci-dessous (VintedAccountPage.tsx a la
+  // meme regle), que cette premiere version n'appliquait pas. Corrige en
+  // redemandant une session fraiche a Supabase juste avant l'appairage,
+  // au lieu de faire confiance a l'etat React fige.
   useEffect(() => {
-    if (!session?.access_token || !session.refresh_token) return;
+    if (!session) return;
     if (!isExtensionConfigured()) {
       console.warn('[ResellOS][pairing] Ré-appairage automatique ignoré : VITE_RESELLOS_EXTENSION_ID absent de cette build.');
       return;
@@ -99,7 +112,16 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
         console.log('[ResellOS][pairing] Ré-appairage automatique ignoré : extension non détectée (ping échoué).');
         return;
       }
-      const result = await pairExtension(session.access_token, session.refresh_token);
+
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (sessionError || !data.session) {
+        console.warn('[ResellOS][pairing] Ré-appairage automatique ignoré : session Supabase fraîche indisponible.', sessionError?.message);
+        return;
+      }
+
+      const result = await pairExtension(data.session.access_token, data.session.refresh_token);
+      if (cancelled) return;
       if (!result.ok) {
         console.warn('[ResellOS][pairing] Ré-appairage automatique échoué :', result.error);
       } else {
@@ -110,7 +132,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [session?.access_token, session?.refresh_token]);
+  }, [session]);
 
   const handleViewAction = (actionId: string) => {
     setActionsInitialSelectedId(actionId);
