@@ -86,15 +86,24 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   // le rôle de ce composant de le signaler (VintedAccountPage.tsx le fait déjà).
   useEffect(() => {
     if (!session?.access_token || !session.refresh_token) return;
-    if (!isExtensionConfigured()) return;
+    if (!isExtensionConfigured()) {
+      console.warn('[ResellOS][pairing] Ré-appairage automatique ignoré : VITE_RESELLOS_EXTENSION_ID absent de cette build.');
+      return;
+    }
 
     let cancelled = false;
     (async () => {
       const installed = await pingExtension();
-      if (cancelled || !installed) return;
+      if (cancelled) return;
+      if (!installed) {
+        console.log('[ResellOS][pairing] Ré-appairage automatique ignoré : extension non détectée (ping échoué).');
+        return;
+      }
       const result = await pairExtension(session.access_token, session.refresh_token);
       if (!result.ok) {
-        console.warn('Ré-appairage automatique de l\'extension échoué :', result.error);
+        console.warn('[ResellOS][pairing] Ré-appairage automatique échoué :', result.error);
+      } else {
+        console.log('[ResellOS][pairing] Ré-appairage automatique réussi.');
       }
     })();
 

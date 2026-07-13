@@ -47,14 +47,19 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
 
   if (message.type === "PING") {
+    logger.debug("PING recu (onMessageExternal)");
     sendResponse({ ok: true } satisfies ExternalResponse);
     return false;
   }
 
   if (message.type === "PAIR") {
+    logger.debug("PAIR recu (onMessageExternal), delegue a pair()");
     pair(message.access_token, message.refresh_token)
       .then(() => sendResponse({ ok: true } satisfies ExternalResponse))
-      .catch((err: unknown) => sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse));
+      .catch((err: unknown) => {
+        logger.error("PAIR: pair() a leve une exception", errorMessage(err));
+        sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse);
+      });
     return true; // reponse asynchrone : garder le canal ouvert
   }
 
@@ -110,8 +115,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "IMPORT_ITEM_REQUESTED") {
+    logger.info("IMPORT_ITEM_REQUESTED recu (onMessage, content script -> background)", {
+      vintedUsername: message.vintedUsername,
+      vintedItemId: message.item.vintedItemId,
+    });
     recordSingleItemImport(message.vintedUsername, message.item)
-      .then(({ created }) => sendResponse({ ok: true, created } satisfies ImportItemResponse))
+      .then(({ created }) => {
+        logger.info("IMPORT_ITEM_REQUESTED traite avec succes", { created });
+        sendResponse({ ok: true, created } satisfies ImportItemResponse);
+      })
       .catch((err: unknown) => {
         logger.error("IMPORT_ITEM_REQUESTED a echoue", errorMessage(err));
         sendResponse({ ok: false, error: errorMessage(err) } satisfies ImportItemResponse);

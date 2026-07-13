@@ -37,13 +37,45 @@ export function isExtensionConfigured(): boolean {
   return !!EXTENSION_ID;
 }
 
+// Expose l'id attendu (jamais un secret -- deja visible publiquement sur
+// chrome://extensions par quiconque a l'extension installee) pour que l'UI
+// puisse l'afficher a cote de l'id reellement visible sur chrome://extensions
+// et laisser l'utilisateur comparer lui-meme. chrome.runtime.sendMessage ne
+// renvoie aucune information exploitable pour distinguer automatiquement
+// "mauvais id" de "extension non installee" (meme absence de reponse dans
+// les deux cas) -- pas de detection auto d'un id errone, volontairement,
+// plutot que d'inventer un signal qui n'existe pas.
+export function getConfiguredExtensionId(): string | null {
+  return EXTENSION_ID ?? null;
+}
+
+// Diagnostic explicite (demande utilisateur, 2026-07-13) : ne jamais logger
+// les tokens eux-memes, mais toujours logger si EXTENSION_ID est present
+// (sans reveler sa valeur complete) - la cause la plus probable d'un
+// appairage qui echoue silencieusement est une variable d'environnement de
+// build manquante sur le deploiement reellement utilise (voir VintedAccountPage.tsx
+// 'not-configured' et extension/README.md).
+function logExtensionIdStatus(): void {
+  if (!EXTENSION_ID) {
+    console.warn('[ResellOS][pairing] EXTENSION_ID: absent (VITE_RESELLOS_EXTENSION_ID non definie sur cette build)');
+  } else {
+    console.log(`[ResellOS][pairing] EXTENSION_ID: present (${EXTENSION_ID.slice(0, 6)}...)`);
+  }
+}
+
 // Pas de reponse dans le delai imparti = extension non installee. C'est le
 // comportement normal de chrome.runtime.sendMessage vers un id inconnu : pas
 // d'exception, juste chrome.runtime.lastError dans le callback (ou aucun
 // callback si l'extension n'a jamais recu le message).
 export async function pingExtension(timeoutMs = 400): Promise<boolean> {
   const runtime = getRuntime();
-  if (!EXTENSION_ID || !runtime) return false;
+  if (!EXTENSION_ID || !runtime) {
+    console.warn('[ResellOS][pairing] pingExtension() abandonne : EXTENSION_ID ou chrome.runtime absent', {
+      hasExtensionId: !!EXTENSION_ID,
+      hasRuntime: !!runtime,
+    });
+    return false;
+  }
 
   return new Promise((resolve) => {
     let settled = false;
@@ -73,9 +105,22 @@ export async function pingExtension(timeoutMs = 400): Promise<boolean> {
 }
 
 export async function pairExtension(accessToken: string, refreshToken: string): Promise<PairResult> {
+  console.log('[ResellOS][pairing] pairExtension() appelee', {
+    hasAccessToken: !!accessToken,
+    hasRefreshToken: !!refreshToken,
+  });
+  logExtensionIdStatus();
+
   const runtime = getRuntime();
-  if (!EXTENSION_ID || !runtime) {
-    return { ok: false, error: "Extension non détectée" };
+  if (!EXTENSION_ID) {
+    const result = { ok: false, error: "Extension non configurée (VITE_RESELLOS_EXTENSION_ID absent)" };
+    console.error('[ResellOS][pairing] pairExtension() abandonnee :', result.error);
+    return result;
+  }
+  if (!runtime) {
+    const result = { ok: false, error: "chrome.runtime indisponible (navigateur non-Chrome, ou page hors contexte d'extension)" };
+    console.error('[ResellOS][pairing] pairExtension() abandonnee :', result.error);
+    return result;
   }
 
   return new Promise((resolve) => {
@@ -85,14 +130,20 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
         { type: "PAIR", access_token: accessToken, refresh_token: refreshToken },
         (response) => {
           if (runtime.lastError) {
-            resolve({ ok: false, error: runtime.lastError.message ?? "Échec de la connexion à l'extension" });
+            const error = runtime.lastError.message ?? "Échec de la connexion à l'extension";
+            console.error('[ResellOS][pairing] pairExtension() chrome.runtime.lastError :', error);
+            resolve({ ok: false, error });
             return;
           }
-          resolve((response as PairResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" });
+          const result = (response as PairResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" };
+          console.log('[ResellOS][pairing] pairExtension() reponse :', result);
+          resolve(result);
         }
       );
     } catch (err) {
-      resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+      const error = err instanceof Error ? err.message : String(err);
+      console.error('[ResellOS][pairing] pairExtension() exception :', error);
+      resolve({ ok: false, error });
     }
   });
 }

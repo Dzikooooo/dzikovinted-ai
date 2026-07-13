@@ -124,10 +124,12 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   useEffect(() => {
     (async () => {
       if (!isExtensionConfigured()) {
+        console.warn('[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build.');
         setExtensionState('not-installed');
         return;
       }
       const installed = await pingExtension();
+      console.log('[ResellOS][pairing] pingExtension ->', installed);
       setExtensionState(installed ? 'ready' : 'not-installed');
     })();
   }, []);

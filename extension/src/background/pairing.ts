@@ -5,15 +5,34 @@ import type { StatusResponse } from "../lib/messages";
 
 // Recoit la session Supabase deja ouverte dans l'app web (voir EXTENSION.md §3) -
 // jamais de nouvelle authentification demandee a l'utilisateur ici.
+//
+// Journalisation detaillee (demande utilisateur, 2026-07-13) : chaque etape
+// reelle du handshake est loggee individuellement (jamais le contenu des
+// tokens eux-memes) pour pouvoir diagnostiquer un echec depuis le popup
+// (logger.getRecent()) sans avoir besoin d'ouvrir les DevTools du service
+// worker au bon moment.
 export async function pair(accessToken: string, refreshToken: string): Promise<void> {
+  logger.info("PAIR recu par le background", {
+    hasAccessToken: !!accessToken,
+    hasRefreshToken: !!refreshToken,
+    accessTokenLength: accessToken?.length ?? 0,
+  });
+
   // Validation stateless du token (n'utilise pas la session ambiante).
   const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+  logger.debug("Reponse supabase.auth.getUser(accessToken)", {
+    ok: !userError && !!userData.user,
+    errorMessage: userError?.message ?? null,
+    errorStatus: userError?.status ?? null,
+  });
+
   if (userError || !userData.user) {
-    logger.error("Validation du token echouee", userError?.message);
+    logger.error("Validation du token echouee - appairage abandonne", userError?.message);
     throw new Error(userError?.message ?? "Token invalide ou expire - reconnecte-toi sur ResellOS et reessaie.");
   }
 
   const userId = userData.user.id;
+  logger.info("Token valide, utilisateur identifie", { userId });
 
   // Aucune ecriture Supabase ici : l'appairage (extension <-> ResellOS) et la
   // detection d'un compte Vinted reel sont deux etats totalement distincts
@@ -24,6 +43,7 @@ export async function pair(accessToken: string, refreshToken: string): Promise<v
   const expiresAt = decodeJwtExpiry(accessToken) ?? Math.floor(Date.now() / 1000) + 3600;
   await writeStoredSession({ access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, user_id: userId });
 
+  logger.info("Session ecrite dans chrome.storage.local", { userId, expiresAt });
   logger.info("Appairage reussi");
 }
 

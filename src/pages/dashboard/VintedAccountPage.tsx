@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
-import { isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
+import { getConfiguredExtensionId, isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 
@@ -20,7 +20,14 @@ const UPCOMING = [
 // compte, seule la detection ulterieure sur vinted.fr cree/relie un compte
 // (voir EXTENSION.md §5). Le mode d'affichage (aperçu global vs detail d'un
 // compte) est lui pilote par le filtre partage (VintedAccountFilterContext).
-type ExtensionState = 'checking' | 'not-installed' | 'ready';
+//
+// 'not-configured' distingue un vrai probleme de deploiement (VITE_RESELLOS_
+// EXTENSION_ID absent de cette build -- l'app ne sait meme pas a quel id
+// s'adresser) de 'not-installed' (id connu, mais l'extension ne repond pas :
+// pas installee, ou installee mais desactivee). Les deux affichaient jusqu'ici
+// le meme message "extension non detectee", trompeur dans le premier cas --
+// bug reel diagnostique le 2026-07-13 (voir extensionBridge.ts).
+type ExtensionState = 'checking' | 'not-configured' | 'not-installed' | 'ready';
 
 export default function VintedAccountPage() {
   const { session } = useAuth();
@@ -33,10 +40,20 @@ export default function VintedAccountPage() {
   useEffect(() => {
     (async () => {
       if (!isExtensionConfigured()) {
-        setExtensionState('not-installed');
+        console.warn(
+          '[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build -- ' +
+            "l'app ne peut adresser aucun message a l'extension (voir extension/README.md §appairage)."
+        );
+        setExtensionState('not-configured');
         return;
       }
+      const expectedId = getConfiguredExtensionId();
+      console.log('[ResellOS][pairing] ID attendu :', expectedId);
       const installed = await pingExtension();
+      // Chrome ne renvoie aucune information exploitable en cas d'echec
+      // (pas de "mauvais id" distinct de "extension absente") -- on ne peut
+      // journaliser que le resultat binaire du ping, jamais un "ID reçu".
+      console.log('[ResellOS][pairing] pingExtension ->', installed, installed ? '(confirme : le pseudo-handshake a atteint exactement cet id)' : '(aucune reponse)');
       setExtensionState(installed ? 'ready' : 'not-installed');
     })();
   }, []);
@@ -111,6 +128,21 @@ export default function VintedAccountPage() {
         </div>
       )}
 
+      {extensionState === 'not-configured' && (
+        <div className="bg-surface border border-red-500/20 rounded-2xl p-6 text-center">
+          <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <Puzzle className="w-5 h-5 text-red-400" />
+          </div>
+          <h2 className="font-bold text-sm mb-1 text-red-400">Configuration manquante</h2>
+          <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            Cette version de l'app ne connaît l'identifiant d'aucune extension
+            (VITE_RESELLOS_EXTENSION_ID absent de la configuration de build).
+            L'appairage est impossible tant que cette variable n'est pas définie
+            — ce n'est pas un problème d'installation côté extension.
+          </p>
+        </div>
+      )}
+
       {extensionState === 'not-installed' && (
         <div className="bg-surface border border-white/5 rounded-2xl p-6 text-center">
           <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -119,6 +151,11 @@ export default function VintedAccountPage() {
           <h2 className="font-bold text-sm mb-1">Extension Chrome non détectée</h2>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
             Installe l'extension ResellOS pour Vinted, puis reviens sur cette page. Plus besoin d'ouvrir Vinted au quotidien.
+          </p>
+          <p className="text-[11px] text-gray-600 max-w-sm mx-auto mt-3">
+            Déjà installée ? Vérifie sur <code className="text-gray-400">chrome://extensions</code> que son ID correspond
+            exactement à <code className="text-gray-400">{getConfiguredExtensionId() ?? '—'}</code> — un ID différent
+            produit exactement le même message (Chrome ne fait pas la distinction).
           </p>
         </div>
       )}

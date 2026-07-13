@@ -65,23 +65,41 @@ let inFlightRefresh: Promise<{ accessToken: string; userId: string } | null> | n
 
 // Access token valide (rafraichi si besoin), ou null si aucune session
 // stockee / rafraichissement impossible (l'utilisateur doit re-appairer).
+// Journalisation detaillee (demande utilisateur, 2026-07-13) : distingue
+// explicitement "aucune session en storage" (jamais appaire, ou efface) de
+// "session presente mais expiree" (rafraichissement en cours) - deux causes
+// tres differentes d'un meme symptome cote UI ("non appaire").
 export async function getValidAccessToken(): Promise<{ accessToken: string; userId: string } | null> {
   const stored = await readStoredSession();
-  if (!stored) return null;
+  if (!stored) {
+    logger.debug("getValidAccessToken: aucune session trouvee dans chrome.storage.local (jamais appaire, ou efface)");
+    return null;
+  }
 
   const now = Math.floor(Date.now() / 1000);
+  const secondsUntilExpiry = stored.expires_at - now;
   if (stored.expires_at > now + 30) {
+    logger.debug("getValidAccessToken: session valide en storage", { userId: stored.user_id, secondsUntilExpiry });
     return { accessToken: stored.access_token, userId: stored.user_id };
   }
+
+  logger.debug("getValidAccessToken: session en storage mais expiree ou proche expiration", {
+    userId: stored.user_id,
+    secondsUntilExpiry,
+  });
 
   if (inFlightRefresh) return inFlightRefresh;
 
   inFlightRefresh = (async () => {
     try {
-      logger.debug("Token expire, rafraichissement");
+      logger.debug("getValidAccessToken: appel refreshSession()", { userId: stored.user_id });
       const { data, error } = await supabase.auth.refreshSession({ refresh_token: stored.refresh_token });
       if (error || !data.session) {
-        logger.warn("Rafraichissement du token echoue", error?.message);
+        logger.warn("getValidAccessToken: refreshSession() a echoue, session effacee - re-appairage necessaire", {
+          userId: stored.user_id,
+          errorMessage: error?.message ?? null,
+          errorStatus: error?.status ?? null,
+        });
         await clearStoredSession();
         return null;
       }
@@ -92,6 +110,9 @@ export async function getValidAccessToken(): Promise<{ accessToken: string; user
         refresh_token: data.session.refresh_token,
         expires_at: expiresAt,
         user_id: data.session.user.id,
+      });
+      logger.debug("getValidAccessToken: refreshSession() reussi, nouvelle session ecrite", {
+        userId: data.session.user.id,
       });
       return { accessToken: data.session.access_token, userId: data.session.user.id };
     } finally {

@@ -95,12 +95,15 @@ export default function Popup() {
             Journal
           </p>
           <div style={{ maxHeight: 140, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-            {logs.slice(0, 10).map((entry, i) => (
+            {logs.slice(0, 12).map((entry, i) => (
               <div
                 key={i}
                 style={{ fontSize: 10, color: entry.level === "error" ? "#f87171" : entry.level === "warn" ? "#facc15" : "#888" }}
               >
-                {entry.message}
+                <div>{entry.message}</div>
+                {entry.detail && (
+                  <div style={{ color: "#555", fontSize: 9, marginLeft: 8, wordBreak: "break-all" }}>{entry.detail}</div>
+                )}
               </div>
             ))}
           </div>

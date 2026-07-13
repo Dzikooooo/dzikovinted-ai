@@ -81,12 +81,21 @@ async function handleImportClick(button: HTMLButtonElement, status: HTMLDivEleme
   showStatus(status, "Extraction des informations de l'annonce...", false);
 
   const item = buildPayload(vintedItemId);
+  console.log("[ResellOS][pairing] vinted-item.ts : envoi IMPORT_ITEM_REQUESTED", {
+    vintedUsername,
+    vintedItemId: item.vintedItemId,
+  });
 
   chrome.runtime.sendMessage(
     { type: "IMPORT_ITEM_REQUESTED", vintedUsername, item },
     (response: ImportItemResponse | undefined) => {
       button.disabled = false;
       button.textContent = "Importer dans ResellOS";
+
+      if (chrome.runtime.lastError) {
+        console.error("[ResellOS][pairing] vinted-item.ts : chrome.runtime.lastError", chrome.runtime.lastError.message);
+      }
+      console.log("[ResellOS][pairing] vinted-item.ts : reponse IMPORT_ITEM_REQUESTED", response);
 
       if (!response) {
         showStatus(status, "Aucune réponse de l'extension. Vérifie qu'elle est bien appairée.", true);
