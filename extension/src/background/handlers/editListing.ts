@@ -52,9 +52,22 @@ export async function handleEditListing(
 
   const editUrl = `https://www.vinted.fr/items/${payload.vintedItemId}/edit`;
 
+  // EXPERIMENT DIAGNOSTIC (2026-07-14) : etait "active: false". Fait
+  // constate, pas suppose -- handlePublishListing.ts cree son onglet avec
+  // exactement le meme "active: false", et publish_listing n'a JAMAIS ete
+  // confirme fonctionnel en test live non plus (aucun log de content
+  // script, "chrome-extension://invalid/" en boucle). Les deux SEULS
+  // content scripts confirmes fonctionnels en direct (vinted-profile.ts,
+  // vinted-item.ts) s'injectent tous les deux sur un onglet que
+  // l'utilisateur a lui-meme navigue -- jamais un onglet cree en arriere-
+  // plan par chrome.tabs.create. Passe a "active: true" pour tester si
+  // l'execution/chargement de module differe entre onglet actif et
+  // inactif dans cette version de Chrome -- a confirmer ou infirmer par le
+  // prochain test reel (apparition ou non de "[ResellOS][Edit] content
+  // script loaded" et disparition ou non de l'erreur invalid/).
   let tab: chrome.tabs.Tab;
   try {
-    tab = await chrome.tabs.create({ url: editUrl, active: false });
+    tab = await chrome.tabs.create({ url: editUrl, active: true });
     logger.debug(`[${historyId}] handleEditListing: onglet ouvert`, { editUrl, tabId: tab.id });
   } catch (err) {
     logger.error(`[${historyId}] handleEditListing: chrome.tabs.create a echoue`, errorMessage(err));
