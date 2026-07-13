@@ -305,9 +305,10 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
             <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-300">
               Cette annonce est deja liee a un compte Vinted. "Enregistrer et mettre a jour sur Vinted" pousse le
-              titre, la description, le prix, la categorie, la marque, la taille, l'etat, la couleur et la matiere
-              vers la fiche Vinted -- tu valides toi-meme l'enregistrement sur place. Les photos ne sont pas encore
-              synchronisees par cette mise a jour ; modifie-les directement sur Vinted si besoin.
+              titre, le prix, la description, la marque, la taille, l'etat, la couleur et la matiere vers la fiche
+              Vinted -- tu valides toi-meme l'enregistrement sur place. Les photos ne sont pas encore synchronisees
+              par cette mise a jour (modifie-les directement sur Vinted si besoin), et un changement de categorie
+              n'est pas garanti d'etre pris en compte -- non teste en conditions reelles.
             </p>
           </div>
         ) : (

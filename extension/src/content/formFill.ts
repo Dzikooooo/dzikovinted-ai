@@ -56,6 +56,18 @@ function isLeafCategoryReached(): boolean {
 // l'option dont le texte correspond le mieux a categoryText, jusqu'a
 // atteindre une categorie feuille (apparition de Marque/Taille/Etat) - ne
 // devine jamais une branche sans correspondance texte.
+//
+// Cas edition (vinted-edit.ts) : contrairement a la creation (categorie
+// toujours vide au depart), une annonce en cours d'edition a deja une
+// categorie -- feuille (marque/taille/etat) deja presents dans le DOM AVANT
+// toute navigation. Le premier controle isLeafCategoryReached() peut donc
+// etre vrai immediatement, sans qu'aucun clic de navigation n'ait eu lieu :
+// dans ce cas le panneau qu'on vient d'ouvrir (trigger.click() ci-dessus)
+// doit etre explicitement referme plutot que laisse ouvert (risque
+// d'interference avec les selecteurs suivants). Limite honnete : ceci ne
+// verifie PAS que la categorie actuelle correspond a categoryText -- changer
+// reellement la categorie d'une annonce deja publiee (depuis une feuille
+// vers une autre) n'est pas gere par cette version, jamais teste en direct.
 export async function resolveCategory(categoryText: string): Promise<void> {
   const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
   trigger.click();
@@ -63,7 +75,10 @@ export async function resolveCategory(categoryText: string): Promise<void> {
 
   const MAX_DEPTH = 6;
   for (let depth = 0; depth < MAX_DEPTH; depth++) {
-    if (isLeafCategoryReached()) return;
+    if (isLeafCategoryReached()) {
+      if (depth === 0) document.body.click(); // panneau ouvert pour rien : le refermer
+      return;
+    }
 
     const options = getCategoryOptions();
     const match = matchOption(
