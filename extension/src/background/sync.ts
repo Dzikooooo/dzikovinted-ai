@@ -3,7 +3,8 @@ import { logger } from "./logger";
 import { withRetry } from "./retry";
 import { getValidAccessToken } from "./session";
 import { toLocalDateString } from "../lib/date";
-import type { ListingPayload } from "../lib/messages";
+import { extractSkuFromTitle } from "../lib/sku";
+import type { ListingPayload, SingleItemPayload } from "../lib/messages";
 
 // Ecritures declenchees par les content scripts (lecture automatique du
 // compte/des annonces Vinted - voir EXTENSION.md §8 : lecture automatique
@@ -290,4 +291,130 @@ export async function recordListings(
   });
 
   logger.info("Annonces synchronisees", { count: listings.length });
+}
+
+// Import intelligent (Partie 2, sprint extension V1) : contrairement a
+// recordListings ci-dessus (synchro de fond, protege title/brand/size/
+// image_urls/purchase_price d'un ecrasement silencieux), cette fonction est
+// TOUJOURS declenchee par un clic explicite de l'utilisateur sur UNE
+// annonce precise (content/vinted-item.ts) -- c'est une action deliberee,
+// donc tous les champs issus de Vinted sont rafraichis sans exception.
+// purchase_price et sku (une fois attribue) restent des concepts ResellOS
+// jamais touches par un import.
+//
+// Volontairement PAS resolveOrCreateVintedAccount ici : la page item ne
+// permet pas de lire le vinted_user_id numerique du compte connecte (seul
+// son pseudo est disponible), alors que resolveOrCreateVintedAccount
+// resout/cree une ligne par ce numero. Utiliser le pseudo comme id
+// fabriquerait une seconde ligne vinted_accounts desynchronisee de celle
+// deja creee par vinted-profile.ts (source de verite pour la creation de
+// compte, qui lit le vrai id numerique depuis l'URL /member/{id}). L'import
+// se contente donc de RETROUVER un compte deja connu par son pseudo --
+// jamais d'en creer un nouveau.
+export async function recordSingleItemImport(
+  vintedUsername: string,
+  item: SingleItemPayload
+): Promise<{ created: boolean }> {
+  const valid = await getValidAccessToken();
+  if (!valid) {
+    throw new Error("Extension non appairee");
+  }
+
+  const client = supabaseWithToken(valid.accessToken);
+
+  const { data: account, error: accountError } = await client
+    .from("vinted_accounts")
+    .select("id")
+    .eq("user_id", valid.userId)
+    .eq("vinted_username", vintedUsername)
+    .maybeSingle();
+
+  if (accountError) {
+    logger.error("Recherche du compte Vinted a echoue (import)", accountError.message);
+    throw accountError;
+  }
+
+  if (!account) {
+    throw new Error(
+      `Le compte "${vintedUsername}" n'est pas encore connu de ResellOS. Visite d'abord ton profil Vinted (onglet Stock, bouton Synchroniser) pour le connecter, puis reviens importer cette annonce.`
+    );
+  }
+
+  const vintedAccountId = account.id;
+
+  const { data: existing, error: selectError } = await client
+    .from("listings")
+    .select("id")
+    .eq("vinted_account_id", vintedAccountId)
+    .eq("vinted_item_id", item.vintedItemId)
+    .maybeSingle();
+
+  if (selectError) {
+    logger.error("Recherche d'annonce existante a echoue (import)", selectError.message);
+    throw selectError;
+  }
+
+  const syncedAt = new Date().toISOString();
+  const { title: cleanTitle, sku: skuFromTitle } = extractSkuFromTitle(item.title);
+
+  const vintedFields = {
+    title: cleanTitle,
+    description: item.description ?? "",
+    brand: item.brand ?? "",
+    category: item.category ?? "",
+    color: item.color ?? "",
+    size: item.size ?? "",
+    material: item.material ?? "",
+    condition: item.condition ?? "",
+    price: item.price ?? 0,
+    image_urls: item.imageUrls,
+    vinted_url: item.vintedUrl,
+    synced_at: syncedAt,
+  };
+
+  if (existing) {
+    // Le sku, une fois attribue, ne doit jamais etre reecrit par un import
+    // (regle explicite : "une modification conserve le meme SKU").
+    const { error: updateError } = await client.from("listings").update(vintedFields).eq("id", existing.id);
+    if (updateError) {
+      logger.error("Mise a jour de l'article importe a echoue", updateError.message);
+      throw updateError;
+    }
+    logger.info("Article Vinted reimporte (mis a jour)", { vintedItemId: item.vintedItemId });
+    return { created: false };
+  }
+
+  const { error: insertError } = await client.from("listings").insert({
+    user_id: valid.userId,
+    vinted_account_id: vintedAccountId,
+    vinted_item_id: item.vintedItemId,
+    ...vintedFields,
+    purchase_price: null,
+    status: "en_stock",
+    sold_price: null,
+    sold_date: null,
+    fees: 0,
+    is_favorite: false,
+    // Statut Vinted reellement inconnu a l'import (la page item ne fournit
+    // pas de signal fiable equivalent a wardrobeApi.ts) -- laisse null
+    // plutot que de deviner "online" (aucune donnee inventee). Le prochain
+    // passage sur le profil du compte (synchro de fond) le remplira via
+    // fetchAllWardrobeItems.
+    vinted_status: null,
+    favourites: null,
+    views: null,
+    // Reprend le numero deja present dans le titre Vinted si l'article en
+    // portait un manuellement -- sinon laisse null pour que le trigger DB
+    // (assign_sku_before_insert) alloue automatiquement le prochain numero
+    // libre.
+    sku: skuFromTitle,
+  });
+
+  if (insertError) {
+    logger.error("Creation de l'article importe a echoue", insertError.message);
+    throw insertError;
+  }
+
+  logger.info("Article Vinted importe", { vintedItemId: item.vintedItemId });
+  return { created: true };
 }

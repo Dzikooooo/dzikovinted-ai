@@ -8,11 +8,12 @@ import {
   ACTION_PROGRESS_PORT_NAME,
   type ActionProgressPortMessage,
   type ExternalResponse,
+  type ImportItemResponse,
   type PublishStep,
   type RunActionResponse,
 } from "../lib/messages";
 import { pair, unpair, getStatus } from "./pairing";
-import { recordAccountDetected, recordListings } from "./sync";
+import { recordAccountDetected, recordListings, recordSingleItemImport } from "./sync";
 import { runAction } from "./runAction";
 import { logger } from "./logger";
 
@@ -104,6 +105,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .catch((err: unknown) => {
         logger.error("LISTINGS_DETECTED a echoue", errorMessage(err));
         sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse);
+      });
+    return true;
+  }
+
+  if (message.type === "IMPORT_ITEM_REQUESTED") {
+    recordSingleItemImport(message.vintedUsername, message.item)
+      .then(({ created }) => sendResponse({ ok: true, created } satisfies ImportItemResponse))
+      .catch((err: unknown) => {
+        logger.error("IMPORT_ITEM_REQUESTED a echoue", errorMessage(err));
+        sendResponse({ ok: false, error: errorMessage(err) } satisfies ImportItemResponse);
       });
     return true;
   }

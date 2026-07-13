@@ -88,6 +88,12 @@ fees: number;
   // "Modifier l'annonce", StockPage.tsx) -- null tant que l'annonce n'a
   // jamais ete editee apres sa creation.
   last_edited_at: string | null;
+
+  // Numero unique par utilisateur (#1, #2, #43...), attribue automatiquement
+  // a l'insertion (trigger DB, migration 20260713120000) -- jamais gere
+  // manuellement. Toujours non-null pour une ligne creee apres ce trigger ;
+  // peut etre null pour d'anciennes lignes creees avant sa mise en place.
+  sku: number | null;
 }
 export interface GeneratedListing {
   title: string;

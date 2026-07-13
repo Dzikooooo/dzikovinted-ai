@@ -8,12 +8,12 @@ import { runAction } from "../runAction";
 import { logger } from "../logger";
 import type { ActionKind, RunActionRequest } from "../../lib/messages";
 
-// publish_listing (Phase 3.1) a un handler réel - couvert par le test live
-// obligatoire (orchestration chrome.tabs/chrome.runtime réelle, difficile à
-// simuler fidèlement en unitaire), pas par ce test qui ne couvre que le
-// comportement du registre pour les kinds SANS handler.
+// publish_listing (Phase 3.1) et edit_listing (Partie 4) ont un handler réel
+// - couverts par le test live obligatoire (orchestration chrome.tabs/
+// chrome.runtime réelle, difficile à simuler fidèlement en unitaire), pas
+// par ce test qui ne couvre que le comportement du registre pour les kinds
+// SANS handler.
 const UNIMPLEMENTED_KINDS: ActionKind[] = [
-  "edit_listing",
   "edit_price",
   "edit_photos",
   "republish_listing",

@@ -49,6 +49,20 @@ export function decodeJwtExpiry(token: string): number | null {
   }
 }
 
+// Deduplique les rafraichissements concurrents au sein d'un meme reveil du
+// service worker : Supabase fait tourner (rotate) le refresh_token a chaque
+// utilisation reussie, donc deux appels a refreshSession() avec le MEME
+// refresh_token stocke se marchent dessus - le premier reussit et ecrit un
+// nouveau refresh_token, le second echoue avec une erreur "deja utilise" et
+// effacait jusqu'ici la session fraichement ecrite par le premier (bug reel
+// diagnostique le 2026-07-13, cause probable de pertes d'appairage
+// intermittentes constatees en usage reel). Ce verrou en memoire ne couvre
+// que la duree de vie du module (un reveil MV3) - insuffisant a lui seul,
+// complete par le re-appairage automatique cote app (DashboardLayout.tsx)
+// qui reecrit une session fraiche a chaque rafraichissement du token web,
+// independamment de ce cycle.
+let inFlightRefresh: Promise<{ accessToken: string; userId: string } | null> | null = null;
+
 // Access token valide (rafraichi si besoin), ou null si aucune session
 // stockee / rafraichissement impossible (l'utilisateur doit re-appairer).
 export async function getValidAccessToken(): Promise<{ accessToken: string; userId: string } | null> {
@@ -60,20 +74,30 @@ export async function getValidAccessToken(): Promise<{ accessToken: string; user
     return { accessToken: stored.access_token, userId: stored.user_id };
   }
 
-  logger.debug("Token expire, rafraichissement");
-  const { data, error } = await supabase.auth.refreshSession({ refresh_token: stored.refresh_token });
-  if (error || !data.session) {
-    logger.warn("Rafraichissement du token echoue", error?.message);
-    await clearStoredSession();
-    return null;
-  }
+  if (inFlightRefresh) return inFlightRefresh;
 
-  const expiresAt = data.session.expires_at ?? now + 3600;
-  await writeStoredSession({
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
-    expires_at: expiresAt,
-    user_id: data.session.user.id,
-  });
-  return { accessToken: data.session.access_token, userId: data.session.user.id };
+  inFlightRefresh = (async () => {
+    try {
+      logger.debug("Token expire, rafraichissement");
+      const { data, error } = await supabase.auth.refreshSession({ refresh_token: stored.refresh_token });
+      if (error || !data.session) {
+        logger.warn("Rafraichissement du token echoue", error?.message);
+        await clearStoredSession();
+        return null;
+      }
+
+      const expiresAt = data.session.expires_at ?? now + 3600;
+      await writeStoredSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: expiresAt,
+        user_id: data.session.user.id,
+      });
+      return { accessToken: data.session.access_token, userId: data.session.user.id };
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+
+  return inFlightRefresh;
 }

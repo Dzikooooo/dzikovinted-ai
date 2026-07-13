@@ -3,6 +3,7 @@ import {
   checkAccountSelected,
   checkAuthenticated,
   checkExtensionConnected,
+  checkListingAlreadyPublished,
   checkListingHasPhotos,
   checkListingLoaded,
   checkListingNotAlreadyPublished,
@@ -146,6 +147,29 @@ describe('checkListingNotAlreadyPublished', () => {
       makeCheckDeps({ targetListing: makeListing({ vinted_item_id: '123456' }) })
     );
     expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_published' }) });
+  });
+});
+
+describe('checkListingAlreadyPublished', () => {
+  it('passes when the listing already has a vinted_item_id', () => {
+    const result = checkListingAlreadyPublished(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ vinted_item_id: '123456' }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with not_published_yet when vinted_item_id is null', () => {
+    const result = checkListingAlreadyPublished(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ vinted_item_id: null }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'not_published_yet' }) });
+  });
+
+  it('fails with not_published_yet when no listing is loaded', () => {
+    const result = checkListingAlreadyPublished(makeActionContext(), makeCheckDeps({ targetListing: null }));
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'not_published_yet' }) });
   });
 });
 

@@ -37,6 +37,7 @@ function makeListing(overrides: Partial<Listing>): Listing {
     views: null,
     synced_at: null,
     last_edited_at: null,
+    sku: null,
     ...overrides,
   };
 }

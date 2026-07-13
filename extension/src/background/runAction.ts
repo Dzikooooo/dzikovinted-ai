@@ -12,15 +12,16 @@
 
 import { logger } from "./logger";
 import { handlePublishListing } from "./handlers/publishListing";
+import { handleEditListing } from "./handlers/editListing";
 import type { ActionKind, PublishStep, RunActionOutcome, RunActionRequest } from "../lib/messages";
 
 type ActionHandler = (request: RunActionRequest, onProgress: (step: PublishStep) => void) => Promise<RunActionOutcome>;
 
 const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {
   publish_listing: handlePublishListing,
+  edit_listing: handleEditListing,
 };
-// toute cle absente (Phase 3.1 : tout sauf publish_listing) tombe sur le
-// fallback not_implemented
+// toute cle absente tombe sur le fallback not_implemented
 
 export async function runAction(
   request: RunActionRequest,

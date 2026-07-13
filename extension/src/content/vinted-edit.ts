@@ -1,0 +1,104 @@
+// Injecte sur https://www.vinted.fr/items/{id}/edit (voir
+// manifest.config.ts). Modification d'une annonce EXISTANTE (Partie 4,
+// sprint extension V1) : remplit uniquement les champs texte/attributs
+// (titre+SKU deja concatene par l'appelant, description, prix, categorie,
+// marque, taille, etat, couleur, matiere) -- AUCUNE photo (limite V1
+// validee avec l'utilisateur, le widget photo du formulaire d'edition
+// n'est pas verifie en direct). Toujours declenche par une commande
+// explicite (bouton "Enregistrer et mettre a jour sur Vinted" dans
+// ResellOS), jamais d'initiative propre.
+//
+// URL /items/{id}/edit confirmee en direct le 2026-07-13 (redirection avec
+// ref_url preserve pour un visiteur non authentifie -- la route existe
+// reellement). Le CONTENU du formulaire (selecteurs) n'a en revanche pas pu
+// etre verifie sans authentification comme proprietaire de l'annonce :
+// reutilise les selecteurs de publishSelectors.ts par hypothese (meme
+// composant Vinted que la creation) -- a reconfirmer lors du premier test
+// live reel (voir EXTENSION.md).
+
+import { waitForElement, waitForCondition, WaitTimeoutError } from "./domWait";
+import * as sel from "./publishSelectors";
+import {
+  PublishError,
+  fillTextFields,
+  resolveCategory,
+  selectMatchingOption,
+  verifyLoggedInAccount,
+} from "./formFill";
+import { isContentCommand } from "../lib/messages";
+import type { EditListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
+
+function reportProgress(step: PublishStep): void {
+  chrome.runtime.sendMessage({ type: "PUBLISH_PROGRESS", step });
+}
+
+function reportResult(outcome: RunActionOutcome): void {
+  chrome.runtime.sendMessage({ type: "PUBLISH_RESULT", outcome });
+}
+
+async function submitEdit(): Promise<{ vintedItemId: string; vintedUrl: string }> {
+  // Hypothese : le formulaire d'edition partage le meme bouton de
+  // sauvegarde que la creation -- a reconfirmer en test live (peut-etre
+  // "Enregistrer" plutot que "Ajouter" sur l'edition).
+  const saveButton = await waitForElement<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
+  await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true");
+  saveButton.click();
+
+  // Une sauvegarde d'edition redirige probablement vers /items/{id} (la
+  // fiche, pas /new) -- meme predicat que la creation, suffisant puisque
+  // l'id est deja connu (payload.vintedItemId) et sert uniquement a
+  // confirmer que Vinted a bien traite la soumission.
+  await waitForCondition(() => /\/items\/\d+/.test(location.pathname), { timeoutMs: 20000 });
+
+  const match = location.pathname.match(/\/items\/(\d+)/);
+  if (!match) {
+    throw new PublishError("vinted_validation_error", "Vinted n'a pas confirmé la mise à jour de l'annonce");
+  }
+  return { vintedItemId: match[1], vintedUrl: location.href };
+}
+
+async function runEdit(payload: EditListingPayload): Promise<void> {
+  try {
+    reportProgress("connecting");
+    await waitForElement(sel.TITLE_INPUT_SELECTOR);
+    await verifyLoggedInAccount(payload.expectedVintedUsername);
+
+    reportProgress("filling_form");
+    await fillTextFields(payload);
+    await resolveCategory(payload.category);
+    await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, payload.condition, { required: true });
+    await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, payload.size, { required: false });
+    await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, payload.brand, { required: false });
+    await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, payload.color, { required: false });
+    await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
+
+    reportProgress("publishing");
+    const { vintedItemId, vintedUrl } = await submitEdit();
+
+    reportResult({ status: "success", resultPayload: { vintedItemId, vintedUrl } });
+  } catch (err) {
+    if (err instanceof WaitTimeoutError) {
+      const looksLikeLoginPage = /\/(login|auth)/i.test(location.pathname);
+      reportResult({
+        status: "error",
+        errorMessage: looksLikeLoginPage
+          ? "Session Vinted expirée, reconnecte-toi sur vinted.fr"
+          : "La page Vinted n'a pas répondu à temps",
+      });
+      return;
+    }
+    if (err instanceof PublishError) {
+      reportResult({ status: "error", errorMessage: err.message });
+      return;
+    }
+    reportResult({ status: "error", errorMessage: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (!isContentCommand(message)) return false;
+  if (message.type === "EDIT_LISTING") {
+    void runEdit(message.payload);
+  }
+  return false;
+});

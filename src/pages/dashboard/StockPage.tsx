@@ -24,11 +24,14 @@ import { isActivelyInStock } from '../../lib/listingStatus';
 import { toLocalDateString } from '../../lib/date';
 import { isPublishStep, type PublishStep } from '../../lib/actions/publishSteps';
 import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
+import type { EditListingPayload } from '../../lib/actions/handlers/editListing';
 import type { VintedAccount } from '../../lib/types';
+import { formatTitleWithSku } from '../../lib/sku';
+import type { ActionKind } from '../../lib/actions/types';
 
 function buildPublishPayload(listing: Listing, account: VintedAccount, packageSize: PackageSize): PublishListingPayload {
   return {
-    title: listing.title,
+    title: formatTitleWithSku(listing.title, listing.sku),
     description: listing.description,
     price: listing.price,
     category: listing.category,
@@ -39,6 +42,25 @@ function buildPublishPayload(listing: Listing, account: VintedAccount, packageSi
     material: listing.material || null,
     imageUrls: listing.image_urls,
     packageSize,
+    expectedVintedUsername: account.vinted_username,
+  };
+}
+
+// Pas de photos ni de packageSize (limite V1 validee avec l'utilisateur --
+// voir editListing.ts) : uniquement les champs texte/attributs deja geres
+// par le formulaire d'edition Vinted.
+function buildEditPayload(listing: Listing, account: VintedAccount): EditListingPayload {
+  return {
+    vintedItemId: listing.vinted_item_id!,
+    title: formatTitleWithSku(listing.title, listing.sku),
+    description: listing.description,
+    price: listing.price,
+    category: listing.category,
+    brand: listing.brand || null,
+    size: listing.size || null,
+    condition: listing.condition,
+    color: listing.color || null,
+    material: listing.material || null,
     expectedVintedUsername: account.vinted_username,
   };
 }
@@ -161,14 +183,13 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     }
   };
 
-  const handleConfirmPublish = async (packageSize: PackageSize) => {
-    if (!publishingItem || !selectedAccount) return;
-    const listing = publishingItem;
-    setPublishingItem(null);
+  // Partagee entre publish_listing (annonce pas encore liee) et edit_listing
+  // (annonce deja liee, Partie 4) -- meme pipeline prepare/confirm, seul le
+  // payload et l'ActionKind different selon l'appelant.
+  const runVintedAction = async (kind: ActionKind, payload: PublishListingPayload | EditListingPayload, listing: Listing) => {
     setPublishState({ step: 'preparing', error: null, historyId: null });
 
-    const payload = buildPublishPayload(listing, selectedAccount, packageSize);
-    const prepared = await prepareAction('publish_listing', payload, { listingId: listing.id, targetListing: listing });
+    const prepared = await prepareAction(kind, payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
       setPublishState({ step: null, error: prepared.failure.message, historyId: null });
       return;
@@ -188,6 +209,18 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     } else {
       setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.', historyId });
     }
+  };
+
+  const handleConfirmPublish = async (packageSize: PackageSize) => {
+    if (!publishingItem || !selectedAccount) return;
+    const listing = publishingItem;
+    setPublishingItem(null);
+    await runVintedAction('publish_listing', buildPublishPayload(listing, selectedAccount, packageSize), listing);
+  };
+
+  const handleConfirmUpdate = async (listing: Listing) => {
+    if (!selectedAccount) return;
+    await runVintedAction('edit_listing', buildEditPayload(listing, selectedAccount), listing);
   };
 
   const handleSync = () => {
@@ -435,6 +468,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
+                        {item.sku !== null && <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">#{item.sku}</span>}
                         {item.vinted_status && <VintedStatusBadge status={item.vinted_status} />}
                       </div>
                       <p className="text-xs text-gray-500 mt-1 truncate">
@@ -620,11 +654,13 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           listing={editingItem}
           onClose={() => setEditingItem(null)}
           canPublish={!!selectedAccount}
+          canUpdateOnVinted={!!selectedAccount && selectedAccount.id === editingItem.vinted_account_id}
           photoLimit={photoLimit}
-          onSaved={(updated, publish) => {
+          onSaved={(updated, intent) => {
             setEditingItem(null);
             load();
-            if (publish) setPublishingItem(updated);
+            if (intent === 'publish') setPublishingItem(updated);
+            if (intent === 'update') void handleConfirmUpdate(updated);
           }}
         />
       )}

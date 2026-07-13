@@ -64,18 +64,45 @@ export interface PublishListingPayload {
   expectedVintedUsername: string;
 }
 
+// Modification d'une annonce existante (Partie 4, sprint extension V1) :
+// mêmes champs texte/attributs que PublishListingPayload, sans photos
+// (limite V1 validée avec l'utilisateur -- le widget photo du formulaire
+// d'édition n'est pas vérifié en direct) ni packageSize (déjà défini sur
+// Vinted, non modifié ici). vintedItemId cible la page d'édition exacte
+// (https://www.vinted.fr/items/{id}/edit -- URL confirmée en direct, mais
+// pas encore le contenu du formulaire lui-même).
+export interface EditListingPayload {
+  vintedItemId: string;
+  title: string;
+  description: string;
+  price: number;
+  category: string;
+  brand: string | null;
+  size: string | null;
+  condition: string;
+  color: string | null;
+  material: string | null;
+  expectedVintedUsername: string;
+}
+
 // Background -> content script, via chrome.tabs.sendMessage.
-export type ContentCommand = { type: "PUBLISH_LISTING"; payload: PublishListingPayload };
+export type ContentCommand =
+  | { type: "PUBLISH_LISTING"; payload: PublishListingPayload }
+  | { type: "EDIT_LISTING"; payload: EditListingPayload };
 
 // Content script -> background, via chrome.runtime.sendMessage (meme canal
 // interne que ACCOUNT_DETECTED/LISTINGS_DETECTED, capte par onMessage).
+// Reutilise les memes etapes/variantes pour publish_listing ET edit_listing
+// (PublishStep est deja documente comme generique -- pas de doublon
+// EDIT_PROGRESS/EDIT_RESULT).
 export type ContentReport =
   | { type: "PUBLISH_PROGRESS"; step: PublishStep }
   | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
-  return (msg as { type: unknown }).type === "PUBLISH_LISTING";
+  const type = (msg as { type: unknown }).type;
+  return type === "PUBLISH_LISTING" || type === "EDIT_LISTING";
 }
 
 export function isContentReport(msg: unknown): msg is ContentReport {
@@ -114,6 +141,29 @@ export interface ListingPayload {
   size: string | null;
 }
 
+// Import intelligent (annonce Vinted existante -> ResellOS), declenche par
+// un clic explicite sur la page item (content/vinted-item.ts) -- jamais
+// automatique, contrairement a ACCOUNT_DETECTED/LISTINGS_DETECTED. Plus
+// riche que ListingPayload (description/categorie/couleur/etat/matiere/
+// galerie complete) car c'est une action deliberee sur UN article precis,
+// pas une synchro de fond.
+export interface SingleItemPayload {
+  vintedItemId: string;
+  vintedUrl: string;
+  title: string;
+  description: string | null;
+  price: number | null;
+  brand: string | null;
+  category: string | null;
+  color: string | null;
+  size: string | null;
+  condition: string | null;
+  material: string | null;
+  imageUrls: string[];
+}
+
+export type ImportItemResponse = { ok: true; created: boolean } | { ok: false; error: string };
+
 // Popup et content scripts -> background, via chrome.runtime.sendMessage
 // (sans id, meme extension - capte par onMessage, pas onMessageExternal).
 export type InternalMessage =
@@ -121,6 +171,7 @@ export type InternalMessage =
   | { type: "UNPAIR" }
   | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string }
   | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] }
+  | { type: "IMPORT_ITEM_REQUESTED"; vintedUsername: string; item: SingleItemPayload }
   | ContentReport;
 
 export interface StatusResponse {
@@ -146,6 +197,7 @@ export function isInternalMessage(msg: unknown): msg is InternalMessage {
     type === "UNPAIR" ||
     type === "ACCOUNT_DETECTED" ||
     type === "LISTINGS_DETECTED" ||
+    type === "IMPORT_ITEM_REQUESTED" ||
     isContentReport(msg)
   );
 }

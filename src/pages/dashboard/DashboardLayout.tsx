@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   Zap,
   LayoutDashboard,
@@ -23,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import AccountSwitcher from '../../components/ui/AccountSwitcher';
+import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
 import type { DashboardPage, AppPage, SettingsTab } from '../../lib/types';
 
 const DashboardHome = lazy(() => import('./DashboardHome'));
@@ -70,7 +71,37 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
   const [actionsInitialSelectedId, setActionsInitialSelectedId] = useState<string | undefined>(undefined);
-  const { profile, signOut } = useAuth();
+  const { profile, session, signOut } = useAuth();
+
+  // Ré-appairage silencieux et automatique (bug réel du 2026-07-13 :
+  // l'appairage n'était jusqu'ici jamais rafraîchi que par l'extension
+  // elle-même, sans filet si son propre cycle de rafraîchissement échouait
+  // une seule fois - voir manifest.config.ts). Se déclenche à chaque fois
+  // que la session Supabase de l'app change (connexion initiale, ou tout
+  // rafraîchissement automatique du token par le SDK, déjà fiable côté
+  // web) - tant que l'utilisateur garde ResellOS ouvert dans un onglet de
+  // temps en temps, l'extension reste réappairée sans aucune action
+  // manuelle. Best-effort et silencieux : aucune erreur affichée si
+  // l'extension n'est pas installée ou pas encore détectable, ce n'est pas
+  // le rôle de ce composant de le signaler (VintedAccountPage.tsx le fait déjà).
+  useEffect(() => {
+    if (!session?.access_token || !session.refresh_token) return;
+    if (!isExtensionConfigured()) return;
+
+    let cancelled = false;
+    (async () => {
+      const installed = await pingExtension();
+      if (cancelled || !installed) return;
+      const result = await pairExtension(session.access_token, session.refresh_token);
+      if (!result.ok) {
+        console.warn('Ré-appairage automatique de l\'extension échoué :', result.error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, session?.refresh_token]);
 
   const handleViewAction = (actionId: string) => {
     setActionsInitialSelectedId(actionId);

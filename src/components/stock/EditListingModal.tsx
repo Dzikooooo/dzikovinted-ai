@@ -54,24 +54,33 @@ const PRICE_FIELDS: { k: 'price' | 'quick_price' | 'premium_price'; label: strin
   { k: 'premium_price', label: 'Prix premium' },
 ];
 
+// 'publish' : enchainer sur "Publier sur Vinted" (annonce pas encore liee).
+// 'update' : enchainer sur "Mettre a jour sur Vinted" (annonce deja liee,
+// Partie 4 -- pousse les champs texte/attributs modifies vers le formulaire
+// d'edition Vinted).
+type SaveIntent = 'none' | 'publish' | 'update';
+
 interface EditListingModalProps {
   listing: Listing;
   onClose: () => void;
   // Appele apres un enregistrement reussi avec l'annonce a jour -- l'appelant
-  // recharge la liste. `publish` indique si l'utilisateur a demande
-  // d'enchainer sur "Publier sur Vinted" juste apres (uniquement propose si
-  // jamais publiee).
-  onSaved: (updated: Listing, publish: boolean) => void;
+  // recharge la liste et enchaine selon `intent`.
+  onSaved: (updated: Listing, intent: SaveIntent) => void;
   // Meme condition que le bouton "Publier sur Vinted" existant
   // (StockPage.tsx) : un compte Vinted precis doit etre selectionne pour
   // pouvoir enchainer sur la publication.
   canPublish: boolean;
+  // Condition distincte de canPublish : pour une annonce DEJA liee, le
+  // compte Vinted selectionne doit etre EXACTEMENT celui auquel elle
+  // appartient (pas juste "un compte au hasard") -- sinon on ouvrirait la
+  // page d'edition d'un article avec le mauvais compte connecte.
+  canUpdateOnVinted: boolean;
   // Plafond de photos selon le plan de l'utilisateur (voir
   // PLAN_PHOTO_LIMITS, src/lib/types.ts) -- meme logique que UploadStep.tsx.
   photoLimit: number;
 }
 
-export function EditListingModal({ listing, onClose, onSaved, canPublish, photoLimit }: EditListingModalProps) {
+export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpdateOnVinted, photoLimit }: EditListingModalProps) {
   const [form, setForm] = useState<EditForm>(() => toEditForm(listing));
   const [images, setImages] = useState<string[]>(listing.image_urls);
   const [saving, setSaving] = useState(false);
@@ -120,7 +129,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, photoL
     }
   };
 
-  const save = async (publish: boolean) => {
+  const save = async (intent: SaveIntent) => {
     setSaving(true);
     setError(null);
     try {
@@ -159,7 +168,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, photoL
         .eq('id', listing.id);
 
       if (updateError) throw new Error(updateError.message);
-      onSaved({ ...listing, ...form, image_urls: finalImageUrls, last_edited_at: lastEditedAt }, publish);
+      onSaved({ ...listing, ...form, image_urls: finalImageUrls, last_edited_at: lastEditedAt }, intent);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");
     } finally {
@@ -172,7 +181,10 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, photoL
       <div className="flex items-center justify-between mb-5">
         <div>
           <h2 className="text-lg font-black">Modifier l'annonce</h2>
-          <p className="text-xs text-gray-500 mt-1">{listing.title}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {listing.title}
+            {listing.sku !== null && <span className="text-gray-600 font-mono"> #{listing.sku}</span>}
+          </p>
           {listing.last_edited_at && (
             <p className="text-[10px] text-gray-600 mt-0.5">
               Modifiee le {new Date(listing.last_edited_at).toLocaleDateString('fr-FR')}
@@ -292,9 +304,10 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, photoL
           <div className="flex items-start gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3">
             <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-300">
-              Cette annonce est deja liee a un compte Vinted. Le prix sera ecrase par le prix reel sur Vinted a la
-              prochaine synchronisation -- il n'existe pas encore de republication automatique depuis ResellOS.
-              Modifie le prix directement sur Vinted si besoin.
+              Cette annonce est deja liee a un compte Vinted. "Enregistrer et mettre a jour sur Vinted" pousse le
+              titre, la description, le prix, la categorie, la marque, la taille, l'etat, la couleur et la matiere
+              vers la fiche Vinted -- tu valides toi-meme l'enregistrement sur place. Les photos ne sont pas encore
+              synchronisees par cette mise a jour ; modifie-les directement sur Vinted si besoin.
             </p>
           </div>
         ) : (
@@ -306,7 +319,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, photoL
 
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
           <button
-            onClick={() => save(false)}
+            onClick={() => save('none')}
             disabled={saving || regenerating}
             className="flex-1 flex items-center justify-center gap-2 bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all disabled:opacity-50"
           >
@@ -315,12 +328,22 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, photoL
           </button>
           {!isLinkedToVinted && canPublish && (
             <button
-              onClick={() => save(true)}
+              onClick={() => save('publish')}
               disabled={saving || regenerating}
               className="flex-1 flex items-center justify-center gap-2 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:bg-white/5 transition-all disabled:opacity-50"
             >
               <UploadCloud className="w-4 h-4" />
               Enregistrer et publier sur Vinted
+            </button>
+          )}
+          {isLinkedToVinted && canUpdateOnVinted && (
+            <button
+              onClick={() => save('update')}
+              disabled={saving || regenerating}
+              className="flex-1 flex items-center justify-center gap-2 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:bg-white/5 transition-all disabled:opacity-50"
+            >
+              <UploadCloud className="w-4 h-4" />
+              Enregistrer et mettre à jour sur Vinted
             </button>
           )}
         </div>

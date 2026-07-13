@@ -7,7 +7,7 @@ describe('ACTION_DEFINITIONS', () => {
   // nouvelle action enregistrée (Phase 3.2+), jamais "juste passer"
   // silencieusement.
   it('registers exactly the actions implemented so far', () => {
-    expect(ACTION_DEFINITIONS.map((d) => d.kind)).toEqual(['publish_listing', 'scan_market']);
+    expect(ACTION_DEFINITIONS.map((d) => d.kind)).toEqual(['publish_listing', 'edit_listing', 'scan_market']);
   });
 
   it('never registers the same kind twice', () => {

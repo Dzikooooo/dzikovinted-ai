@@ -64,6 +64,19 @@ export const checkListingNotAlreadyPublished: ActionCheck = (_ctx, deps) => {
   return { ok: true };
 };
 
+// Symetrique de checkListingNotAlreadyPublished -- edit_listing ne modifie
+// que des annonces DEJA liees a Vinted (rien a "editer" sur une annonce qui
+// n'existe pas encore la-bas, c'est le role de publish_listing).
+export const checkListingAlreadyPublished: ActionCheck = (_ctx, deps) => {
+  if (!deps.targetListing?.vinted_item_id) {
+    return {
+      ok: false,
+      failure: { code: 'not_published_yet', message: "Cette annonce n'est pas encore publiée sur Vinted." },
+    };
+  }
+  return { ok: true };
+};
+
 export const checkNoScanInProgress: ActionCheck = (_ctx, deps) => {
   if (deps.scanInProgress) {
     return {
