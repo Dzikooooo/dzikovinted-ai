@@ -29,15 +29,27 @@ import { isContentCommand } from "../lib/messages";
 import type { EditListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
 
 // Journalisation par etape avec l'identifiant d'action unique (demande
-// utilisateur, 2026-07-13, diagnostic prix non reporte sur Vinted) --
-// prefixe "[historyId]" pour correler avec les logs du background/de
-// l'app pour le meme run. `console.log` (pas le logger de l'extension,
-// reserve au background/service worker) : ce fichier tourne dans le
-// contexte de la page Vinted elle-meme, visible dans les DevTools de cet
-// onglet precis.
+// utilisateur, 2026-07-13/14, diagnostic prix non reporte sur Vinted) --
+// prefixe "[ResellOS][Edit]" (+ historyId quand connu) pour correler avec
+// les logs du background/de l'app pour le meme run. `console.log` (pas le
+// logger de l'extension, reserve au background/service worker) : ce
+// fichier tourne dans le contexte de la page Vinted elle-meme, visible
+// dans les DevTools DE CET ONGLET PRECIS (pas celui du service worker, ni
+// celui de l'app ResellOS) -- point de confusion possible lors du
+// diagnostic du 2026-07-14 ("chrome-extension://invalid/" en boucle sans
+// aucun log [ResellOS][Edit] visible).
 function log(historyId: string | undefined, message: string, detail?: unknown): void {
-  console.log(`[ResellOS][edit][${historyId ?? "?"}]`, message, detail ?? "");
+  const tag = historyId ? `[ResellOS][Edit][${historyId}]` : "[ResellOS][Edit]";
+  console.log(tag, message, detail ?? "");
 }
+
+// Log inconditionnel, tout premier statement execute par ce module --
+// s'il n'apparait PAS dans la console de l'onglet Vinted d'edition, le
+// content script lui-meme n'a jamais ete injecte/execute (probleme de
+// pattern matching manifest ou de chargement du chunk CRXJS), distinct
+// d'un probleme "message jamais recu" (ou le script tourne mais
+// n'entend rien).
+console.log("[ResellOS][Edit] content script loaded", { url: location.href, at: new Date().toISOString() });
 
 function reportProgress(step: PublishStep): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PROGRESS", step });
@@ -83,12 +95,19 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
 
     reportProgress("filling_form");
 
+    const priceInputBeforeWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+    log(historyId, "formulaire detecte, champ prix avant ecriture (ancienne valeur)", {
+      trouve: !!priceInputBeforeWrite,
+      ancienneValeur: priceInputBeforeWrite?.value ?? "(champ introuvable)",
+      nouvelleValeurPrevue: payload.price,
+    });
+
     // Champs texte (titre/description/prix) remplis en un bloc par
     // fillTextFields -- verification de lecture immediatement apres pour
     // prouver que l'ecriture a reellement pris (pas juste "envoyee").
     await fillTextFields(payload);
     const priceInputAfterWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-    log(historyId, "champ prix apres ecriture (lecture DOM immediate)", {
+    log(historyId, "champ prix apres ecriture + evenements input/change/blur declenches (nouvelle valeur)", {
       valeurAttendue: payload.price,
       valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
     });
@@ -149,8 +168,12 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener((message) => {
+  console.log("[ResellOS][Edit] message recu par le content script", message);
   if (!isContentCommand(message)) return false;
   if (message.type === "EDIT_LISTING") {
+    log(message.payload.historyId, "commande EDIT_LISTING reconnue, demarrage runEdit", {
+      vintedItemId: message.payload.vintedItemId,
+    });
     void runEdit(message.payload);
   }
   return false;
