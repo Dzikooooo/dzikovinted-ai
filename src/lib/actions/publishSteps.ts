@@ -26,7 +26,7 @@ export const PUBLISH_STEP_LABELS: Record<PublishStep, string> = {
   connecting: 'Connexion…',
   uploading_photos: 'Import des photos…',
   filling_form: 'Remplissage…',
-  publishing: 'Publication…',
+  publishing: 'En attente de confirmation Vinted…',
   syncing: 'Synchronisation…',
 };
 

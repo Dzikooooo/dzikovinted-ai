@@ -60,6 +60,6 @@ export const ACTION_STEP_LOG_MESSAGES: Record<ActionStep, string> = {
   uploading_photos: 'Import des photos en cours',
   analyzing: 'Analyse en cours',
   filling_form: "Remplissage du formulaire en cours",
-  publishing: 'Publication en cours',
+  publishing: 'En attente de confirmation Vinted',
   syncing: 'Synchronisation en cours',
 };
