@@ -171,6 +171,12 @@ export interface SingleItemPayload {
 
 export type ImportItemResponse = { ok: true; created: boolean } | { ok: false; error: string };
 
+// Verification legere en lecture seule (2026-07-14) : le bouton injecte par
+// vinted-item.ts doit afficher "Importer" ou "Mettre a jour" AVANT tout
+// clic, ce qui necessite de demander au background (seul a avoir acces a
+// Supabase) si l'article est deja lie -- aucune ecriture declenchee.
+export type CheckItemLinkedResponse = { ok: true; linked: boolean } | { ok: false; error: string };
+
 // Popup et content scripts -> background, via chrome.runtime.sendMessage
 // (sans id, meme extension - capte par onMessage, pas onMessageExternal).
 export type InternalMessage =
@@ -179,6 +185,7 @@ export type InternalMessage =
   | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string }
   | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] }
   | { type: "IMPORT_ITEM_REQUESTED"; vintedUsername: string; item: SingleItemPayload }
+  | { type: "CHECK_ITEM_LINKED_REQUESTED"; vintedUsername: string; vintedItemId: string }
   | ContentReport;
 
 export interface StatusResponse {
@@ -205,6 +212,7 @@ export function isInternalMessage(msg: unknown): msg is InternalMessage {
     type === "ACCOUNT_DETECTED" ||
     type === "LISTINGS_DETECTED" ||
     type === "IMPORT_ITEM_REQUESTED" ||
+    type === "CHECK_ITEM_LINKED_REQUESTED" ||
     isContentReport(msg)
   );
 }

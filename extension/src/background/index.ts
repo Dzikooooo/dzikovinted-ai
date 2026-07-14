@@ -7,13 +7,14 @@ import {
   isInternalMessage,
   ACTION_PROGRESS_PORT_NAME,
   type ActionProgressPortMessage,
+  type CheckItemLinkedResponse,
   type ExternalResponse,
   type ImportItemResponse,
   type PublishStep,
   type RunActionResponse,
 } from "../lib/messages";
 import { pair, unpair, getStatus } from "./pairing";
-import { recordAccountDetected, recordListings, recordSingleItemImport } from "./sync";
+import { recordAccountDetected, recordListings, recordSingleItemImport, checkItemAlreadyLinked } from "./sync";
 import { runAction } from "./runAction";
 import { logger } from "./logger";
 import { errorMessage } from "../lib/errorMessage";
@@ -129,6 +130,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         console.error("[ResellOS][Import]", err);
         logger.error("IMPORT_ITEM_REQUESTED a echoue", errorMessage(err));
         sendResponse({ ok: false, error: errorMessage(err) } satisfies ImportItemResponse);
+      });
+    return true;
+  }
+
+  if (message.type === "CHECK_ITEM_LINKED_REQUESTED") {
+    checkItemAlreadyLinked(message.vintedUsername, message.vintedItemId)
+      .then((linked) => {
+        sendResponse({ ok: true, linked } satisfies CheckItemLinkedResponse);
+      })
+      .catch((err: unknown) => {
+        console.error("[ResellOS][ImportButton]", err);
+        logger.error("CHECK_ITEM_LINKED_REQUESTED a echoue", errorMessage(err));
+        sendResponse({ ok: false, error: errorMessage(err) } satisfies CheckItemLinkedResponse);
       });
     return true;
   }

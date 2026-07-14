@@ -311,6 +311,49 @@ export async function recordListings(
 // compte, qui lit le vrai id numerique depuis l'URL /member/{id}). L'import
 // se contente donc de RETROUVER un compte deja connu par son pseudo --
 // jamais d'en creer un nouveau.
+// Verification legere en LECTURE SEULE (aucune ecriture), utilisee par
+// vinted-item.ts pour choisir le libelle initial du bouton injecte
+// ("Importer" vs "Mettre a jour") AVANT tout clic utilisateur -- demande
+// explicite du 2026-07-14 ("article deja importe -> bouton dit Mettre a
+// jour"). Reutilise exactement la meme logique de resolution de compte
+// que recordSingleItemImport (retrouver, jamais creer) : si le compte
+// n'est pas encore connu, l'annonce ne peut par definition pas etre liee.
+export async function checkItemAlreadyLinked(vintedUsername: string, vintedItemId: string): Promise<boolean> {
+  const valid = await getValidAccessToken();
+  if (!valid) {
+    throw new Error("Extension non appairee");
+  }
+
+  const client = supabaseWithToken(valid.accessToken);
+
+  const { data: account, error: accountError } = await client
+    .from("vinted_accounts")
+    .select("id")
+    .eq("user_id", valid.userId)
+    .eq("vinted_username", vintedUsername)
+    .maybeSingle();
+
+  if (accountError) {
+    logger.error("Recherche du compte Vinted a echoue (verification liaison)", accountError.message);
+    throw accountError;
+  }
+  if (!account) return false;
+
+  const { data: existing, error: selectError } = await client
+    .from("listings")
+    .select("id")
+    .eq("vinted_account_id", account.id)
+    .eq("vinted_item_id", vintedItemId)
+    .maybeSingle();
+
+  if (selectError) {
+    logger.error("Recherche d'annonce existante a echoue (verification liaison)", selectError.message);
+    throw selectError;
+  }
+
+  return !!existing;
+}
+
 export async function recordSingleItemImport(
   vintedUsername: string,
   item: SingleItemPayload
