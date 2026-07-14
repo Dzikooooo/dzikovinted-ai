@@ -16,10 +16,7 @@ import { pair, unpair, getStatus } from "./pairing";
 import { recordAccountDetected, recordListings, recordSingleItemImport } from "./sync";
 import { runAction } from "./runAction";
 import { logger } from "./logger";
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { errorMessage } from "../lib/errorMessage";
 
 // Port de progression (Phase 3.1, publication) : l'app web l'ouvre juste
 // avant d'envoyer RUN_ACTION pour recevoir les etapes intermediaires d'une
@@ -125,6 +122,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true, created } satisfies ImportItemResponse);
       })
       .catch((err: unknown) => {
+        // Objet complet dans la console (demande utilisateur, 2026-07-14) --
+        // en plus du message extrait ci-dessous, pour inspection directe
+        // (err.details/hint Supabase, stack si Error) meme si errorMessage()
+        // ne capture pas un champ imprevu.
+        console.error("[ResellOS][Import]", err);
         logger.error("IMPORT_ITEM_REQUESTED a echoue", errorMessage(err));
         sendResponse({ ok: false, error: errorMessage(err) } satisfies ImportItemResponse);
       });

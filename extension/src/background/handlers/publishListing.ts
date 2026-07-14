@@ -8,13 +8,10 @@
 import { withRetry } from "../retry";
 import { isContentReport } from "../../lib/messages";
 import type { ContentCommand, PublishListingPayload, PublishStep, RunActionOutcome, RunActionRequest } from "../../lib/messages";
+import { errorMessage } from "../../lib/errorMessage";
 
 const VINTED_NEW_LISTING_URL = "https://www.vinted.fr/items/new";
 const GLOBAL_TIMEOUT_MS = 90000;
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 async function sendCommandWhenReady(tabId: number, payload: PublishListingPayload): Promise<void> {
   const command: ContentCommand = { type: "PUBLISH_LISTING", payload };

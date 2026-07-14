@@ -21,6 +21,7 @@ import {
 } from "./formFill";
 import { isContentCommand } from "../lib/messages";
 import type { PublishListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
+import { errorMessage } from "../lib/errorMessage";
 
 function reportProgress(step: PublishStep): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PROGRESS", step });
@@ -132,7 +133,8 @@ async function runPublish(payload: PublishListingPayload): Promise<void> {
       reportResult({ status: "error", errorMessage: err.message });
       return;
     }
-    reportResult({ status: "error", errorMessage: err instanceof Error ? err.message : String(err) });
+    console.error("[ResellOS][Publish] echec inattendu (objet complet)", err);
+    reportResult({ status: "error", errorMessage: errorMessage(err) });
   }
 }
 

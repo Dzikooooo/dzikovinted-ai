@@ -102,6 +102,7 @@ async function handleImportClick(button: HTMLButtonElement, status: HTMLDivEleme
         return;
       }
       if (!response.ok) {
+        console.error("[ResellOS][Import]", response.error);
         showStatus(status, `Échec de l'import : ${response.error}`, true);
         return;
       }

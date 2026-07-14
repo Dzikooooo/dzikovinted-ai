@@ -9,12 +9,9 @@ import { withRetry } from "../retry";
 import { logger } from "../logger";
 import { isContentReport } from "../../lib/messages";
 import type { ContentCommand, EditListingPayload, PublishStep, RunActionOutcome, RunActionRequest } from "../../lib/messages";
+import { errorMessage } from "../../lib/errorMessage";
 
 const GLOBAL_TIMEOUT_MS = 90000;
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 async function sendCommandWhenReady(tabId: number, payload: EditListingPayload): Promise<void> {
   const command: ContentCommand = { type: "EDIT_LISTING", payload };

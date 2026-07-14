@@ -27,6 +27,7 @@ import {
 } from "./formFill";
 import { isContentCommand } from "../lib/messages";
 import type { EditListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
+import { errorMessage } from "../lib/errorMessage";
 
 // Journalisation par etape avec l'identifiant d'action unique (demande
 // utilisateur, 2026-07-13/14, diagnostic prix non reporte sur Vinted) --
@@ -162,8 +163,9 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
       reportResult({ status: "error", errorMessage: err.message });
       return;
     }
+    console.error("[ResellOS][Edit] echec inattendu (objet complet)", err);
     log(historyId, "echec : erreur inattendue", err);
-    reportResult({ status: "error", errorMessage: err instanceof Error ? err.message : String(err) });
+    reportResult({ status: "error", errorMessage: errorMessage(err) });
   }
 }
 
