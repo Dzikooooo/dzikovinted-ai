@@ -69,13 +69,14 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true");
   log(historyId, "bouton de sauvegarde pret (non disabled), clic");
   saveButton.click();
+  log(historyId, "en attente de confirmation Vinted (redirection vers /items/{id} attendue, jusqu'a 20s)");
 
   // Une sauvegarde d'edition redirige probablement vers /items/{id} (la
   // fiche, pas /new) -- meme predicat que la creation, suffisant puisque
   // l'id est deja connu (payload.vintedItemId) et sert uniquement a
   // confirmer que Vinted a bien traite la soumission.
   await waitForCondition(() => /\/items\/\d+/.test(location.pathname), { timeoutMs: 20000 });
-  log(historyId, "redirection detectee apres soumission", { pathname: location.pathname });
+  log(historyId, "confirmation Vinted recue (redirection detectee apres soumission)", { pathname: location.pathname });
 
   const match = location.pathname.match(/\/items\/(\d+)/);
   if (!match) {

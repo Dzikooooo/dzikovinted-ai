@@ -168,6 +168,13 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
         .eq('id', listing.id);
 
       if (updateError) throw new Error(updateError.message);
+      if (intent === 'update') {
+        console.log('[ResellOS][action] mise a jour locale (ResellOS) enregistree, avant tentative de push Vinted', {
+          listingId: listing.id,
+          price: form.price,
+          title: form.title,
+        });
+      }
       onSaved({ ...listing, ...form, image_urls: finalImageUrls, last_edited_at: lastEditedAt }, intent);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");

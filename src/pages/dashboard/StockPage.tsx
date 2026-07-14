@@ -211,11 +211,24 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       console.log(`[ResellOS][action][${historyId}] progression :`, step);
       if (isPublishStep(step)) setPublishState({ step, error: null, historyId });
     });
-    console.log(`[ResellOS][action][${historyId}] resultat :`, result.outcome);
+    // "retour dans ResellOS" : le content script Vinted a rapporte un
+    // resultat terminal (succes ou echec) jusqu'ici, via le background.
+    console.log(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
 
     if (result.outcome.status === 'success') {
       setPublishState({ step: 'syncing', error: null, historyId });
+      // "mise a jour locale" : pour edit_listing, les champs (prix/titre/
+      // description...) ont deja ete ecrits dans `listings` par
+      // EditListingModal.save() AVANT ce point (sauvegarde locale
+      // optimiste, avant meme la tentative de push Vinted) -- ce load()
+      // est une simple relecture de confirmation, pas une nouvelle
+      // ecriture. Limite connue : si le push Vinted echoue, la version
+      // locale reste malgre tout la nouvelle valeur (pas de rollback
+      // automatique) -- l'echec est neanmoins toujours visible via
+      // PublishProgressModal, jamais masque.
+      console.log(`[ResellOS][action][${historyId}] mise a jour locale : relecture de confirmation (load())`);
       await load();
+      console.log(`[ResellOS][action][${historyId}] mise a jour locale terminee`);
       setPublishState({ step: 'done', error: null, historyId });
     } else if (result.outcome.status === 'error') {
       setPublishState({ step: null, error: result.outcome.errorMessage, historyId });
