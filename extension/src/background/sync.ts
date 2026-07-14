@@ -354,6 +354,53 @@ export async function checkItemAlreadyLinked(vintedUsername: string, vintedItemI
   return !!existing;
 }
 
+// BUG REEL trouve en import reel le 2026-07-14 : "duplicate key value
+// violates unique constraint listings_user_sku_unique" (23505) des le
+// premier import d'un article jamais vu. Cause racine corrigee cote DB
+// (migration 20260714090000_fix_listing_sku_unique_active_only.sql --
+// l'index unique ne portait pas sur le meme perimetre que
+// allocate_next_sku(), qui ignore les annonces vendues/supprimees).
+//
+// Defense en profondeur cote appli demandee explicitement en plus du
+// correctif DB : un 23505 residuel sur CE index precis (vraie collision
+// concurrente, en principe deja tres improbable grace au verrou
+// pg_advisory_xact_lock dans allocate_next_sku) declenche un nouvel essai
+// -- le trigger recalculera un sku frais a chaque tentative -- jamais un
+// retry aveugle sur n'importe quelle erreur, et jamais plus de
+// MAX_SKU_INSERT_ATTEMPTS. Si `sku` est deja fourni explicitement (reprise
+// d'un numero depuis le titre Vinted), un retry ne changerait rien
+// puisque la valeur inseree resterait identique -- aucun retry dans ce
+// cas, l'erreur (probablement une vraie incoherence de donnees) remonte
+// immediatement.
+const MAX_SKU_INSERT_ATTEMPTS = 3;
+const SKU_UNIQUE_CONSTRAINT = "listings_user_sku_unique";
+
+async function insertListingWithSkuRetry(
+  client: ReturnType<typeof supabaseWithToken>,
+  row: Record<string, unknown>
+): Promise<void> {
+  const allowRetry = row.sku === null || row.sku === undefined;
+  const attempts = allowRetry ? MAX_SKU_INSERT_ATTEMPTS : 1;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const { error } = await client.from("listings").insert(row);
+    if (!error) return;
+
+    const isSkuCollision = error.code === "23505" && error.message?.includes(SKU_UNIQUE_CONSTRAINT);
+    if (isSkuCollision && attempt < attempts) {
+      logger.warn(`Collision de SKU a l'insertion (tentative ${attempt}/${attempts}), nouvel essai`, error.message);
+      continue;
+    }
+    if (isSkuCollision) {
+      logger.error("Collision de SKU persistante apres plusieurs tentatives", error.message);
+      throw new Error(
+        "Impossible d'attribuer un numéro d'article (SKU) unique après plusieurs tentatives. Réessaie l'import dans quelques instants."
+      );
+    }
+    throw error;
+  }
+}
+
 export async function recordSingleItemImport(
   vintedUsername: string,
   item: SingleItemPayload
@@ -427,7 +474,7 @@ export async function recordSingleItemImport(
     return { created: false };
   }
 
-  const { error: insertError } = await client.from("listings").insert({
+  await insertListingWithSkuRetry(client, {
     user_id: valid.userId,
     vinted_account_id: vintedAccountId,
     vinted_item_id: item.vintedItemId,
@@ -452,11 +499,6 @@ export async function recordSingleItemImport(
     // libre.
     sku: skuFromTitle,
   });
-
-  if (insertError) {
-    logger.error("Creation de l'article importe a echoue", insertError.message);
-    throw insertError;
-  }
 
   logger.info("Article Vinted importe", { vintedItemId: item.vintedItemId });
   return { created: true };
