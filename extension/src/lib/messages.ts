@@ -169,7 +169,15 @@ export interface SingleItemPayload {
   imageUrls: string[];
 }
 
-export type ImportItemResponse = { ok: true; created: boolean } | { ok: false; error: string };
+// draftProtected : true si une modification locale non synchronisee
+// (vinted_sync_status sync_pending/sync_failed) existait deja pour cet
+// article -- l'import a alors delibrement PRESERVE le brouillon (titre/
+// prix/description/...) plutot que de l'ecraser par les valeurs Vinted
+// (demande explicite 2026-07-15 : "ne pas ecraser silencieusement le
+// brouillon lors d'un nouvel import sans avertissement").
+export type ImportItemResponse =
+  | { ok: true; created: boolean; draftProtected: boolean }
+  | { ok: false; error: string };
 
 // Verification legere en lecture seule (2026-07-14) : le bouton injecte par
 // vinted-item.ts doit afficher "Importer" ou "Mettre a jour" AVANT tout

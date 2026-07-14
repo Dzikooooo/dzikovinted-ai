@@ -215,22 +215,35 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     // resultat terminal (succes ou echec) jusqu'ici, via le background.
     console.log(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
 
+    // Etape 13 (mise a jour du statut dans ResellOS) : pour edit_listing
+    // uniquement, resout le brouillon 'sync_pending' pose par
+    // EditListingModal.save() en 'sync_success'/'sync_failed' selon le
+    // resultat REEL du push -- demande explicite du 2026-07-15 ("ne
+    // plus considerer la valeur locale comme synchronisee tant que Vinted
+    // n'a pas confirme"). La valeur locale (prix/titre/description) n'est
+    // JAMAIS retablie a l'ancienne valeur automatiquement en cas d'echec
+    // (brouillon conserve) -- seul le statut change, et il est ensuite
+    // affiche a l'utilisateur (badge "Non synchronise avec Vinted").
+    if (kind === 'edit_listing') {
+      const nextStatus = result.outcome.status === 'success' ? 'sync_success' : 'sync_failed';
+      console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation :`, nextStatus);
+      const { error: statusError } = await supabase
+        .from('listings')
+        .update({ vinted_sync_status: nextStatus })
+        .eq('id', listing.id);
+      if (statusError) {
+        console.error(`[ResellOS][action][${historyId}] echec de l'ecriture du statut de synchronisation`, statusError);
+      }
+    }
+
     if (result.outcome.status === 'success') {
       setPublishState({ step: 'syncing', error: null, historyId });
-      // "mise a jour locale" : pour edit_listing, les champs (prix/titre/
-      // description...) ont deja ete ecrits dans `listings` par
-      // EditListingModal.save() AVANT ce point (sauvegarde locale
-      // optimiste, avant meme la tentative de push Vinted) -- ce load()
-      // est une simple relecture de confirmation, pas une nouvelle
-      // ecriture. Limite connue : si le push Vinted echoue, la version
-      // locale reste malgre tout la nouvelle valeur (pas de rollback
-      // automatique) -- l'echec est neanmoins toujours visible via
-      // PublishProgressModal, jamais masque.
       console.log(`[ResellOS][action][${historyId}] mise a jour locale : relecture de confirmation (load())`);
       await load();
       console.log(`[ResellOS][action][${historyId}] mise a jour locale terminee`);
       setPublishState({ step: 'done', error: null, historyId });
     } else if (result.outcome.status === 'error') {
+      await load();
       setPublishState({ step: null, error: result.outcome.errorMessage, historyId });
     } else {
       setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.', historyId });
@@ -244,8 +257,28 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     await runVintedAction('publish_listing', buildPublishPayload(listing, selectedAccount, packageSize), listing);
   };
 
+  // BUG REEL trouve le 2026-07-15 : "Enregistrer et mettre a jour sur
+  // Vinted" ne faisait RIEN de visible (pas d'erreur, pas de log) quand
+  // `selectedAccount` (compte SELECTIONNE dans le filtre en haut de page,
+  // pas forcement celui de l'annonce) etait absent -- `return` totalement
+  // silencieux, meme pattern deja trouve/corrige 3 fois cette session
+  // (bouton d'import, erreurs [object Object]). Desormais loggue et
+  // affiche une erreur visible plutot que de disparaitre.
   const handleConfirmUpdate = async (listing: Listing) => {
-    if (!selectedAccount) return;
+    console.log('[ResellOS][action] handleConfirmUpdate demarre (etape 1: clic confirme)', {
+      listingId: listing.id,
+      vintedAccountId: listing.vinted_account_id,
+      selectedAccountId: selectedAccount?.id ?? null,
+    });
+    if (!selectedAccount) {
+      console.warn('[ResellOS][action] handleConfirmUpdate annule : aucun compte selectionne dans le filtre');
+      setPublishState({
+        step: null,
+        error: "Aucun compte Vinted sélectionné dans le filtre en haut de page. Sélectionne le compte de cette annonce avant de réessayer.",
+        historyId: null,
+      });
+      return;
+    }
     await runVintedAction('edit_listing', buildEditPayload(listing, selectedAccount), listing);
   };
 
@@ -496,6 +529,18 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                         <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
                         {item.sku !== null && <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">#{item.sku}</span>}
                         {item.vinted_status && <VintedStatusBadge status={item.vinted_status} />}
+                        {(item.vinted_sync_status === 'sync_pending' || item.vinted_sync_status === 'sync_failed') && (
+                          <span
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            title={
+                              item.vinted_sync_status === 'sync_pending'
+                                ? 'Modification enregistrée dans ResellOS, pas encore confirmée sur Vinted.'
+                                : "La dernière tentative de mise à jour sur Vinted a échoué. La valeur affichée ici n'est pas celle de Vinted."
+                            }
+                          >
+                            Non synchronisé avec Vinted
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-gray-500 mt-1 truncate">
                         {[item.brand, item.category, item.size].filter(Boolean).join(' · ') || '—'}
@@ -683,6 +728,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           canUpdateOnVinted={!!selectedAccount && selectedAccount.id === editingItem.vinted_account_id}
           photoLimit={photoLimit}
           onSaved={(updated, intent) => {
+            console.log('[ResellOS][action] onSaved (modal) : sauvegarde locale confirmee', { listingId: updated.id, intent });
             setEditingItem(null);
             load();
             if (intent === 'publish') setPublishingItem(updated);

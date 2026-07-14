@@ -200,12 +200,19 @@ export async function runAction(
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        console.warn(`[ResellOS][action][${historyId}] runAction() : delai depasse (${timeoutMs}ms) sans reponse de l'extension`);
         port?.disconnect();
         resolve({ ok: false, error: "Délai dépassé" });
       }
     }, timeoutMs);
 
     try {
+      console.log(`[ResellOS][action][${historyId}] envoi RUN_ACTION vers l'extension (etape 2 : creation/envoi de l'action)`, {
+        kind: request.kind,
+        vintedAccountId: request.vintedAccountId,
+        listingId: request.listingId,
+        extensionId: EXTENSION_ID,
+      });
       runtime.sendMessage(
         EXTENSION_ID,
         {

@@ -40,7 +40,7 @@ describe("runAction", () => {
   it("logs the outcome without throwing", async () => {
     await runAction(makeRequest("republish_listing"));
     expect(logger.info).toHaveBeenCalledWith(
-      "RUN_ACTION traité",
+      "[history-1] RUN_ACTION traité",
       expect.objectContaining({ kind: "republish_listing", status: "not_implemented" })
     );
   });

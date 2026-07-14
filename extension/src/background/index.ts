@@ -62,9 +62,20 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
 
   if (message.type === "RUN_ACTION") {
+    // Etape 3 (reception par le background de l'extension) -- demande
+    // explicite du 2026-07-15, diagnostic push ResellOS -> Vinted qui ne
+    // s'executait pas visiblement.
+    logger.info(`[${message.request.historyId}] RUN_ACTION recu par le background`, {
+      kind: message.request.kind,
+      vintedAccountId: message.request.vintedAccountId,
+      listingId: message.request.listingId,
+    });
     runAction(message.request, reportActionProgress)
       .then((outcome) => sendResponse({ ok: true, outcome } satisfies RunActionResponse))
-      .catch((err: unknown) => sendResponse({ ok: false, error: errorMessage(err) } satisfies RunActionResponse));
+      .catch((err: unknown) => {
+        console.error("[ResellOS][action]", err);
+        sendResponse({ ok: false, error: errorMessage(err) } satisfies RunActionResponse);
+      });
     return true; // reponse asynchrone : garder le canal ouvert
   }
 
@@ -118,9 +129,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       vintedItemId: message.item.vintedItemId,
     });
     recordSingleItemImport(message.vintedUsername, message.item)
-      .then(({ created }) => {
-        logger.info("IMPORT_ITEM_REQUESTED traite avec succes", { created });
-        sendResponse({ ok: true, created } satisfies ImportItemResponse);
+      .then(({ created, draftProtected }) => {
+        logger.info("IMPORT_ITEM_REQUESTED traite avec succes", { created, draftProtected });
+        sendResponse({ ok: true, created, draftProtected } satisfies ImportItemResponse);
       })
       .catch((err: unknown) => {
         // Objet complet dans la console (demande utilisateur, 2026-07-14) --

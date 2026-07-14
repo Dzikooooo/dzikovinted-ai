@@ -28,7 +28,11 @@ export async function runAction(
   onProgress: (step: PublishStep) => void = () => {}
 ): Promise<RunActionOutcome> {
   const handler = HANDLERS[request.kind];
+  logger.info(`[${request.historyId}] runAction : dispatch vers le handler`, {
+    kind: request.kind,
+    handlerTrouve: !!handler,
+  });
   const outcome: RunActionOutcome = handler ? await handler(request, onProgress) : { status: "not_implemented" };
-  logger.info("RUN_ACTION traité", { kind: request.kind, status: outcome.status });
+  logger.info(`[${request.historyId}] RUN_ACTION traité`, { kind: request.kind, status: outcome.status });
   return outcome;
 }

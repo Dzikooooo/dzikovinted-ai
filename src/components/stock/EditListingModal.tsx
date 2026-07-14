@@ -164,6 +164,15 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           vinted_filters: form.vinted_filters,
           image_urls: finalImageUrls,
           last_edited_at: lastEditedAt,
+          // "Ne plus considerer la valeur locale comme synchronisee tant
+          // que Vinted n'a pas confirme" (demande explicite 2026-07-15) :
+          // marque le brouillon en attente des cette sauvegarde locale,
+          // AVANT toute tentative de push -- resolu en sync_success/
+          // sync_failed par le resultat reel de l'action edit_listing
+          // (voir StockPage.tsx::runVintedAction). Uniquement pour
+          // l'intention 'update' -- 'none'/'publish' ne concernent pas un
+          // push vers une annonce deja liee.
+          ...(intent === 'update' ? { vinted_sync_status: 'sync_pending' as const } : {}),
         })
         .eq('id', listing.id);
 
@@ -175,7 +184,16 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           title: form.title,
         });
       }
-      onSaved({ ...listing, ...form, image_urls: finalImageUrls, last_edited_at: lastEditedAt }, intent);
+      onSaved(
+        {
+          ...listing,
+          ...form,
+          image_urls: finalImageUrls,
+          last_edited_at: lastEditedAt,
+          vinted_sync_status: intent === 'update' ? 'sync_pending' : listing.vinted_sync_status,
+        },
+        intent
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");
     } finally {
@@ -307,6 +325,17 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           </div>
         </div>
 
+        {(listing.vinted_sync_status === 'sync_pending' || listing.vinted_sync_status === 'sync_failed') && (
+          <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300">
+              {listing.vinted_sync_status === 'sync_pending'
+                ? "Une modification est enregistrée dans ResellOS mais n'a pas encore été confirmée sur Vinted. Les valeurs ci-dessous ne sont pas garanties d'être celles affichées sur Vinted."
+                : "La dernière tentative de mise à jour sur Vinted a échoué. Les valeurs ci-dessous sont celles de ResellOS uniquement -- Vinted n'a pas été mis à jour. Réessaie \"Enregistrer et mettre à jour sur Vinted\"."}
+            </p>
+          </div>
+        )}
+
         {isLinkedToVinted ? (
           <div className="flex items-start gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3">
             <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -346,7 +375,13 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           )}
           {isLinkedToVinted && canUpdateOnVinted && (
             <button
-              onClick={() => save('update')}
+              onClick={() => {
+                console.log('[ResellOS][action] clic "Enregistrer et mettre a jour sur Vinted" (etape 1)', {
+                  listingId: listing.id,
+                  price: form.price,
+                });
+                void save('update');
+              }}
               disabled={saving || regenerating}
               className="flex-1 flex items-center justify-center gap-2 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:bg-white/5 transition-all disabled:opacity-50"
             >

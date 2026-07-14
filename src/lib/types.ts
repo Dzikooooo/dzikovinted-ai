@@ -94,6 +94,18 @@ fees: number;
   // manuellement. Toujours non-null pour une ligne creee apres ce trigger ;
   // peut etre null pour d'anciennes lignes creees avant sa mise en place.
   sku: number | null;
+
+  // Etat du push sortant ResellOS -> Vinted (migration 20260715090000,
+  // demande explicite : "ne pas considerer la valeur locale comme
+  // synchronisee tant que Vinted n'a pas confirme"). null = pas de
+  // brouillon local en attente (etat par defaut, y compris pour toute
+  // ligne jamais editee depuis ResellOS). 'sync_pending' pose des que
+  // EditListingModal enregistre une modification avec intention 'update',
+  // avant toute tentative de push -- resolu en 'sync_success'/'sync_failed'
+  // par le resultat reel de l'action edit_listing. Tant que pending/failed,
+  // import/synchro Vinted->ResellOS ne doivent jamais ecraser silencieusement
+  // les champs proprietaires du brouillon (voir extension/src/background/sync.ts).
+  vinted_sync_status: 'sync_pending' | 'sync_success' | 'sync_failed' | null;
 }
 export interface GeneratedListing {
   title: string;

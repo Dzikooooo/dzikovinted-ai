@@ -65,6 +65,7 @@ export function makeListing(overrides: Partial<Listing> = {}): Listing {
     synced_at: null,
     last_edited_at: null,
     sku: null,
+    vinted_sync_status: null,
     ...overrides,
   };
 }

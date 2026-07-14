@@ -99,6 +99,7 @@ interface ExistingLinkedListing {
   status: string;
   vinted_status: string | null;
   sold_price: number | null;
+  vinted_sync_status: string | null;
 }
 
 function deriveResellOsStatus(vintedStatus: string): "draft" | "en_stock" | "vendu" {
@@ -144,7 +145,7 @@ export async function recordListings(
     const existingRows = await withRetry(async () => {
       const { data, error } = await client
         .from("listings")
-        .select("id, vinted_item_id, status, vinted_status, sold_price")
+        .select("id, vinted_item_id, status, vinted_status, sold_price, vinted_sync_status")
         .eq("vinted_account_id", vintedAccountId)
         .in("vinted_item_id", currentItemIds);
       if (error) throw error;
@@ -187,8 +188,24 @@ export async function recordListings(
         continue;
       }
 
+      // "Ne pas ecraser silencieusement le brouillon" (demande explicite
+      // 2026-07-15) : price est refraichi depuis Vinted a CHAQUE synchro
+      // passive par design d'origine (voir commentaire au-dessus de cette
+      // fonction) -- sauf si une modification locale non encore
+      // synchronisee est en attente (vinted_sync_status sync_pending/
+      // sync_failed), auquel cas le brouillon local est preserve. La
+      // prochaine synchro APRES une resolution sync_success rafraichira a
+      // nouveau price normalement.
+      const draftPending = existing.vinted_sync_status === "sync_pending" || existing.vinted_sync_status === "sync_failed";
+      if (draftPending) {
+        logger.warn("Synchro passive ignore le prix : brouillon local non synchronise en attente", {
+          vintedItemId: l.vintedItemId,
+          vintedSyncStatus: existing.vinted_sync_status,
+        });
+      }
+
       const payload: Record<string, unknown> = {
-        price: l.price,
+        ...(draftPending ? {} : { price: l.price }),
         vinted_status: l.status,
         favourites: l.favourites,
         views: l.views,
@@ -404,7 +421,7 @@ async function insertListingWithSkuRetry(
 export async function recordSingleItemImport(
   vintedUsername: string,
   item: SingleItemPayload
-): Promise<{ created: boolean }> {
+): Promise<{ created: boolean; draftProtected: boolean }> {
   const valid = await getValidAccessToken();
   if (!valid) {
     throw new Error("Extension non appairee");
@@ -434,7 +451,7 @@ export async function recordSingleItemImport(
 
   const { data: existing, error: selectError } = await client
     .from("listings")
-    .select("id")
+    .select("id, vinted_sync_status")
     .eq("vinted_account_id", vintedAccountId)
     .eq("vinted_item_id", item.vintedItemId)
     .maybeSingle();
@@ -463,15 +480,37 @@ export async function recordSingleItemImport(
   };
 
   if (existing) {
-    // Le sku, une fois attribue, ne doit jamais etre reecrit par un import
-    // (regle explicite : "une modification conserve le meme SKU").
-    const { error: updateError } = await client.from("listings").update(vintedFields).eq("id", existing.id);
+    // "Ne pas ecraser silencieusement le brouillon lors d'un nouvel import
+    // sans avertissement" (demande explicite 2026-07-15) -- bug reel
+    // constate : re-importer une annonce apres une modification locale non
+    // encore synchronisee (vinted_sync_status = sync_pending/sync_failed)
+    // remplacait le prix/titre/description modifies par les anciennes
+    // valeurs Vinted, sans que rien ne le signale. Si un brouillon local
+    // est en attente, seuls les champs jamais editables depuis ResellOS
+    // (vinted_url/synced_at) sont rafraichis -- le brouillon (titre/prix/
+    // description/marque/categorie/couleur/taille/matiere/etat/photos)
+    // est preserve. Le sku, une fois attribue, ne doit de toute facon
+    // jamais etre reecrit par un import (regle explicite : "une
+    // modification conserve le meme SKU").
+    const draftPending = existing.vinted_sync_status === "sync_pending" || existing.vinted_sync_status === "sync_failed";
+    const updatePayload = draftPending
+      ? { vinted_url: vintedFields.vinted_url, synced_at: vintedFields.synced_at }
+      : vintedFields;
+
+    if (draftPending) {
+      logger.warn("Import ignore les champs modifies : brouillon local non synchronise en attente", {
+        vintedItemId: item.vintedItemId,
+        vintedSyncStatus: existing.vinted_sync_status,
+      });
+    }
+
+    const { error: updateError } = await client.from("listings").update(updatePayload).eq("id", existing.id);
     if (updateError) {
       logger.error("Mise a jour de l'article importe a echoue", updateError.message);
       throw updateError;
     }
-    logger.info("Article Vinted reimporte (mis a jour)", { vintedItemId: item.vintedItemId });
-    return { created: false };
+    logger.info("Article Vinted reimporte (mis a jour)", { vintedItemId: item.vintedItemId, draftPending });
+    return { created: false, draftProtected: draftPending };
   }
 
   await insertListingWithSkuRetry(client, {
@@ -501,5 +540,5 @@ export async function recordSingleItemImport(
   });
 
   logger.info("Article Vinted importe", { vintedItemId: item.vintedItemId });
-  return { created: true };
+  return { created: true, draftProtected: false };
 }

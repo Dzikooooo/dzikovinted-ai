@@ -137,6 +137,14 @@ async function handleImportClick(
         return;
       }
       button.textContent = LABEL_UPDATE;
+      if (response.draftProtected) {
+        showStatus(
+          status,
+          "Annonce mise à jour dans ResellOS (métadonnées uniquement) -- une modification locale non encore synchronisée sur Vinted existe et a été préservée (titre/prix/description non écrasés).",
+          false
+        );
+        return;
+      }
       showStatus(status, response.created ? "Annonce importée dans ResellOS." : "Annonce mise à jour dans ResellOS.", false);
     }
   );
