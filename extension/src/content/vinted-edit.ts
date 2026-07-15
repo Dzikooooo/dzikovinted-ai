@@ -60,7 +60,24 @@ function stage(historyId: string | undefined, name: string, detail?: unknown): v
 // d'un probleme "message jamais recu" (ou le script tourne mais
 // n'entend rien).
 console.log("[ResellOS][Edit] content script loaded", { url: location.href, at: new Date().toISOString() });
-stage(undefined, "Injection du content script");
+stage(undefined, "content_script_injected (injection declarative document_idle)");
+
+// Garde d'idempotence (2026-07-15, cause racine #2) : handleEditListing.ts
+// peut desormais REINJECTER explicitement ce script via
+// chrome.scripting.executeScript une fois la navigation reellement
+// terminee (voir son commentaire d'en-tete), en plus de l'injection
+// declarative normale. Si les deux atterrissent sur le MEME document
+// (cas frequent quand il n'y a pas eu de redirection reelle), n'enregistre
+// le listener et n'envoie EDIT_TAB_READY qu'une seule fois -- deux
+// listeners actifs risqueraient de declencher runEdit() deux fois en
+// parallele (double soumission).
+const globalScope = window as unknown as { __resellosEditBooted?: boolean };
+if (globalScope.__resellosEditBooted) {
+  console.log("[ResellOS][Edit] deja demarre dans ce document (reinjection ignoree, listener existant conserve)");
+} else {
+  globalScope.__resellosEditBooted = true;
+  bootEditContentScript();
+}
 
 function reportProgress(step: PublishStep): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PROGRESS", step });
@@ -79,7 +96,7 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true");
   log(historyId, "bouton de sauvegarde pret (non disabled), clic");
   saveButton.click();
-  stage(historyId, "Clique sur enregistrer");
+  stage(historyId, "save_clicked");
   log(historyId, "en attente de confirmation Vinted (redirection vers /items/{id} attendue, jusqu'a 20s)");
 
   // Une sauvegarde d'edition redirige probablement vers /items/{id} (la
@@ -87,7 +104,7 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   // l'id est deja connu (payload.vintedItemId) et sert uniquement a
   // confirmer que Vinted a bien traite la soumission.
   await waitForCondition(() => /\/items\/\d+/.test(location.pathname), { timeoutMs: 20000 });
-  stage(historyId, "Confirmation Vinted", { pathname: location.pathname });
+  stage(historyId, "confirmation_received", { pathname: location.pathname });
   log(historyId, "confirmation Vinted recue (redirection detectee apres soumission)", { pathname: location.pathname });
 
   const match = location.pathname.match(/\/items\/(\d+)/);
@@ -103,7 +120,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
   try {
     reportProgress("connecting");
     await waitForElement(sel.TITLE_INPUT_SELECTOR);
-    stage(historyId, "Détection du formulaire", { titleSelectorFound: true });
+    stage(historyId, "form_detected", { titleSelectorFound: true });
     log(historyId, "champ titre detecte, page consideree chargee");
     await verifyLoggedInAccount(payload.expectedVintedUsername);
     log(historyId, "compte connecte verifie", { expected: payload.expectedVintedUsername });
@@ -200,22 +217,25 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
   }
 }
 
-chrome.runtime.onMessage.addListener((message) => {
-  console.log("[ResellOS][Edit] message recu par le content script", message);
-  if (!isContentCommand(message)) return false;
-  if (message.type === "EDIT_LISTING") {
-    log(message.payload.historyId, "commande EDIT_LISTING reconnue, demarrage runEdit", {
-      vintedItemId: message.payload.vintedItemId,
-    });
-    void runEdit(message.payload);
-  }
-  return false;
-});
+function bootEditContentScript(): void {
+  chrome.runtime.onMessage.addListener((message) => {
+    console.log("[ResellOS][Edit] message recu par le content script", message);
+    if (!isContentCommand(message)) return false;
+    if (message.type === "EDIT_LISTING") {
+      stage(message.payload.historyId, "edit_payload_received");
+      log(message.payload.historyId, "commande EDIT_LISTING reconnue, demarrage runEdit", {
+        vintedItemId: message.payload.vintedItemId,
+      });
+      void runEdit(message.payload);
+    }
+    return false;
+  });
 
-// Signal de disponibilite (CAUSE RACINE, voir commentaire ContentReport
-// dans messages.ts) : envoye juste apres l'enregistrement du listener
-// ci-dessus, pour que handleEditListing.ts sache exactement quand il est
-// sur d'obtenir une reponse, plutot que de deviner via un retry aveugle a
-// duree fixe.
-chrome.runtime.sendMessage({ type: "EDIT_TAB_READY" });
-stage(undefined, "Signal EDIT_TAB_READY envoye");
+  // Signal de disponibilite (CAUSE RACINE #1, voir commentaire
+  // ContentReport dans messages.ts) : envoye juste apres l'enregistrement
+  // du listener ci-dessus, pour que handleEditListing.ts sache exactement
+  // quand il est sur d'obtenir une reponse, plutot que de deviner via un
+  // retry aveugle a duree fixe.
+  chrome.runtime.sendMessage({ type: "EDIT_TAB_READY" });
+  stage(undefined, "Signal EDIT_TAB_READY envoye au background");
+}

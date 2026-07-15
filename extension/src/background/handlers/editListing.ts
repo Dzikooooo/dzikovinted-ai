@@ -5,18 +5,32 @@
 // creation generique, et le content script attendu est vinted-edit.ts
 // (commande EDIT_LISTING).
 //
-// CAUSE RACINE demontree le 2026-07-15 (pipeline ResellOS -> Vinted
+// CAUSE RACINE #1 demontree le 2026-07-15 (pipeline ResellOS -> Vinted
 // n'atteignait jamais Vinted, symptome observe : "la page Vinted s'ouvre
 // brievement puis disparait") : l'ancienne version envoyait la commande
-// EDIT_LISTING via un retry aveugle a duree fixe (6 tentatives / 250ms,
-// ~7.75s max) sans jamais savoir si vinted-edit.ts avait fini de charger
-// (chunk CRXJS charge de facon asynchrone sur une vraie navigation de
-// page, duree non garantie). Des que les tentatives s'epuisaient,
-// settle() fermait l'onglet -- exactement le symptome observe, avant
-// meme que le content script ait pu s'enregistrer. Remplace par un
-// signal explicite (EDIT_TAB_READY, envoye par vinted-edit.ts des qu'il
-// a enregistre son listener) : la commande n'est envoyee qu'une fois ce
-// signal recu, plus aucune course.
+// EDIT_LISTING via un retry aveugle a duree fixe. Corrige par un signal
+// explicite (EDIT_TAB_READY, envoye par vinted-edit.ts des qu'il a
+// enregistre son listener) -- voir commit precedent.
+//
+// CAUSE RACINE #2 demontree le meme jour, test suivant : EDIT_TAB_READY
+// est desormais bien recu, mais l'envoi de EDIT_LISTING qui suit
+// immediatement echoue avec "Could not establish connection. Receiving
+// end does not exist." Preuve que le content script qui a envoye
+// EDIT_TAB_READY n'existe deja plus au moment de la reponse -- coherent
+// avec une navigation/redirection reelle de la page ENTRE l'envoi du
+// signal et la reponse (le premier document qui s'injecte declarativement
+// a document_idle n'est pas forcement le document final si Vinted
+// redirige apres coup). Corrige par deux mecanismes complementaires :
+// 1) l'echec d'un envoi n'est plus fatal -- le handler continue d'ecouter
+//    un NOUVEL EDIT_TAB_READY (une eventuelle reinjection sur le document
+//    final) plutot que d'abandonner immediatement ;
+// 2) des que l'onglet atteint chrome.tabs.onUpdated status:"complete"
+//    (navigation reellement terminee), le content script est reinjecte
+//    EXPLICITEMENT via chrome.scripting.executeScript (fichiers lus
+//    depuis le manifest genere, jamais code en dur) -- garantit une
+//    instance vivante dans le document final, independamment de ce que
+//    l'injection declarative a pu faire sur d'eventuels documents
+//    intermediaires.
 
 import { logger } from "../logger";
 import { isContentReport } from "../../lib/messages";
@@ -42,6 +56,16 @@ function sendEditCommand(tabId: number, payload: EditListingPayload): Promise<vo
   });
 }
 
+// Fichiers du content script d'edition tels qu'enregistres dans le
+// manifest genere par CRXJS -- lus dynamiquement (jamais de chemin/hash
+// code en dur, qui changerait a chaque build) pour permettre une
+// reinjection explicite en secours de l'injection declarative.
+function findEditContentScriptFiles(): string[] {
+  const manifest = chrome.runtime.getManifest();
+  const entry = manifest.content_scripts?.find((cs) => cs.js?.some((f) => f.includes("vinted-edit")));
+  return entry?.js ?? [];
+}
+
 export async function handleEditListing(
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void
@@ -58,7 +82,7 @@ export async function handleEditListing(
   // identifiant -- jamais utilise pour la logique metier.
   const payload: EditListingPayload = { ...(request.payload as unknown as EditListingPayload), historyId };
 
-  pipeline("Creation de la tache d'edition", { vintedItemId: payload.vintedItemId, price: payload.price });
+  pipeline("tab_created (creation de la tache d'edition)", { vintedItemId: payload.vintedItemId, price: payload.price });
   logger.info(`[${historyId}] handleEditListing: demarrage`, {
     vintedItemId: payload.vintedItemId,
     price: payload.price,
@@ -71,7 +95,7 @@ export async function handleEditListing(
   let tab: chrome.tabs.Tab;
   try {
     tab = await chrome.tabs.create({ url: editUrl, active: true });
-    pipeline("Ouverture de la page d'edition Vinted", { editUrl, tabId: tab.id });
+    pipeline("tab_created", { editUrl, tabId: tab.id });
     logger.debug(`[${historyId}] handleEditListing: onglet ouvert`, { editUrl, tabId: tab.id });
   } catch (err) {
     logger.error(`[${historyId}] handleEditListing: chrome.tabs.create a echoue`, errorMessage(err));
@@ -86,29 +110,39 @@ export async function handleEditListing(
   return new Promise<RunActionOutcome>((resolve) => {
     let settled = false;
     let tabClosedByHandler = false;
-    let commandSent = false;
+    let sendInFlight = false;
+    let explicitlyInjectedAfterComplete = false;
+
+    function attemptSend(reason: string): void {
+      if (sendInFlight) return;
+      sendInFlight = true;
+      pipeline("edit_payload_sent", { reason, tabId });
+      logger.debug(`[${historyId}] handleEditListing: envoi de EDIT_LISTING (${reason})`);
+      sendEditCommand(tabId, payload)
+        .then(() => {
+          pipeline("edit_payload_received (ACK du content script)");
+          logger.debug(`[${historyId}] handleEditListing: commande EDIT_LISTING envoyee et acquittee`);
+        })
+        .catch((err) => {
+          // NON FATAL (cause racine #2) : le content script qui a envoye
+          // EDIT_TAB_READY n'existe deja plus (navigation entre-temps).
+          // On ne cloture PAS le pipeline ici -- on continue d'ecouter un
+          // nouvel EDIT_TAB_READY (reinjection explicite ci-dessous ou
+          // reinjection declarative sur le document final) jusqu'au
+          // timeout tabReadyTimeout.
+          pipeline("ECHEC envoi (non fatal, en attente d'un nouveau signal pret)", { message: errorMessage(err) });
+          logger.warn(`[${historyId}] handleEditListing: envoi de EDIT_LISTING a echoue, en attente d'un nouveau signal`, errorMessage(err));
+          sendInFlight = false;
+        });
+    }
 
     function onMessage(message: unknown, sender: chrome.runtime.MessageSender): boolean {
       if (sender.tab?.id !== tabId || !isContentReport(message)) return false;
 
       if (message.type === "EDIT_TAB_READY") {
-        pipeline("Injection du content script confirmee (signal EDIT_TAB_READY)");
+        pipeline("edit_ready_received");
         clearTimeout(tabReadyTimeout);
-        if (!commandSent) {
-          commandSent = true;
-          sendEditCommand(tabId, payload)
-            .then(() => {
-              pipeline("Commande EDIT_LISTING envoyee au content script");
-              logger.debug(`[${historyId}] handleEditListing: commande EDIT_LISTING envoyee au content script`);
-            })
-            .catch((err) => {
-              logger.error(`[${historyId}] handleEditListing: envoi de la commande a echoue`, errorMessage(err));
-              settle({
-                status: "error",
-                errorMessage: `Impossible de communiquer avec la page Vinted : ${errorMessage(err)}`,
-              });
-            });
-        }
+        attemptSend("EDIT_TAB_READY recu");
         return false;
       }
 
@@ -124,6 +158,37 @@ export async function handleEditListing(
       return false;
     }
 
+    // Cause racine #2, mecanisme 2/2 : des que la navigation est
+    // REELLEMENT terminee (pas juste document_idle sur un document
+    // intermediaire eventuel), reinjecte explicitement le content script
+    // pour garantir une instance vivante dans le document final.
+    function onTabUpdated(updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo): void {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete" || explicitlyInjectedAfterComplete) return;
+      explicitlyInjectedAfterComplete = true;
+      pipeline("tab_complete");
+      logger.debug(`[${historyId}] handleEditListing: onglet status=complete, reinjection explicite`);
+
+      const files = findEditContentScriptFiles();
+      if (files.length === 0) {
+        logger.error(`[${historyId}] handleEditListing: aucun fichier de content script d'edition trouve dans le manifest`);
+        return;
+      }
+      chrome.scripting
+        .executeScript({ target: { tabId }, files })
+        .then(() => {
+          pipeline("content_script_injected", { files });
+          logger.debug(`[${historyId}] handleEditListing: reinjection explicite reussie`, { files });
+        })
+        .catch((err) => {
+          // Non fatal : l'injection declarative a peut-etre deja suffi
+          // (EDIT_TAB_READY peut arriver independamment de cette
+          // reinjection) -- seul le timeout global tabReadyTimeout decide
+          // d'un echec final.
+          pipeline("ECHEC reinjection explicite (non fatal)", { message: errorMessage(err) });
+          logger.warn(`[${historyId}] handleEditListing: reinjection explicite a echoue`, errorMessage(err));
+        });
+    }
+
     function onRemoved(removedTabId: number): void {
       if (removedTabId !== tabId || tabClosedByHandler) return;
       pipeline("ECHEC : onglet ferme avant la fin (fermeture externe, pas par le handler)");
@@ -134,6 +199,7 @@ export async function handleEditListing(
     function cleanup(): void {
       chrome.runtime.onMessage.removeListener(onMessage);
       chrome.tabs.onRemoved.removeListener(onRemoved);
+      chrome.tabs.onUpdated.removeListener(onTabUpdated);
       clearTimeout(globalTimeout);
       clearTimeout(tabReadyTimeout);
     }
@@ -154,20 +220,22 @@ export async function handleEditListing(
       settle({ status: "error", errorMessage: "Délai dépassé : la modification n'a pas abouti" });
     }, GLOBAL_TIMEOUT_MS);
 
-    // Si le content script ne s'est jamais signale pret, l'echec est
-    // honnete et precis plutot qu'un simple "delai depasse" generique --
-    // distingue explicitement cette etape des autres.
+    // Si aucun EDIT_TAB_READY exploitable (envoi reussi) n'est jamais
+    // recu, l'echec est honnete et precis plutot qu'un simple "delai
+    // depasse" generique -- distingue explicitement cette etape des
+    // autres.
     const tabReadyTimeout = setTimeout(() => {
-      pipeline(`ECHEC : le content script ne s'est jamais signale pret sous ${TAB_READY_TIMEOUT_MS}ms`);
-      logger.error(`[${historyId}] handleEditListing: EDIT_TAB_READY jamais recu (${TAB_READY_TIMEOUT_MS}ms)`);
+      pipeline(`ECHEC : aucun EDIT_LISTING acquitte sous ${TAB_READY_TIMEOUT_MS}ms`);
+      logger.error(`[${historyId}] handleEditListing: aucun envoi de EDIT_LISTING acquitte sous ${TAB_READY_TIMEOUT_MS}ms`);
       settle({
         status: "error",
         errorMessage:
-          "La page d'édition Vinted n'a pas fini de charger à temps (le script d'automatisation ne s'est jamais signalé prêt). Réessaie -- si le problème persiste, la page Vinted a peut-être changé de structure.",
+          "La page d'édition Vinted n'a pas confirmé être prête à temps (le script d'automatisation n'a jamais pu recevoir la commande). Réessaie -- si le problème persiste, la page Vinted a peut-être changé de structure.",
       });
     }, TAB_READY_TIMEOUT_MS);
 
     chrome.runtime.onMessage.addListener(onMessage);
     chrome.tabs.onRemoved.addListener(onRemoved);
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
   });
 }
