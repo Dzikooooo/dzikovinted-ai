@@ -37,6 +37,16 @@ import { isContentReport } from "../../lib/messages";
 import type { ContentCommand, EditListingPayload, PublishStep, RunActionOutcome, RunActionRequest } from "../../lib/messages";
 import { errorMessage } from "../../lib/errorMessage";
 
+// GARDE TEMPORAIRE (demande explicite 2026-07-15, phase de validation du
+// pipeline edit_listing) -- meme protection que src/lib/actions/checks.ts::
+// checkEditSandboxOnly cote app, dupliquee ici en defense en profondeur
+// puisque c'est CE code qui execute reellement l'ecriture sur Vinted.
+// Aucune annonce reelle (polos, jeans...) ne doit pouvoir etre touchee
+// pendant les tests repetes du pipeline. A RETIRER PROPREMENT (cette
+// constante + le bloc de verification dans handleEditListing) une fois le
+// pipeline valide de bout en bout -- ne doit jamais rester en production.
+const SANDBOX_TEST_VINTED_ITEM_ID = "9400476768";
+
 const GLOBAL_TIMEOUT_MS = 90000;
 // Delai raisonnable pour qu'une vraie navigation de page + chargement d'un
 // chunk JS dynamique se termine -- distinct et bien plus court que le
@@ -81,6 +91,20 @@ export async function handleEditListing(
   // script (vinted-edit.ts) puisse taguer ses propres logs avec le meme
   // identifiant -- jamais utilise pour la logique metier.
   const payload: EditListingPayload = { ...(request.payload as unknown as EditListingPayload), historyId };
+
+  // GARDE TEMPORAIRE -- voir commentaire en tete de fichier. Refuse avant
+  // meme d'ouvrir un onglet.
+  if (payload.vintedItemId !== SANDBOX_TEST_VINTED_ITEM_ID) {
+    logger.error(`[${historyId}] handleEditListing: refuse (protection sandbox temporaire)`, {
+      vintedItemId: payload.vintedItemId,
+      sandboxAutorise: SANDBOX_TEST_VINTED_ITEM_ID,
+    });
+    return {
+      status: "error",
+      errorMessage:
+        'Protection temporaire active : seule l\'annonce sandbox de test ("Planche en bois") peut être modifiée pendant la phase de validation du pipeline.',
+    };
+  }
 
   pipeline("tab_created (creation de la tache d'edition)", { vintedItemId: payload.vintedItemId, price: payload.price });
   logger.info(`[${historyId}] handleEditListing: demarrage`, {

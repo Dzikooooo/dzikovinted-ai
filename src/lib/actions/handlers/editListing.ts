@@ -1,6 +1,7 @@
 import {
   checkAccountSelected,
   checkAuthenticated,
+  checkEditSandboxOnly,
   checkExtensionConnected,
   checkListingAlreadyPublished,
   checkListingLoaded,
@@ -40,6 +41,10 @@ export const editListingDefinition: ActionDefinition<EditListingPayload> = {
     checkListingLoaded,
     checkListingOwnership,
     checkListingAlreadyPublished,
+    // GARDE TEMPORAIRE (voir checks.ts::checkEditSandboxOnly) -- a retirer
+    // proprement (cette ligne + l'import + la fonction dans checks.ts)
+    // une fois le pipeline edit_listing valide de bout en bout.
+    checkEditSandboxOnly,
   ],
   buildPreview: (request) => {
     const { title, price, category, brand, size, condition } = request.payload;
