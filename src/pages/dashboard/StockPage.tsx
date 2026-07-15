@@ -215,24 +215,48 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     // resultat terminal (succes ou echec) jusqu'ici, via le background.
     console.log(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
 
-    // Etape 13 (mise a jour du statut dans ResellOS) : pour edit_listing
-    // uniquement, resout le brouillon 'sync_pending' pose par
-    // EditListingModal.save() en 'sync_success'/'sync_failed' selon le
-    // resultat REEL du push -- demande explicite du 2026-07-15 ("ne
-    // plus considerer la valeur locale comme synchronisee tant que Vinted
-    // n'a pas confirme"). La valeur locale (prix/titre/description) n'est
-    // JAMAIS retablie a l'ancienne valeur automatiquement en cas d'echec
-    // (brouillon conserve) -- seul le statut change, et il est ensuite
-    // affiche a l'utilisateur (badge "Non synchronise avec Vinted").
+    // Etape 13 (mise a jour du statut dans ResellOS) : "la base ResellOS ne
+    // doit jamais diverger de Vinted" (demande explicite 2026-07-15).
+    // EditListingModal.save() n'a PAS ecrit title/description/brand/
+    // category/color/size/material/condition/price en base pour
+    // l'intention 'update' -- ces champs restent uniquement en memoire
+    // (dans `listing`/`payload` ici) jusqu'a ce point. Seul un succes REEL
+    // confirme par Vinted les ecrit en base ; un echec n'ecrit QUE le
+    // statut, aucune valeur de champ n'est jamais touchee (la ligne garde
+    // exactement sa valeur precedente, deja confirmee sur Vinted).
     if (kind === 'edit_listing') {
-      const nextStatus = result.outcome.status === 'success' ? 'sync_success' : 'sync_failed';
-      console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation :`, nextStatus);
-      const { error: statusError } = await supabase
-        .from('listings')
-        .update({ vinted_sync_status: nextStatus })
-        .eq('id', listing.id);
-      if (statusError) {
-        console.error(`[ResellOS][action][${historyId}] echec de l'ecriture du statut de synchronisation`, statusError);
+      const editPayload = payload as EditListingPayload;
+      if (result.outcome.status === 'success') {
+        console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_success`, {
+          price: editPayload.price,
+        });
+        const { error: statusError } = await supabase
+          .from('listings')
+          .update({
+            title: editPayload.title,
+            description: editPayload.description,
+            brand: editPayload.brand ?? '',
+            category: editPayload.category,
+            color: editPayload.color ?? '',
+            size: editPayload.size ?? '',
+            material: editPayload.material ?? '',
+            condition: editPayload.condition,
+            price: editPayload.price,
+            vinted_sync_status: 'sync_success' as const,
+          })
+          .eq('id', listing.id);
+        if (statusError) {
+          console.error(`[ResellOS][action][${historyId}] echec de l'ecriture de la confirmation Vinted`, statusError);
+        }
+      } else {
+        console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_failed (aucun champ modifie)`);
+        const { error: statusError } = await supabase
+          .from('listings')
+          .update({ vinted_sync_status: 'sync_failed' as const })
+          .eq('id', listing.id);
+        if (statusError) {
+          console.error(`[ResellOS][action][${historyId}] echec de l'ecriture du statut de synchronisation`, statusError);
+        }
       }
     }
 
@@ -529,16 +553,12 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                         <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
                         {item.sku !== null && <span className="text-[10px] text-gray-500 font-mono flex-shrink-0">#{item.sku}</span>}
                         {item.vinted_status && <VintedStatusBadge status={item.vinted_status} />}
-                        {(item.vinted_sync_status === 'sync_pending' || item.vinted_sync_status === 'sync_failed') && (
+                        {item.vinted_sync_status === 'sync_failed' && (
                           <span
                             className="text-[10px] font-bold px-1.5 py-0.5 rounded-md flex-shrink-0 bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            title={
-                              item.vinted_sync_status === 'sync_pending'
-                                ? 'Modification enregistrée dans ResellOS, pas encore confirmée sur Vinted.'
-                                : "La dernière tentative de mise à jour sur Vinted a échoué. La valeur affichée ici n'est pas celle de Vinted."
-                            }
+                            title="La dernière tentative de mise à jour sur Vinted a échoué -- Vinted n'a pas été modifié, aucune donnée locale n'a été perdue."
                           >
-                            Non synchronisé avec Vinted
+                            Échec de synchronisation Vinted
                           </span>
                         )}
                       </div>

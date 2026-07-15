@@ -102,9 +102,24 @@ export type ContentCommand =
 // Reutilise les memes etapes/variantes pour publish_listing ET edit_listing
 // (PublishStep est deja documente comme generique -- pas de doublon
 // EDIT_PROGRESS/EDIT_RESULT).
+//
+// EDIT_TAB_READY (2026-07-15) : CAUSE RACINE demontree du pipeline
+// ResellOS -> Vinted qui n'atteignait jamais Vinted -- vinted-edit.ts se
+// charge de facon asynchrone (chunk CRXJS charge dynamiquement, sur une
+// vraie navigation de page) et pouvait ne pas encore avoir enregistre son
+// listener chrome.runtime.onMessage quand handleEditListing.ts tentait de
+// lui envoyer la commande EDIT_LISTING. L'ancien mecanisme (retry aveugle,
+// 6 tentatives / 250ms, ~7.75s max) abandonnait puis FERMAIT l'onglet
+// (chrome.tabs.remove) des que les tentatives s'epuisaient -- observe
+// comme "la page Vinted s'ouvre brievement puis disparait". Desormais le
+// content script signale explicitement quand il est pret a recevoir une
+// commande ; handleEditListing.ts attend ce signal avant tout envoi,
+// eliminant la course entierement plutot que d'allonger un delai au
+// hasard.
 export type ContentReport =
   | { type: "PUBLISH_PROGRESS"; step: PublishStep }
-  | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome };
+  | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome }
+  | { type: "EDIT_TAB_READY" };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
@@ -115,7 +130,7 @@ export function isContentCommand(msg: unknown): msg is ContentCommand {
 export function isContentReport(msg: unknown): msg is ContentReport {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PUBLISH_PROGRESS" || type === "PUBLISH_RESULT";
+  return type === "PUBLISH_PROGRESS" || type === "PUBLISH_RESULT" || type === "EDIT_TAB_READY";
 }
 
 // App web -> background, port persistant (chrome.runtime.connect, via

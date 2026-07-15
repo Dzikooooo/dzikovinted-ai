@@ -44,6 +44,15 @@ function log(historyId: string | undefined, message: string, detail?: unknown): 
   console.log(tag, message, detail ?? "");
 }
 
+// Marqueurs d'etape correles au schema de pipeline demande explicitement
+// le 2026-07-15 -- prefixe grep-able [PIPELINE], horodatage relatif au
+// chargement du script pour mesurer precisement ou le temps passe.
+const scriptBootAt = performance.now();
+function stage(historyId: string | undefined, name: string, detail?: unknown): void {
+  const elapsedMs = Math.round(performance.now() - scriptBootAt);
+  console.log(`[ResellOS][PIPELINE][${historyId ?? "?"}] ${name} (+${elapsedMs}ms)`, detail ?? "");
+}
+
 // Log inconditionnel, tout premier statement execute par ce module --
 // s'il n'apparait PAS dans la console de l'onglet Vinted d'edition, le
 // content script lui-meme n'a jamais ete injecte/execute (probleme de
@@ -51,6 +60,7 @@ function log(historyId: string | undefined, message: string, detail?: unknown): 
 // d'un probleme "message jamais recu" (ou le script tourne mais
 // n'entend rien).
 console.log("[ResellOS][Edit] content script loaded", { url: location.href, at: new Date().toISOString() });
+stage(undefined, "Injection du content script");
 
 function reportProgress(step: PublishStep): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PROGRESS", step });
@@ -69,6 +79,7 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true");
   log(historyId, "bouton de sauvegarde pret (non disabled), clic");
   saveButton.click();
+  stage(historyId, "Clique sur enregistrer");
   log(historyId, "en attente de confirmation Vinted (redirection vers /items/{id} attendue, jusqu'a 20s)");
 
   // Une sauvegarde d'edition redirige probablement vers /items/{id} (la
@@ -76,6 +87,7 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   // l'id est deja connu (payload.vintedItemId) et sert uniquement a
   // confirmer que Vinted a bien traite la soumission.
   await waitForCondition(() => /\/items\/\d+/.test(location.pathname), { timeoutMs: 20000 });
+  stage(historyId, "Confirmation Vinted", { pathname: location.pathname });
   log(historyId, "confirmation Vinted recue (redirection detectee apres soumission)", { pathname: location.pathname });
 
   const match = location.pathname.match(/\/items\/(\d+)/);
@@ -91,6 +103,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
   try {
     reportProgress("connecting");
     await waitForElement(sel.TITLE_INPUT_SELECTOR);
+    stage(historyId, "Détection du formulaire", { titleSelectorFound: true });
     log(historyId, "champ titre detecte, page consideree chargee");
     await verifyLoggedInAccount(payload.expectedVintedUsername);
     log(historyId, "compte connecte verifie", { expected: payload.expectedVintedUsername });
@@ -109,14 +122,30 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
     // prouver que l'ecriture a reellement pris (pas juste "envoyee").
     await fillTextFields(payload);
     const priceInputAfterWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+    stage(historyId, "Remplissage du prix", {
+      valeurAttendue: payload.price,
+      valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
+      ecritureConfirmee: priceInputAfterWrite?.value === String(payload.price),
+    });
     log(historyId, "champ prix apres ecriture + evenements input/change/blur declenches (nouvelle valeur)", {
       valeurAttendue: payload.price,
       valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
     });
     const titleInputAfterWrite = document.querySelector<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
+    stage(historyId, "Remplissage titre", {
+      valeurAttendue: payload.title,
+      valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
+      ecritureConfirmee: titleInputAfterWrite?.value === payload.title,
+    });
     log(historyId, "champ titre apres ecriture (lecture DOM immediate)", {
       valeurAttendue: payload.title,
       valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
+    });
+    const descriptionInputAfterWrite = document.querySelector<HTMLTextAreaElement>(sel.DESCRIPTION_INPUT_SELECTOR);
+    stage(historyId, "Remplissage description", {
+      valeurAttendue: payload.description,
+      valeurLueDansLeDom: descriptionInputAfterWrite?.value ?? "(champ introuvable)",
+      ecritureConfirmee: descriptionInputAfterWrite?.value === payload.description,
     });
 
     log(historyId, "resolution categorie", { categorie: payload.category });
@@ -146,6 +175,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
     const { vintedItemId, vintedUrl } = await submitEdit(historyId);
     log(historyId, "soumission confirmee", { vintedItemId, vintedUrl });
 
+    stage(historyId, "Retour vers ResellOS", { vintedItemId, vintedUrl });
     reportResult({ status: "success", resultPayload: { vintedItemId, vintedUrl } });
   } catch (err) {
     if (err instanceof WaitTimeoutError) {
@@ -181,3 +211,11 @@ chrome.runtime.onMessage.addListener((message) => {
   }
   return false;
 });
+
+// Signal de disponibilite (CAUSE RACINE, voir commentaire ContentReport
+// dans messages.ts) : envoye juste apres l'enregistrement du listener
+// ci-dessus, pour que handleEditListing.ts sache exactement quand il est
+// sur d'obtenir une reponse, plutot que de deviner via un retry aveugle a
+// duree fixe.
+chrome.runtime.sendMessage({ type: "EDIT_TAB_READY" });
+stage(undefined, "Signal EDIT_TAB_READY envoye");

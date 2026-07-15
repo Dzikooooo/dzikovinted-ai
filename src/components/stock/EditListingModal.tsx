@@ -145,44 +145,53 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
       // vinted_status/favourites/views/synced_at/vinted_url/vinted_account_id/
       // vinted_item_id, geres exclusivement par la synchro extension (voir
       // extension/src/background/sync.ts:108-122).
+      //
+      // "La base ResellOS ne doit jamais diverger de Vinted" (demande
+      // explicite 2026-07-15) : pour l'intention 'update' (annonce deja
+      // liee), les champs REELLEMENT pousses vers Vinted par edit_listing
+      // (title/description/brand/category/color/size/material/condition/
+      // price -- voir buildEditPayload dans StockPage.tsx) ne sont PAS
+      // ecrits en base ici. Ils restent en memoire (onSaved ci-dessous) et
+      // ne seront ecrits que par StockPage.tsx::runVintedAction, UNIQUEMENT
+      // si Vinted confirme reellement la mise a jour (sync_success) -- en
+      // cas d'echec, la ligne `listings` garde exactement sa valeur
+      // precedente (sync_failed, aucune donnee ecrasee). Les champs qui ne
+      // sont jamais pousses vers Vinted (quick_price/premium_price/
+      // keywords/vinted_filters/photos) restent en revanche ecrits
+      // immediatement : ils ne peuvent pas "diverger" de Vinted puisque
+      // Vinted ne les connait pas.
       const lastEditedAt = new Date().toISOString();
+      const vintedPushedFields = {
+        title: form.title,
+        description: form.description,
+        brand: form.brand,
+        category: form.category,
+        color: form.color,
+        size: form.size,
+        material: form.material,
+        condition: form.condition,
+        price: form.price,
+      };
+      const localOnlyFields = {
+        quick_price: form.quick_price,
+        premium_price: form.premium_price,
+        keywords: form.keywords,
+        vinted_filters: form.vinted_filters,
+        image_urls: finalImageUrls,
+        last_edited_at: lastEditedAt,
+      };
+
       const { error: updateError } = await supabase
         .from('listings')
-        .update({
-          title: form.title,
-          description: form.description,
-          brand: form.brand,
-          category: form.category,
-          color: form.color,
-          size: form.size,
-          material: form.material,
-          condition: form.condition,
-          price: form.price,
-          quick_price: form.quick_price,
-          premium_price: form.premium_price,
-          keywords: form.keywords,
-          vinted_filters: form.vinted_filters,
-          image_urls: finalImageUrls,
-          last_edited_at: lastEditedAt,
-          // "Ne plus considerer la valeur locale comme synchronisee tant
-          // que Vinted n'a pas confirme" (demande explicite 2026-07-15) :
-          // marque le brouillon en attente des cette sauvegarde locale,
-          // AVANT toute tentative de push -- resolu en sync_success/
-          // sync_failed par le resultat reel de l'action edit_listing
-          // (voir StockPage.tsx::runVintedAction). Uniquement pour
-          // l'intention 'update' -- 'none'/'publish' ne concernent pas un
-          // push vers une annonce deja liee.
-          ...(intent === 'update' ? { vinted_sync_status: 'sync_pending' as const } : {}),
-        })
+        .update(intent === 'update' ? localOnlyFields : { ...vintedPushedFields, ...localOnlyFields })
         .eq('id', listing.id);
 
       if (updateError) throw new Error(updateError.message);
       if (intent === 'update') {
-        console.log('[ResellOS][action] mise a jour locale (ResellOS) enregistree, avant tentative de push Vinted', {
-          listingId: listing.id,
-          price: form.price,
-          title: form.title,
-        });
+        console.log(
+          '[ResellOS][action] enregistrement local (champs non pousses vers Vinted uniquement) -- titre/prix/description restent en attente de confirmation Vinted',
+          { listingId: listing.id, price: form.price, title: form.title }
+        );
       }
       onSaved(
         {
@@ -190,7 +199,6 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           ...form,
           image_urls: finalImageUrls,
           last_edited_at: lastEditedAt,
-          vinted_sync_status: intent === 'update' ? 'sync_pending' : listing.vinted_sync_status,
         },
         intent
       );
@@ -325,13 +333,13 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           </div>
         </div>
 
-        {(listing.vinted_sync_status === 'sync_pending' || listing.vinted_sync_status === 'sync_failed') && (
+        {listing.vinted_sync_status === 'sync_failed' && (
           <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
             <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-300">
-              {listing.vinted_sync_status === 'sync_pending'
-                ? "Une modification est enregistrée dans ResellOS mais n'a pas encore été confirmée sur Vinted. Les valeurs ci-dessous ne sont pas garanties d'être celles affichées sur Vinted."
-                : "La dernière tentative de mise à jour sur Vinted a échoué. Les valeurs ci-dessous sont celles de ResellOS uniquement -- Vinted n'a pas été mis à jour. Réessaie \"Enregistrer et mettre à jour sur Vinted\"."}
+              La dernière tentative de mise à jour sur Vinted a échoué -- Vinted n'a pas été mis à jour, et aucune
+              donnée locale n'a été modifiée (les valeurs ci-dessous sont toujours celles confirmées sur Vinted).
+              Réessaie "Enregistrer et mettre à jour sur Vinted".
             </p>
           </div>
         )}
