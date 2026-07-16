@@ -114,10 +114,30 @@ export interface EditListingPayload {
   historyId?: string;
 }
 
+// Verification post-sauvegarde (2026-07-16) : CAUSE RACINE demontree du
+// "faux succes" -- l'ancienne "confirmation" attendait que location.pathname
+// corresponde a /\/items\/\d+/, un regex sans ancrage qui matchait DEJA
+// l'URL de depart /items/{id}/edit (qui CONTIENT "/items/{id}") des le tout
+// premier essai synchrone de waitForCondition, avant meme que le clic sur
+// Enregistrer ait pu produire un quelconque effet reel. SAVE_CONFIRMED
+// n'a donc jamais ete une preuve de quoi que ce soit. Desormais, apres le
+// clic, le background renavigue explicitement vers la MEME page d'edition
+// (chrome.tabs.update) et relit la valeur REELLE des champs texte modifies
+// (titre/description/prix -- seuls relisibles de facon fiable, meme
+// selecteurs que l'ecriture) -- "preuve acceptable" #3 explicitement
+// demandee : "rechargement de la page d'edition et lecture du champ prix
+// egal a la valeur demandee". Reutilise EDIT_TAB_READY pour cette seconde
+// injection (meme mecanisme deja fiable que le premier envoi).
+export interface VerifyEditFieldsPayload {
+  historyId?: string;
+  expected: Partial<Record<"title" | "description" | "price", string>>;
+}
+
 // Background -> content script, via chrome.tabs.sendMessage.
 export type ContentCommand =
   | { type: "PUBLISH_LISTING"; payload: PublishListingPayload }
-  | { type: "EDIT_LISTING"; payload: EditListingPayload };
+  | { type: "EDIT_LISTING"; payload: EditListingPayload }
+  | { type: "VERIFY_EDIT_FIELDS"; payload: VerifyEditFieldsPayload };
 
 // Content script -> background, via chrome.runtime.sendMessage (meme canal
 // interne que ACCOUNT_DETECTED/LISTINGS_DETECTED, capte par onMessage).
@@ -138,21 +158,36 @@ export type ContentCommand =
 // commande ; handleEditListing.ts attend ce signal avant tout envoi,
 // eliminant la course entierement plutot que d'allonger un delai au
 // hasard.
+// EDIT_SAVE_SUBMITTED (2026-07-16) : remplace l'ancien faux "succes"
+// immediat -- signale seulement que le clic sur Enregistrer a eu lieu et
+// qu'une navigation hors de /edit a ete detectee (predicat CORRIGE :
+// exclut desormais explicitement /edit), PAS que Vinted a reellement
+// enregistre la nouvelle valeur. Le pipeline edit_listing ne se termine
+// plus sur ce signal -- seul EDIT_VERIFICATION_RESULT (apres relecture
+// reelle) determine success/error.
 export type ContentReport =
   | { type: "PUBLISH_PROGRESS"; step: PublishStep }
   | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome }
-  | { type: "EDIT_TAB_READY" };
+  | { type: "EDIT_TAB_READY" }
+  | { type: "EDIT_SAVE_SUBMITTED"; vintedItemId: string; vintedUrl: string }
+  | { type: "EDIT_VERIFICATION_RESULT"; matches: boolean; details: Record<string, { expected: string; actual: string | null }> };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PUBLISH_LISTING" || type === "EDIT_LISTING";
+  return type === "PUBLISH_LISTING" || type === "EDIT_LISTING" || type === "VERIFY_EDIT_FIELDS";
 }
 
 export function isContentReport(msg: unknown): msg is ContentReport {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PUBLISH_PROGRESS" || type === "PUBLISH_RESULT" || type === "EDIT_TAB_READY";
+  return (
+    type === "PUBLISH_PROGRESS" ||
+    type === "PUBLISH_RESULT" ||
+    type === "EDIT_TAB_READY" ||
+    type === "EDIT_SAVE_SUBMITTED" ||
+    type === "EDIT_VERIFICATION_RESULT"
+  );
 }
 
 // App web -> background, port persistant (chrome.runtime.connect, via

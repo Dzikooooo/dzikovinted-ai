@@ -26,7 +26,7 @@ import {
   verifyLoggedInAccount,
 } from "./formFill";
 import { isContentCommand } from "../lib/messages";
-import type { EditListingPayload, EditableFieldName, PublishStep, RunActionOutcome } from "../lib/messages";
+import type { EditListingPayload, EditableFieldName, PublishStep, RunActionOutcome, VerifyEditFieldsPayload } from "../lib/messages";
 import { errorMessage } from "../lib/errorMessage";
 
 // Journalisation par etape avec l'identifiant d'action unique (demande
@@ -114,19 +114,27 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   saveButton.click();
   mark(historyId, "SAVE_CLICKED");
   stage(historyId, "save_clicked");
-  log(historyId, "en attente de confirmation Vinted (redirection vers /items/{id} attendue, jusqu'a 20s)");
+  log(historyId, "en attente de navigation hors de /edit (jusqu'a 20s)");
 
-  // Une sauvegarde d'edition redirige probablement vers /items/{id} (la
-  // fiche, pas /new) -- meme predicat que la creation, suffisant puisque
-  // l'id est deja connu (payload.vintedItemId) et sert uniquement a
-  // confirmer que Vinted a bien traite la soumission.
-  await waitForCondition(() => /\/items\/\d+/.test(location.pathname), {
+  // CAUSE RACINE demontree en test reel le 2026-07-16 ("faux succes",
+  // ResellOS revenu a l'ancien prix apres coup) : l'ancien predicat
+  // /\/items\/\d+/ n'excluait PAS "/edit" -- il matchait donc DEJA l'URL
+  // de depart /items/{id}/edit des le tout premier essai synchrone de
+  // waitForCondition (avant meme que le clic ait pu produire un effet),
+  // faisant passer SAVE_CLICKED pour une confirmation instantanee sans
+  // qu'aucune sauvegarde reelle n'ait pu avoir lieu. Corrige : exclut
+  // explicitement "/edit". IMPORTANT : meme corrige, cette navigation
+  // seule n'est PAS une preuve suffisante ("un simple clic sur Enregistrer
+  // ne suffit pas", demande explicite) -- runEdit() ne rapporte plus de
+  // succes ici, seulement EDIT_SAVE_SUBMITTED ; la verification reelle
+  // (relecture de la valeur) a lieu dans une PHASE SEPAREE orchestree par
+  // handleEditListing.ts (voir son commentaire d'en-tete).
+  await waitForCondition(() => /\/items\/\d+/.test(location.pathname) && !location.pathname.includes("/edit"), {
     timeoutMs: 20000,
-    description: "redirection vers /items/{id} apres clic sur Enregistrer (Vinted a traite la soumission)",
+    description: "navigation hors de /edit apres clic sur Enregistrer (PAS une preuve de sauvegarde reelle, juste que Vinted a redirige)",
   });
-  mark(historyId, "SAVE_CONFIRMED", { pathname: location.pathname });
-  stage(historyId, "confirmation_received", { pathname: location.pathname });
-  log(historyId, "confirmation Vinted recue (redirection detectee apres soumission)", { pathname: location.pathname });
+  stage(historyId, "navigation_away_from_edit_detected", { pathname: location.pathname });
+  log(historyId, "navigation hors de /edit detectee (pas encore une preuve de sauvegarde reelle)", { pathname: location.pathname });
 
   const match = location.pathname.match(/\/items\/(\d+)/);
   if (!match) {
@@ -279,10 +287,16 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
 
     reportProgress("publishing");
     const { vintedItemId, vintedUrl } = await submitEdit(historyId);
-    log(historyId, "soumission confirmee", { vintedItemId, vintedUrl });
+    log(historyId, "soumission soumise, navigation hors de /edit detectee -- verification reelle a venir", { vintedItemId, vintedUrl });
 
-    stage(historyId, "Retour vers ResellOS", { vintedItemId, vintedUrl });
-    reportResult({ status: "success", resultPayload: { vintedItemId, vintedUrl } });
+    // "Une edition ne peut etre consideree comme reussie que si une preuve
+    // reelle est obtenue apres sauvegarde" (demande explicite 2026-07-16) :
+    // ne rapporte plus le succes ici. handleEditListing.ts orchestre la
+    // suite (renavigation + relecture) et c'est SEULEMENT
+    // EDIT_VERIFICATION_RESULT, envoye par la PHASE DE VERIFICATION
+    // separee (voir handleVerifyEditFields ci-dessous), qui determine le
+    // resultat final transmis a ResellOS.
+    chrome.runtime.sendMessage({ type: "EDIT_SAVE_SUBMITTED", vintedItemId, vintedUrl });
   } catch (err) {
     if (err instanceof WaitTimeoutError) {
       const looksLikeLoginPage = /\/(login|auth)/i.test(location.pathname);
@@ -313,6 +327,52 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
   }
 }
 
+// Phase de verification (2026-07-16) : ce content script est reinjecte
+// (nouvelle navigation vers la MEME page /edit, orchestree par
+// handleEditListing.ts) specifiquement pour relire les valeurs REELLES
+// des champs texte modifies et les comparer a ce qui etait demande --
+// "preuve acceptable" #3 explicitement requise ("rechargement de la page
+// d'edition et lecture du champ prix egal a la valeur demandee"). Seuls
+// title/description/price sont verifiables ainsi (memes selecteurs que
+// l'ecriture, lecture directe et non ambigue) -- les selecteurs
+// d'attributs (categorie/marque/taille/etat/couleur/matiere) n'ont pas de
+// mecanisme de relecture fiable equivalent, limite explicitement
+// documentee, pas silencieusement ignoree.
+async function handleVerifyEditFields(historyId: string | undefined, payload: VerifyEditFieldsPayload): Promise<void> {
+  try {
+    await waitForElement(sel.TITLE_INPUT_SELECTOR);
+    log(historyId, "verification : formulaire recharge, page consideree chargee");
+
+    const details: Record<string, { expected: string; actual: string | null }> = {};
+
+    if (payload.expected.price !== undefined) {
+      const priceInput = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      details.price = { expected: payload.expected.price, actual: priceInput?.value ?? null };
+    }
+    if (payload.expected.title !== undefined) {
+      const titleInput = document.querySelector<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
+      details.title = { expected: payload.expected.title, actual: titleInput?.value ?? null };
+    }
+    if (payload.expected.description !== undefined) {
+      const descriptionInput = document.querySelector<HTMLTextAreaElement>(sel.DESCRIPTION_INPUT_SELECTOR);
+      details.description = { expected: payload.expected.description, actual: descriptionInput?.value ?? null };
+    }
+
+    const matches = Object.values(details).every((d) => d.actual === d.expected);
+    mark(historyId, matches ? "SAVE_CONFIRMED" : "SAVE_NOT_CONFIRMED (valeur reelle differente)", details);
+    log(historyId, "verification terminee", { matches, details });
+    chrome.runtime.sendMessage({ type: "EDIT_VERIFICATION_RESULT", matches, details });
+  } catch (err) {
+    console.error("[ResellOS][Edit] verification : echec inattendu (objet complet)", err);
+    log(historyId, "verification : echec inattendu, considere comme non confirme", errorMessage(err));
+    chrome.runtime.sendMessage({
+      type: "EDIT_VERIFICATION_RESULT",
+      matches: false,
+      details: { _error: { expected: "(verification)", actual: `echec : ${errorMessage(err)}` } },
+    });
+  }
+}
+
 function bootEditContentScript(): void {
   chrome.runtime.onMessage.addListener((message) => {
     console.log("[ResellOS][Edit] message recu par le content script", message);
@@ -324,6 +384,10 @@ function bootEditContentScript(): void {
         vintedItemId: message.payload.vintedItemId,
       });
       void runEdit(message.payload);
+    }
+    if (message.type === "VERIFY_EDIT_FIELDS") {
+      log(message.payload.historyId, "commande VERIFY_EDIT_FIELDS reconnue", { expected: message.payload.expected });
+      void handleVerifyEditFields(message.payload.historyId, message.payload);
     }
     return false;
   });
