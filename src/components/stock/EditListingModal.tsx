@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { analyzeWithAI } from '../../lib/aiService';
 import { uploadListingPhotos } from '../../lib/storage';
 import type { Listing, VintedFilter } from '../../lib/types';
+import type { EditableFieldName } from '../../lib/actions/handlers/editListing';
 
 interface EditForm {
   title: string;
@@ -64,8 +65,12 @@ interface EditListingModalProps {
   listing: Listing;
   onClose: () => void;
   // Appele apres un enregistrement reussi avec l'annonce a jour -- l'appelant
-  // recharge la liste et enchaine selon `intent`.
-  onSaved: (updated: Listing, intent: SaveIntent) => void;
+  // recharge la liste et enchaine selon `intent`. `changedFields` (2026-07-16,
+  // "un champ non modifie ne doit provoquer aucune attente DOM") liste
+  // uniquement les champs Vinted reellement modifies par rapport a
+  // l'annonce d'origine -- vide pour intent 'none'/'publish' (non
+  // pertinent, tout est "nouveau" a la publication).
+  onSaved: (updated: Listing, intent: SaveIntent, changedFields: EditableFieldName[]) => void;
   // Meme condition que le bouton "Publier sur Vinted" existant
   // (StockPage.tsx) : un compte Vinted precis doit etre selectionne pour
   // pouvoir enchainer sur la publication.
@@ -187,10 +192,21 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
         .eq('id', listing.id);
 
       if (updateError) throw new Error(updateError.message);
+
+      // "Un champ non modifie ne doit provoquer aucune attente DOM"
+      // (demande explicite 2026-07-16) -- compare le formulaire a
+      // l'annonce D'ORIGINE (avant toute fusion) pour ne lister que ce qui
+      // a reellement change. Le titre SKU-formate n'est jamais compare
+      // directement ici (buildEditPayload s'en charge cote StockPage.tsx) :
+      // seul le titre "brut" saisi par l'utilisateur compte.
+      const changedFields = (Object.keys(vintedPushedFields) as (keyof typeof vintedPushedFields)[]).filter(
+        (key) => vintedPushedFields[key] !== listing[key]
+      );
+
       if (intent === 'update') {
         console.log(
           '[ResellOS][action] enregistrement local (champs non pousses vers Vinted uniquement) -- titre/prix/description restent en attente de confirmation Vinted',
-          { listingId: listing.id, price: form.price, title: form.title }
+          { listingId: listing.id, price: form.price, title: form.title, changedFields }
         );
       }
       onSaved(
@@ -200,7 +216,8 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           image_urls: finalImageUrls,
           last_edited_at: lastEditedAt,
         },
-        intent
+        intent,
+        changedFields
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement.");

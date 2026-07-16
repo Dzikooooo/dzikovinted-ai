@@ -64,6 +64,19 @@ export interface PublishListingPayload {
   expectedVintedUsername: string;
 }
 
+// Duplique EditableFieldName (src/lib/actions/handlers/editListing.ts) --
+// meme convention de duplication assumee pour EditListingPayload.
+export type EditableFieldName =
+  | "title"
+  | "description"
+  | "price"
+  | "category"
+  | "brand"
+  | "size"
+  | "condition"
+  | "color"
+  | "material";
+
 // Modification d'une annonce existante (Partie 4, sprint extension V1) :
 // mêmes champs texte/attributs que PublishListingPayload, sans photos
 // (limite V1 validée avec l'utilisateur -- le widget photo du formulaire
@@ -83,6 +96,15 @@ export interface EditListingPayload {
   color: string | null;
   material: string | null;
   expectedVintedUsername: string;
+  // BUG REEL trouve en test reel le 2026-07-16 : le formulaire d'edition
+  // a deja une categorie definie, donc traiter les 9 champs
+  // inconditionnellement (comme en creation) ouvrait/attendait le
+  // selecteur de categorie meme pour un simple changement de prix,
+  // bloquant le pipeline sur un panneau jamais necessaire pour ce test.
+  // vinted-edit.ts ne touche/n'attend desormais QUE les champs listes
+  // ici -- calcule cote EditListingModal.tsx en comparant le formulaire a
+  // l'annonce d'origine, avant toute fusion.
+  changedFields: EditableFieldName[];
   // Identifiant de l'action (RunActionRequest.historyId, meme ligne
   // action_log cote app) -- injecte par handleEditListing.ts (le payload
   // app ne le porte pas, il vit deja au niveau RunActionRequest). Sert

@@ -24,7 +24,7 @@ import { isActivelyInStock } from '../../lib/listingStatus';
 import { toLocalDateString } from '../../lib/date';
 import { isPublishStep, type PublishStep } from '../../lib/actions/publishSteps';
 import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
-import type { EditListingPayload } from '../../lib/actions/handlers/editListing';
+import type { EditableFieldName, EditListingPayload } from '../../lib/actions/handlers/editListing';
 import type { VintedAccount } from '../../lib/types';
 import { formatTitleWithSku } from '../../lib/sku';
 import type { ActionKind } from '../../lib/actions/types';
@@ -49,7 +49,15 @@ function buildPublishPayload(listing: Listing, account: VintedAccount, packageSi
 // Pas de photos ni de packageSize (limite V1 validee avec l'utilisateur --
 // voir editListing.ts) : uniquement les champs texte/attributs deja geres
 // par le formulaire d'edition Vinted.
-function buildEditPayload(listing: Listing, account: VintedAccount): EditListingPayload {
+//
+// `changedFields` (2026-07-16, "un champ non modifie ne doit provoquer
+// aucune attente DOM") : calcule cote EditListingModal.tsx en comparant le
+// formulaire a l'annonce d'origine, transmis tel quel jusqu'a
+// vinted-edit.ts qui ne touche/n'attend QUE ces champs -- toutes les
+// valeurs ci-dessous restent necessaires (reconstruire le titre avec SKU,
+// etc.) meme pour un champ non modifie, mais elles ne seront PAS ecrites
+// sur Vinted si le champ correspondant n'est pas dans changedFields.
+function buildEditPayload(listing: Listing, account: VintedAccount, changedFields: EditableFieldName[]): EditListingPayload {
   return {
     vintedItemId: listing.vinted_item_id!,
     title: formatTitleWithSku(listing.title, listing.sku),
@@ -62,6 +70,7 @@ function buildEditPayload(listing: Listing, account: VintedAccount): EditListing
     color: listing.color || null,
     material: listing.material || null,
     expectedVintedUsername: account.vinted_username,
+    changedFields,
   };
 }
 
@@ -288,11 +297,12 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   // silencieux, meme pattern deja trouve/corrige 3 fois cette session
   // (bouton d'import, erreurs [object Object]). Desormais loggue et
   // affiche une erreur visible plutot que de disparaitre.
-  const handleConfirmUpdate = async (listing: Listing) => {
+  const handleConfirmUpdate = async (listing: Listing, changedFields: EditableFieldName[]) => {
     console.log('[ResellOS][action] handleConfirmUpdate demarre (etape 1: clic confirme)', {
       listingId: listing.id,
       vintedAccountId: listing.vinted_account_id,
       selectedAccountId: selectedAccount?.id ?? null,
+      changedFields,
     });
     if (!selectedAccount) {
       console.warn('[ResellOS][action] handleConfirmUpdate annule : aucun compte selectionne dans le filtre');
@@ -303,7 +313,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       });
       return;
     }
-    await runVintedAction('edit_listing', buildEditPayload(listing, selectedAccount), listing);
+    await runVintedAction('edit_listing', buildEditPayload(listing, selectedAccount, changedFields), listing);
   };
 
   const handleSync = () => {
@@ -747,12 +757,16 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           canPublish={!!selectedAccount}
           canUpdateOnVinted={!!selectedAccount && selectedAccount.id === editingItem.vinted_account_id}
           photoLimit={photoLimit}
-          onSaved={(updated, intent) => {
-            console.log('[ResellOS][action] onSaved (modal) : sauvegarde locale confirmee', { listingId: updated.id, intent });
+          onSaved={(updated, intent, changedFields) => {
+            console.log('[ResellOS][action] onSaved (modal) : sauvegarde locale confirmee', {
+              listingId: updated.id,
+              intent,
+              changedFields,
+            });
             setEditingItem(null);
             load();
             if (intent === 'publish') setPublishingItem(updated);
-            if (intent === 'update') void handleConfirmUpdate(updated);
+            if (intent === 'update') void handleConfirmUpdate(updated, changedFields);
           }}
         />
       )}

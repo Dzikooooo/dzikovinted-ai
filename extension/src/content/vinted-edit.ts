@@ -20,13 +20,13 @@ import { waitForElement, waitForCondition, WaitTimeoutError } from "./domWait";
 import * as sel from "./publishSelectors";
 import {
   PublishError,
-  fillTextFields,
   resolveCategory,
   selectMatchingOption,
+  setNativeValue,
   verifyLoggedInAccount,
 } from "./formFill";
 import { isContentCommand } from "../lib/messages";
-import type { EditListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
+import type { EditListingPayload, EditableFieldName, PublishStep, RunActionOutcome } from "../lib/messages";
 import { errorMessage } from "../lib/errorMessage";
 
 // Journalisation par etape avec l'identifiant d'action unique (demande
@@ -137,7 +137,21 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
 
 async function runEdit(payload: EditListingPayload): Promise<void> {
   const historyId = payload.historyId;
-  log(historyId, "runEdit demarre", { vintedItemId: payload.vintedItemId, price: payload.price, url: location.href });
+  const changed = new Set<EditableFieldName>(payload.changedFields);
+  function isChanged(field: EditableFieldName): boolean {
+    return changed.has(field);
+  }
+  function skip(field: EditableFieldName): void {
+    mark(historyId, `${field.toUpperCase()}_SKIPPED (non modifie)`);
+    log(historyId, `champ "${field}" non modifie, ignore (aucune attente DOM)`);
+  }
+
+  log(historyId, "runEdit demarre", {
+    vintedItemId: payload.vintedItemId,
+    price: payload.price,
+    changedFields: payload.changedFields,
+    url: location.href,
+  });
   try {
     reportProgress("connecting");
     await waitForElement(sel.TITLE_INPUT_SELECTOR);
@@ -149,72 +163,119 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
 
     reportProgress("filling_form");
 
-    const priceInputBeforeWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-    mark(historyId, "PRICE_FIELD_FOUND", { trouve: !!priceInputBeforeWrite, ancienneValeur: priceInputBeforeWrite?.value ?? null });
-    log(historyId, "formulaire detecte, champ prix avant ecriture (ancienne valeur)", {
-      trouve: !!priceInputBeforeWrite,
-      ancienneValeur: priceInputBeforeWrite?.value ?? "(champ introuvable)",
-      nouvelleValeurPrevue: payload.price,
-    });
+    // BUG REEL trouve en test reel le 2026-07-16 : un simple changement de
+    // prix declenchait quand meme resolveCategory() (et toutes les autres
+    // selections d'attributs), qui ouvrait le panneau categorie et
+    // attendait son contenu -- jamais necessaire pour ce champ, jamais
+    // rempli sur l'edit page ou la categorie est deja definie. Chaque
+    // champ est desormais traite UNIQUEMENT s'il figure dans
+    // payload.changedFields ; sinon aucune attente DOM n'est declenchee du
+    // tout pour ce champ (juste un log explicite).
 
-    // Champs texte (titre/description/prix) remplis en un bloc par
-    // fillTextFields -- verification de lecture immediatement apres pour
-    // prouver que l'ecriture a reellement pris (pas juste "envoyee").
-    await fillTextFields(payload);
-    const priceInputAfterWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-    mark(historyId, "PRICE_SET", {
-      valeurAttendue: payload.price,
-      valeurLueDansLeDom: priceInputAfterWrite?.value ?? null,
-      ecritureConfirmee: priceInputAfterWrite?.value === String(payload.price),
-    });
-    stage(historyId, "Remplissage du prix", {
-      valeurAttendue: payload.price,
-      valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
-      ecritureConfirmee: priceInputAfterWrite?.value === String(payload.price),
-    });
-    log(historyId, "champ prix apres ecriture + evenements input/change/blur declenches (nouvelle valeur)", {
-      valeurAttendue: payload.price,
-      valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
-    });
-    const titleInputAfterWrite = document.querySelector<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
-    stage(historyId, "Remplissage titre", {
-      valeurAttendue: payload.title,
-      valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
-      ecritureConfirmee: titleInputAfterWrite?.value === payload.title,
-    });
-    log(historyId, "champ titre apres ecriture (lecture DOM immediate)", {
-      valeurAttendue: payload.title,
-      valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
-    });
-    const descriptionInputAfterWrite = document.querySelector<HTMLTextAreaElement>(sel.DESCRIPTION_INPUT_SELECTOR);
-    stage(historyId, "Remplissage description", {
-      valeurAttendue: payload.description,
-      valeurLueDansLeDom: descriptionInputAfterWrite?.value ?? "(champ introuvable)",
-      ecritureConfirmee: descriptionInputAfterWrite?.value === payload.description,
-    });
+    if (isChanged("price")) {
+      const priceInputBeforeWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      mark(historyId, "PRICE_FIELD_FOUND", { trouve: !!priceInputBeforeWrite, ancienneValeur: priceInputBeforeWrite?.value ?? null });
+      log(historyId, "formulaire detecte, champ prix avant ecriture (ancienne valeur)", {
+        trouve: !!priceInputBeforeWrite,
+        ancienneValeur: priceInputBeforeWrite?.value ?? "(champ introuvable)",
+        nouvelleValeurPrevue: payload.price,
+      });
+      const priceInput = await waitForElement<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      setNativeValue(priceInput, payload.price.toString());
+      const priceInputAfterWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      mark(historyId, "PRICE_SET", {
+        valeurAttendue: payload.price,
+        valeurLueDansLeDom: priceInputAfterWrite?.value ?? null,
+        ecritureConfirmee: priceInputAfterWrite?.value === String(payload.price),
+      });
+      stage(historyId, "Remplissage du prix", {
+        valeurAttendue: payload.price,
+        valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
+        ecritureConfirmee: priceInputAfterWrite?.value === String(payload.price),
+      });
+    } else {
+      skip("price");
+    }
 
-    log(historyId, "resolution categorie", { categorie: payload.category });
-    await resolveCategory(payload.category);
-    log(historyId, "selection etat", { etat: payload.condition });
-    await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, payload.condition, { required: true });
-    log(historyId, "selection taille", { taille: payload.size });
-    await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, payload.size, { required: false });
-    log(historyId, "selection marque", { marque: payload.brand });
-    await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, payload.brand, { required: false });
-    log(historyId, "selection couleur", { couleur: payload.color });
-    await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, payload.color, { required: false });
-    log(historyId, "selection matiere", { matiere: payload.material });
-    await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
+    if (isChanged("title")) {
+      const titleInput = await waitForElement<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
+      setNativeValue(titleInput, payload.title);
+      const titleInputAfterWrite = document.querySelector<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
+      stage(historyId, "Remplissage titre", {
+        valeurAttendue: payload.title,
+        valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
+        ecritureConfirmee: titleInputAfterWrite?.value === payload.title,
+      });
+      log(historyId, "champ titre apres ecriture (lecture DOM immediate)", {
+        valeurAttendue: payload.title,
+        valeurLueDansLeDom: titleInputAfterWrite?.value ?? "(champ introuvable)",
+      });
+    } else {
+      skip("title");
+    }
+
+    if (isChanged("description")) {
+      const descriptionInput = await waitForElement<HTMLTextAreaElement>(sel.DESCRIPTION_INPUT_SELECTOR);
+      setNativeValue(descriptionInput, payload.description);
+      const descriptionInputAfterWrite = document.querySelector<HTMLTextAreaElement>(sel.DESCRIPTION_INPUT_SELECTOR);
+      stage(historyId, "Remplissage description", {
+        valeurAttendue: payload.description,
+        valeurLueDansLeDom: descriptionInputAfterWrite?.value ?? "(champ introuvable)",
+        ecritureConfirmee: descriptionInputAfterWrite?.value === payload.description,
+      });
+    } else {
+      skip("description");
+    }
+
+    if (isChanged("category")) {
+      log(historyId, "resolution categorie", { categorie: payload.category });
+      await resolveCategory(payload.category);
+    } else {
+      skip("category");
+    }
+    if (isChanged("condition")) {
+      log(historyId, "selection etat", { etat: payload.condition });
+      await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, payload.condition, { required: true });
+    } else {
+      skip("condition");
+    }
+    if (isChanged("size")) {
+      log(historyId, "selection taille", { taille: payload.size });
+      await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, payload.size, { required: false });
+    } else {
+      skip("size");
+    }
+    if (isChanged("brand")) {
+      log(historyId, "selection marque", { marque: payload.brand });
+      await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, payload.brand, { required: false });
+    } else {
+      skip("brand");
+    }
+    if (isChanged("color")) {
+      log(historyId, "selection couleur", { couleur: payload.color });
+      await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, payload.color, { required: false });
+    } else {
+      skip("color");
+    }
+    if (isChanged("material")) {
+      log(historyId, "selection matiere", { matiere: payload.material });
+      await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
+    } else {
+      skip("material");
+    }
 
     // Relecture finale juste avant soumission : confirme que rien
     // (navigation dans les pickers, re-render React...) n'a fait revenir
     // le prix a son ancienne valeur entre l'ecriture et le clic sur
-    // Enregistrer.
-    const priceInputBeforeSubmit = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-    log(historyId, "champ prix juste avant soumission (derniere verification)", {
-      valeurAttendue: payload.price,
-      valeurLueDansLeDom: priceInputBeforeSubmit?.value ?? "(champ introuvable)",
-    });
+    // Enregistrer. Uniquement pertinent si le prix a reellement ete
+    // modifie.
+    if (isChanged("price")) {
+      const priceInputBeforeSubmit = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      log(historyId, "champ prix juste avant soumission (derniere verification)", {
+        valeurAttendue: payload.price,
+        valeurLueDansLeDom: priceInputBeforeSubmit?.value ?? "(champ introuvable)",
+      });
+    }
 
     reportProgress("publishing");
     const { vintedItemId, vintedUrl } = await submitEdit(historyId);

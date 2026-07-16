@@ -16,6 +16,7 @@ const payload: EditListingPayload = {
   color: 'Noir',
   material: null,
   expectedVintedUsername: 'testuser',
+  changedFields: ['price'],
 };
 
 const request: ActionRequest<EditListingPayload> = {
