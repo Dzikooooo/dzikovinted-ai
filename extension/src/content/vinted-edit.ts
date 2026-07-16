@@ -53,6 +53,19 @@ function stage(historyId: string | undefined, name: string, detail?: unknown): v
   console.log(`[ResellOS][PIPELINE][${historyId ?? "?"}] ${name} (+${elapsedMs}ms)`, detail ?? "");
 }
 
+// Etiquettes EXACTES demandees le 2026-07-16 pour l'audit du comportement
+// DANS la page Vinted apres reception de EDIT_LISTING (EDIT_RECEIVED,
+// FORM_FOUND, PRICE_FIELD_FOUND, PRICE_SET, SAVE_BUTTON_FOUND,
+// SAVE_CLICKED, SAVE_CONFIRMED -- INPUT_EVENT/CHANGE_EVENT/BLUR_EVENT
+// sont loguees directement dans formFill.ts::setNativeValue, seul endroit
+// qui declenche reellement ces evenements). Prefixe [STEP], distinct de
+// [PIPELINE]/[Edit] deja existants -- but unique : reponse deterministe a
+// "quelle est la premiere etape qui ne se produit jamais", jamais une
+// reformulation des logs deja presents.
+function mark(historyId: string | undefined, tag: string, detail?: unknown): void {
+  console.log(`[ResellOS][STEP][${historyId ?? "?"}] ${tag}`, detail ?? "");
+}
+
 // Log inconditionnel, tout premier statement execute par ce module --
 // s'il n'apparait PAS dans la console de l'onglet Vinted d'edition, le
 // content script lui-meme n'a jamais ete injecte/execute (probleme de
@@ -92,10 +105,14 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   // sauvegarde que la creation -- a reconfirmer en test live (peut-etre
   // "Enregistrer" plutot que "Ajouter" sur l'edition).
   const saveButton = await waitForElement<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
+  mark(historyId, "SAVE_BUTTON_FOUND", { disabled: saveButton.disabled, text: saveButton.textContent });
   log(historyId, "bouton de sauvegarde trouve", { disabled: saveButton.disabled, text: saveButton.textContent });
-  await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true");
+  await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true", {
+    description: "bouton de sauvegarde devient cliquable (non disabled)",
+  });
   log(historyId, "bouton de sauvegarde pret (non disabled), clic");
   saveButton.click();
+  mark(historyId, "SAVE_CLICKED");
   stage(historyId, "save_clicked");
   log(historyId, "en attente de confirmation Vinted (redirection vers /items/{id} attendue, jusqu'a 20s)");
 
@@ -103,7 +120,11 @@ async function submitEdit(historyId: string | undefined): Promise<{ vintedItemId
   // fiche, pas /new) -- meme predicat que la creation, suffisant puisque
   // l'id est deja connu (payload.vintedItemId) et sert uniquement a
   // confirmer que Vinted a bien traite la soumission.
-  await waitForCondition(() => /\/items\/\d+/.test(location.pathname), { timeoutMs: 20000 });
+  await waitForCondition(() => /\/items\/\d+/.test(location.pathname), {
+    timeoutMs: 20000,
+    description: "redirection vers /items/{id} apres clic sur Enregistrer (Vinted a traite la soumission)",
+  });
+  mark(historyId, "SAVE_CONFIRMED", { pathname: location.pathname });
   stage(historyId, "confirmation_received", { pathname: location.pathname });
   log(historyId, "confirmation Vinted recue (redirection detectee apres soumission)", { pathname: location.pathname });
 
@@ -120,6 +141,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
   try {
     reportProgress("connecting");
     await waitForElement(sel.TITLE_INPUT_SELECTOR);
+    mark(historyId, "FORM_FOUND");
     stage(historyId, "form_detected", { titleSelectorFound: true });
     log(historyId, "champ titre detecte, page consideree chargee");
     await verifyLoggedInAccount(payload.expectedVintedUsername);
@@ -128,6 +150,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
     reportProgress("filling_form");
 
     const priceInputBeforeWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+    mark(historyId, "PRICE_FIELD_FOUND", { trouve: !!priceInputBeforeWrite, ancienneValeur: priceInputBeforeWrite?.value ?? null });
     log(historyId, "formulaire detecte, champ prix avant ecriture (ancienne valeur)", {
       trouve: !!priceInputBeforeWrite,
       ancienneValeur: priceInputBeforeWrite?.value ?? "(champ introuvable)",
@@ -139,6 +162,11 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
     // prouver que l'ecriture a reellement pris (pas juste "envoyee").
     await fillTextFields(payload);
     const priceInputAfterWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+    mark(historyId, "PRICE_SET", {
+      valeurAttendue: payload.price,
+      valeurLueDansLeDom: priceInputAfterWrite?.value ?? null,
+      ecritureConfirmee: priceInputAfterWrite?.value === String(payload.price),
+    });
     stage(historyId, "Remplissage du prix", {
       valeurAttendue: payload.price,
       valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
@@ -197,12 +225,19 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
   } catch (err) {
     if (err instanceof WaitTimeoutError) {
       const looksLikeLoginPage = /\/(login|auth)/i.test(location.pathname);
+      mark(historyId, "ECHEC : timeout d'attente DOM", { message: err.message, looksLikeLoginPage });
       log(historyId, "echec : timeout d'attente DOM", { message: err.message, looksLikeLoginPage });
       reportResult({
         status: "error",
+        // Inclut desormais err.message (qui contient le selecteur exact
+        // pour waitForElement, et la description pour waitForCondition
+        // depuis le 2026-07-16) directement dans le message visible cote
+        // ResellOS -- demande explicite : "je veux savoir precisement
+        // laquelle de ces etapes ne se produit jamais", pas seulement dans
+        // la console de l'onglet Vinted.
         errorMessage: looksLikeLoginPage
           ? "Session Vinted expirée, reconnecte-toi sur vinted.fr"
-          : "La page Vinted n'a pas répondu à temps",
+          : `La page Vinted n'a pas répondu à temps (${err.message})`,
       });
       return;
     }
@@ -222,6 +257,7 @@ function bootEditContentScript(): void {
     console.log("[ResellOS][Edit] message recu par le content script", message);
     if (!isContentCommand(message)) return false;
     if (message.type === "EDIT_LISTING") {
+      mark(message.payload.historyId, "EDIT_RECEIVED", { vintedItemId: message.payload.vintedItemId, price: message.payload.price });
       stage(message.payload.historyId, "edit_payload_received");
       log(message.payload.historyId, "commande EDIT_LISTING reconnue, demarrage runEdit", {
         vintedItemId: message.payload.vintedItemId,

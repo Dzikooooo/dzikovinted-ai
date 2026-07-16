@@ -33,13 +33,41 @@ export class PublishError extends Error {
 // interne React avant le clic sur Enregistrer. Ajoute "change" et "blur"
 // en plus de "input" : ne peut pas casser un champ qui n'ecoutait dejà
 // que "input", ne peut qu'aider un champ qui a besoin de plus.
+// Confirmation explicite de chaque evenement disparu (demande 2026-07-16 :
+// "je veux savoir precisement laquelle de ces etapes ne se produit
+// jamais") -- dispatchEvent() est synchrone et ne peut pas "echouer"
+// silencieusement en soi, mais un handler React qui leve une exception
+// PEUT interrompre la propagation avant les evenements suivants sans que
+// rien ne le signale ailleurs. Logue donc explicitement avant/apres
+// chaque dispatch, tag identique quel que soit l'appelant (publish ou
+// edit) puisque c'est la meme fonction partagee.
 export function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  const fieldLabel = el.getAttribute("data-testid") ?? el.tagName;
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   setter?.call(el, value);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-  el.dispatchEvent(new Event("blur", { bubbles: true }));
+  console.log(`[ResellOS][STEP] FIELD_VALUE_SET`, { field: fieldLabel, value, domValueAfterSetter: el.value });
+
+  try {
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    console.log(`[ResellOS][STEP] INPUT_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  } catch (err) {
+    console.error(`[ResellOS][STEP] INPUT_EVENT leve une exception`, { field: fieldLabel, err });
+  }
+
+  try {
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    console.log(`[ResellOS][STEP] CHANGE_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  } catch (err) {
+    console.error(`[ResellOS][STEP] CHANGE_EVENT leve une exception`, { field: fieldLabel, err });
+  }
+
+  try {
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+    console.log(`[ResellOS][STEP] BLUR_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  } catch (err) {
+    console.error(`[ResellOS][STEP] BLUR_EVENT leve une exception`, { field: fieldLabel, err });
+  }
 }
 
 export async function fillTextFields(fields: { title: string; description: string; price: number }): Promise<void> {
@@ -110,7 +138,9 @@ export async function resolveCategory(categoryText: string): Promise<void> {
     // Soit une nouvelle liste d'options apparait (niveau suivant), soit les
     // champs feuille apparaissent - attendre l'un ou l'autre plutot qu'un
     // delai fixe.
-    await waitForCondition(() => isLeafCategoryReached() || getCategoryOptions().length > 0);
+    await waitForCondition(() => isLeafCategoryReached() || getCategoryOptions().length > 0, {
+      description: `resolveCategory: niveau suivant ou feuille apres clic sur "${categoryText}"`,
+    });
   }
 
   if (!isLeafCategoryReached()) {

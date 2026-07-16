@@ -59,8 +59,16 @@ export function waitForElement<T extends Element = Element>(
 // Attend qu'un predicat arbitraire devienne vrai (ex. "le bouton n'est plus
 // disabled", "il y a N vignettes dans la grille") - re-evalue a chaque
 // mutation du sous-arbre plutot qu'a intervalle fixe.
-export function waitForCondition(predicate: () => boolean, options: WaitOptions = {}): Promise<void> {
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, root = document } = options;
+//
+// `description` (2026-07-16, demande explicite : "je veux savoir
+// precisement laquelle de ces etapes echoue") -- waitForElement()
+// inclut deja le selecteur attendu dans son message d'erreur,
+// waitForCondition() ne disait jusqu'ici que "delai depasse" sans dire
+// SUR QUOI, rendant plusieurs echecs indiscernables dans les logs (ex.
+// "bouton pret" vs "redirection detectee" dans submitEdit). Purement
+// diagnostique -- ne change ni le delai, ni le mecanisme d'attente.
+export function waitForCondition(predicate: () => boolean, options: WaitOptions & { description?: string } = {}): Promise<void> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, root = document, description } = options;
 
   return new Promise((resolve, reject) => {
     if (predicate()) {
@@ -78,7 +86,8 @@ export function waitForCondition(predicate: () => boolean, options: WaitOptions 
 
     const timer = setTimeout(() => {
       cleanup();
-      reject(new WaitTimeoutError(`waitForCondition: délai dépassé (${timeoutMs}ms)`));
+      const suffix = description ? ` pour "${description}"` : "";
+      reject(new WaitTimeoutError(`waitForCondition: délai dépassé (${timeoutMs}ms)${suffix}`));
     }, timeoutMs);
 
     function cleanup() {
