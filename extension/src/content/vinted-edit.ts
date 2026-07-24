@@ -142,6 +142,111 @@ function reportResult(outcome: RunActionOutcome): void {
 // document deja navigue hors du formulaire).
 let runEditInvocationCount = 0;
 
+// INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) -- a
+// retirer une fois la cause racine du timeout de navigation confirmee.
+// L'onglet d'edition tourne en arriere-plan (chrome.tabs.create({active:
+// false}), voir handleEditListing.ts) -- l'utilisateur n'a donc AUCUN
+// moyen d'ouvrir manuellement l'onglet Network de cet onglet precis pour
+// verifier si une requete part reellement au clic sur Enregistrer, ni si
+// Vinted la refuse. Seul point d'observation possible : intercepter
+// fetch/XHR depuis CE content script, le temps de la fenetre de clic.
+// Purement en lecture (journalise puis relaie l'appel original a
+// l'identique) -- ne modifie ni les requetes ni leur resultat.
+function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
+  // logger.info (pas seulement mark/console.log) : cet onglet tourne en
+  // arriere-plan (active:false), impossible d'y ouvrir DevTools au bon
+  // moment -- seule l'ecriture dans le ring buffer persiste
+  // (chrome.storage.local) rend ces evenements reellement consultables
+  // apres coup, depuis le popup de l'extension.
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = ((...args: Parameters<typeof fetch>) => {
+    const [input, init] = args;
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    const startedAt = performance.now();
+    logger.info(`[${historyId}] NETWORK_FETCH_SENT`, { method, url });
+    return originalFetch(...args).then(
+      (response) => {
+        logger.info(`[${historyId}] NETWORK_FETCH_RESPONSE`, {
+          method,
+          url,
+          status: response.status,
+          ok: response.ok,
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+        return response;
+      },
+      (err) => {
+        logger.error(`[${historyId}] NETWORK_FETCH_ERROR`, { method, url, message: errorMessage(err) });
+        throw err;
+      }
+    );
+  }) as typeof fetch;
+
+  const OriginalXHR = window.XMLHttpRequest;
+  const openOriginal = OriginalXHR.prototype.open;
+  const sendOriginal = OriginalXHR.prototype.send;
+  OriginalXHR.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
+    (this as unknown as { __resellosMethod?: string; __resellosUrl?: string }).__resellosMethod = method;
+    (this as unknown as { __resellosMethod?: string; __resellosUrl?: string }).__resellosUrl = String(url);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (openOriginal as any).apply(this, [method, url, ...rest]);
+  };
+  OriginalXHR.prototype.send = function (this: XMLHttpRequest, ...args: unknown[]) {
+    const tagged = this as unknown as { __resellosMethod?: string; __resellosUrl?: string };
+    const startedAt = performance.now();
+    logger.info(`[${historyId}] NETWORK_XHR_SENT`, { method: tagged.__resellosMethod, url: tagged.__resellosUrl });
+    this.addEventListener("loadend", () => {
+      logger.info(`[${historyId}] NETWORK_XHR_RESPONSE`, {
+        method: tagged.__resellosMethod,
+        url: tagged.__resellosUrl,
+        status: this.status,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      });
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (sendOriginal as any).apply(this, args);
+  };
+
+  return () => {
+    window.fetch = originalFetch;
+    OriginalXHR.prototype.open = openOriginal;
+    OriginalXHR.prototype.send = sendOriginal;
+  };
+}
+
+// INSTRUMENTATION TEMPORAIRE (meme raison que ci-dessus) : snapshots
+// repetes (pas un sleep fixe -- de simples lectures DOM planifiees) de
+// l'etat du bouton/champ prix/pathname pendant toute la fenetre d'attente
+// de navigation, la ou l'ancien code n'en capturait qu'un seul a +500ms.
+// Capture aussi jusqu'a 300 caracteres de texte visible autour du bouton a
+// chaque instantane, pour attraper un eventuel message d'erreur Vinted
+// (validation, champ obligatoire...) dont le selecteur exact est inconnu.
+function observeDomDuringSubmit(historyId: string | undefined, saveButton: HTMLButtonElement): () => void {
+  // 4 instantanes seulement (pas plus) : le ring buffer persiste
+  // (chrome.storage.local, voir logger.ts) ne garde que les 50 dernieres
+  // entrees, partagees avec tout le reste du pipeline (background + ce
+  // content script) -- inutile de le saturer alors que 4 points repartis
+  // sur les 20s d'attente suffisent a situer un changement d'etat.
+  const timers = [500, 3000, 10000, 19000].map((delayMs) =>
+    setTimeout(() => {
+      const freshButton = document.querySelector<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
+      const priceField = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      logger.info(`[${historyId}] DOM_SNAPSHOT (+${delayMs}ms)`, {
+        boutonCaptureEncoreAttache: document.body.contains(saveButton),
+        boutonFraisTrouve: !!freshButton,
+        boutonFraisDisabled: freshButton?.disabled ?? null,
+        boutonFraisAriaDisabled: freshButton?.getAttribute("aria-disabled") ?? null,
+        boutonFraisText: freshButton?.textContent?.trim() ?? null,
+        boutonParentTexteVisible: freshButton?.closest("form")?.textContent?.slice(0, 300) ?? freshButton?.parentElement?.textContent?.slice(0, 300) ?? null,
+        prixActuelDansLeDom: priceField?.value ?? null,
+        pathnameActuel: location.pathname,
+      });
+    }, delayMs)
+  );
+  return () => timers.forEach(clearTimeout);
+}
+
 async function submitEdit(historyId: string | undefined, vintedItemId: string): Promise<{ vintedItemId: string; vintedUrl: string }> {
   // Hypothese : le formulaire d'edition partage le meme bouton de
   // sauvegarde que la creation -- a reconfirmer en test live (peut-etre
@@ -174,6 +279,12 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
     disabledSurLElementFraisInterroge: freshButtonAtClickTime?.disabled ?? null,
   });
 
+  // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) --
+  // demarree juste AVANT le clic pour ne manquer aucune requete
+  // declenchee de facon synchrone par le handler de clic de Vinted.
+  const stopNetworkObserver = observeNetworkDuringSubmit(historyId);
+  const stopDomObserver = observeDomDuringSubmit(historyId, saveButton);
+
   saveButton.click();
   mark(historyId, "SAVE_CLICKED");
   logger.info(`[${historyId}] SAVE_CLICKED`, {
@@ -182,27 +293,6 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
   });
   stage(historyId, "save_clicked");
   log(historyId, "en attente de navigation hors de /edit (jusqu'a 20s)");
-
-  // Instantane READ-ONLY a +500ms, en parallele (non awaite, ne retarde/ne
-  // bloque rien) : verifie si le clic a eu un effet observable SANS
-  // navigation (bouton qui se re-desactive = requete probablement partie ;
-  // champ prix qui change de valeur = ecriture reellement prise en compte
-  // par Vinted ; presence d'un message d'erreur eventuel visible dans le
-  // parent du bouton, pour inspection manuelle -- selecteur exact non
-  // connu, donc capture large plutot que devine).
-  setTimeout(() => {
-    const freshButtonAfterClick = document.querySelector<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
-    const priceFieldAfterClick = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-    mark(historyId, "POST_CLICK_SNAPSHOT (+500ms, purement observationnel, n'affecte pas le pipeline)", {
-      boutonCaptureEncoreAttache: document.body.contains(saveButton),
-      boutonFraisTrouve: !!freshButtonAfterClick,
-      boutonFraisDisabled: freshButtonAfterClick?.disabled ?? null,
-      boutonFraisText: freshButtonAfterClick?.textContent ?? null,
-      boutonParentTexteVisible: freshButtonAfterClick?.parentElement?.textContent?.slice(0, 300) ?? null,
-      prixActuelDansLeDom: priceFieldAfterClick?.value ?? null,
-      pathnameActuel: location.pathname,
-    });
-  }, 500);
 
   // CAUSE RACINE demontree en test reel le 2026-07-16 ("faux succes",
   // ResellOS revenu a l'ancien prix apres coup) : l'ancien predicat
@@ -233,17 +323,27 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
   // verifyFieldsDispatchCount:0, finalPhase:"editing"). Corrige en
   // acceptant desormais aussi /member/\d+ comme preuve de navigation
   // reelle hors du formulaire.
-  await waitForCondition(
-    () => {
-      const path = location.pathname;
-      return !path.includes("/edit") && (/\/items\/\d+/.test(path) || /\/member\/\d+/.test(path));
-    },
-    {
-      timeoutMs: 20000,
-      description:
-        "navigation hors de /edit apres clic sur Enregistrer (vers l'article ou le profil vendeur -- PAS une preuve de sauvegarde reelle, juste que Vinted a redirige)",
-    }
-  );
+  try {
+    await waitForCondition(
+      () => {
+        const path = location.pathname;
+        return !path.includes("/edit") && (/\/items\/\d+/.test(path) || /\/member\/\d+/.test(path));
+      },
+      {
+        timeoutMs: 20000,
+        description:
+          "navigation hors de /edit apres clic sur Enregistrer (vers l'article ou le profil vendeur -- PAS une preuve de sauvegarde reelle, juste que Vinted a redirige)",
+      }
+    );
+  } finally {
+    // Les observateurs temporaires doivent s'arreter ici, succes ou
+    // timeout confondus -- sinon fetch/XMLHttpRequest resteraient
+    // interceptes indefiniment sur ce document (jusqu'a sa navigation/
+    // fermeture reelle, ce qui arrive de toute facon, mais autant etre
+    // explicite plutot que de compter dessus).
+    stopNetworkObserver();
+    stopDomObserver();
+  }
   stage(historyId, "navigation_away_from_edit_detected", { pathname: location.pathname });
   log(historyId, "navigation hors de /edit detectee (pas encore une preuve de sauvegarde reelle)", { pathname: location.pathname });
 
