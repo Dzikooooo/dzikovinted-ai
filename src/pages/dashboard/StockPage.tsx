@@ -262,24 +262,11 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     // modale de progression (meme apres succes/echec) -- un step distinct
     // de 'done' et sans erreur signifie qu'une action est REELLEMENT en
     // cours.
-    // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing silencieux,
-    // 2026-07-24) -- a retirer une fois la cause racine confirmee. Ce log
-    // s'affiche a CHAQUE appel de runVintedAction, garde comprise -- si un
-    // clic sur "Enregistrer et mettre a jour sur Vinted" ne produit AUCUN
-    // log ici, runVintedAction n'a jamais ete appelee du tout (la cause est
-    // en amont : bouton non rendu, handleConfirmUpdate jamais atteint, ou
-    // save() jamais arrivee a son terme -- voir les logs EditListingModal).
-    console.log('[ResellOS][DIAGNOSTIC] runVintedAction() appelee', {
-      kind,
-      listingId: listing.id,
-      publishStateActuel: publishState,
-    });
     if (publishState && publishState.step !== 'done' && !publishState.error) {
-      console.warn('[ResellOS][DIAGNOSTIC] runVintedAction IGNOREE (garde anti-doublon) : une action est deja en cours', {
+      console.warn('[ResellOS][action] runVintedAction ignore : une action est deja en cours', {
         kind,
         listingId: listing.id,
         etapeEnCours: publishState.step,
-        publishStateComplet: publishState,
       });
       return;
     }
@@ -751,25 +738,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {!isSold && (
                         <button
-                          onClick={() => {
-                            // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing
-                            // silencieux, 2026-07-24) -- a retirer une fois la
-                            // cause racine confirmee. Capture l'etat exact au
-                            // moment de l'ouverture de la modale : si
-                            // canUpdateOnVinted vaut false ici, le bouton
-                            // "Enregistrer et mettre a jour sur Vinted" ne sera
-                            // PAS rendu dans la modale, meme si l'annonce est
-                            // bien liee a Vinted.
-                            console.log('[ResellOS][DIAGNOSTIC] ouverture EditListingModal', {
-                              listingId: item.id,
-                              listingVintedAccountId: item.vinted_account_id,
-                              listingVintedItemId: item.vinted_item_id,
-                              selectedAccountId: selectedAccount?.id ?? null,
-                              canUpdateOnVinted: !!selectedAccount && selectedAccount.id === item.vinted_account_id,
-                              extensionState,
-                            });
-                            setEditingItem(item);
-                          }}
+                          onClick={() => setEditingItem(item)}
                           className="flex items-center gap-1.5 text-xs font-semibold bg-dark-400 border border-white/10 text-gray-200 px-3 py-2 rounded-xl hover:border-neon-500/40 transition-all"
                         >
                           <Pencil className="w-3.5 h-3.5" />

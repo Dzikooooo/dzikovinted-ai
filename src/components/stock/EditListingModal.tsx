@@ -144,20 +144,6 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
   };
 
   const save = async (intent: SaveIntent) => {
-    // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing silencieux,
-    // 2026-07-24) -- a retirer une fois la cause racine confirmee. Premiere
-    // ligne de save(), avant tout await : si ce log n'apparait jamais apres
-    // un clic sur "Enregistrer et mettre a jour sur Vinted", le bouton
-    // lui-meme n'a pas declenche save('update') (bouton non rendu/disabled,
-    // ou mauvais bouton clique).
-    console.log('[ResellOS][DIAGNOSTIC] EditListingModal.save() demarre', {
-      intent,
-      listingId: listing.id,
-      isLinkedToVinted,
-      canUpdateOnVinted,
-      formPrice: form.price,
-      listingPrice: listing.price,
-    });
     setSaving(true);
     setError(null);
     try {
@@ -209,12 +195,40 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
         last_edited_at: lastEditedAt,
       };
 
-      const { error: updateError } = await supabase
+      // Decision produit validee le 2026-07-24 (diagnostic parcours
+      // edit_listing) : pour une annonce DEJA liee a Vinted, "Enregistrer
+      // les modifications" (intent 'none') ne doit plus jamais ecrire les
+      // champs que Vinted considere faisant autorite (titre/description/
+      // prix/marque/categorie/taille/etat/couleur/matiere) -- exactement
+      // le meme traitement que l'intention 'update'. Avant ce correctif,
+      // ce bouton ecrivait ces champs sans jamais positionner
+      // vinted_sync_status='sync_pending', donc rien ne protegeait la
+      // ligne contre un ecrasement silencieux par la prochaine synchro
+      // passive (extension/src/background/sync.ts::recordListings) --
+      // succes annonce, jamais reellement durable (bug reel confirme en
+      // test live : prix revenu a sa valeur Vinted d'origine apres
+      // actualisation). Seule une annonce PAS ENCORE liee (isLinkedToVinted
+      // false) peut encore ecrire ces champs via ce bouton, puisqu'il n'y a
+      // alors rien avec quoi diverger.
+      const blockVintedFields = intent === 'update' || (intent === 'none' && isLinkedToVinted);
+
+      // .select('id') + verification de longueur (demande explicite,
+      // diagnostic 2026-07-24, "aucun succes ne doit etre annonce avant
+      // confirmation de la base de donnees") : un .update() Supabase sans
+      // .select() ne remonte AUCUNE erreur si 0 ligne correspond (RLS,
+      // identifiant perime...) -- silencieux par defaut. Ici, un tableau
+      // vide signifie qu'aucune ligne n'a reellement ete modifiee malgre
+      // l'absence d'erreur.
+      const { data: updatedRows, error: updateError } = await supabase
         .from('listings')
-        .update(intent === 'update' ? localOnlyFields : { ...vintedPushedFields, ...localOnlyFields })
-        .eq('id', listing.id);
+        .update(blockVintedFields ? localOnlyFields : { ...vintedPushedFields, ...localOnlyFields })
+        .eq('id', listing.id)
+        .select('id');
 
       if (updateError) throw new Error(updateError.message);
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error("La sauvegarde n'a modifié aucune ligne en base -- réessaie ou contacte le support si le problème persiste.");
+      }
 
       // "Un champ non modifie ne doit provoquer aucune attente DOM"
       // (demande explicite 2026-07-16) -- compare le formulaire a
@@ -391,6 +405,27 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
               La dernière tentative de mise à jour sur Vinted a échoué -- Vinted n'a pas été mis à jour, et aucune
               donnée locale n'a été modifiée (les valeurs ci-dessous sont toujours celles confirmées sur Vinted).
               Réessaie "Enregistrer et mettre à jour sur Vinted".
+            </p>
+          </div>
+        )}
+
+        {isLinkedToVinted && !canUpdateOnVinted && (
+          // Cause racine reelle diagnostiquee le 2026-07-24 : sans ce
+          // message, un utilisateur dont le filtre de compte (en haut de
+          // StockPage.tsx) n'est pas exactement regle sur le compte
+          // proprietaire de CETTE annonce ne voit tout simplement pas
+          // apparaitre le bouton "Enregistrer et mettre a jour sur Vinted",
+          // sans aucune explication -- il clique alors sur "Enregistrer les
+          // modifications" en pensant avoir pousse la mise a jour vers
+          // Vinted, ce qui n'est jamais le cas.
+          <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-300">
+              Impossible de mettre à jour cette annonce sur Vinted pour l'instant : le compte sélectionné dans le
+              filtre en haut de la page Stock n'est pas celui auquel cette annonce appartient. Sélectionne le bon
+              compte Vinted dans ce filtre, puis rouvre cette modale. En attendant, "Enregistrer les modifications"
+              ne sauvegardera que les champs internes à ResellOS (prix rapide/premium, mots-clés, filtres, photos) --
+              le titre, la description, le prix et les autres champs poussés vers Vinted resteront inchangés.
             </p>
           </div>
         )}
