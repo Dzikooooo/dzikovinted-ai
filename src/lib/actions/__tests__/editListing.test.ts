@@ -38,7 +38,7 @@ describe('editListingDefinition', () => {
 
   it('buildPreview summarizes title, price, and details from the payload', () => {
     const preview = editListingDefinition.buildPreview(request, makeActionContext());
-    expect(preview.summary).toBe('Mettre à jour « Pull Zara #12 » — 15.00 €');
+    expect(preview.summary).toBe('Mettre à jour « Pull Zara #12 » — 15 €');
     expect(preview.details).toEqual({
       title: 'Pull Zara #12',
       price: 15,

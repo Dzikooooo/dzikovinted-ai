@@ -5,6 +5,7 @@ import {
   checkExtensionConnected,
   checkListingAlreadyPublished,
   checkListingHasPhotos,
+  checkListingHasRequiredVintedFields,
   checkListingLoaded,
   checkListingNotAlreadyPublished,
   checkListingOwnership,
@@ -129,6 +130,47 @@ describe('checkListingHasPhotos', () => {
   it('fails with no_photos when no listing is loaded', () => {
     const result = checkListingHasPhotos(makeActionContext(), makeCheckDeps({ targetListing: null }));
     expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'no_photos' }) });
+  });
+});
+
+describe('checkListingHasRequiredVintedFields', () => {
+  it('passes when category and condition are both set', () => {
+    const result = checkListingHasRequiredVintedFields(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ category: 'Sweats', condition: 'Bon etat' }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with missing_category when category is null', () => {
+    const result = checkListingHasRequiredVintedFields(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ category: null, condition: 'Bon etat' }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'missing_category' }) });
+  });
+
+  it('fails with missing_condition when condition is null', () => {
+    const result = checkListingHasRequiredVintedFields(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ category: 'Sweats', condition: null }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'missing_condition' }) });
+  });
+
+  it('fails with missing_category when no listing is loaded', () => {
+    const result = checkListingHasRequiredVintedFields(makeActionContext(), makeCheckDeps({ targetListing: null }));
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'missing_category' }) });
+  });
+
+  it('does not flag brand/size/color/material -- only category and condition are objectively required', () => {
+    const result = checkListingHasRequiredVintedFields(
+      makeActionContext(),
+      makeCheckDeps({
+        targetListing: makeListing({ category: 'Sweats', condition: 'Bon etat', brand: null, size: null, color: null, material: null }),
+      })
+    );
+    expect(result.ok).toBe(true);
   });
 });
 

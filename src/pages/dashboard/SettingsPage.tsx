@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Modal } from '../../components/ui/Modal';
 import type { SettingsTab, VintedAccount } from '../../lib/types';
+import { translateAuthError } from '../../lib/errorMessages';
 
 interface SettingsPageProps {
   initialTab?: SettingsTab;
@@ -23,7 +24,6 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [secMsg, setSecMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -42,8 +42,8 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
   const changePassword = async () => {
     if (newPassword.length < 6) { setSecMsg({ type: 'error', text: 'Le mot de passe doit faire au moins 6 caracteres.' }); return; }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) setSecMsg({ type: 'error', text: error.message });
-    else { setSecMsg({ type: 'success', text: 'Mot de passe mis a jour !' }); setCurrentPassword(''); setNewPassword(''); setTimeout(() => setSecMsg(null), 3000); }
+    if (error) setSecMsg({ type: 'error', text: translateAuthError(error.message) });
+    else { setSecMsg({ type: 'success', text: 'Mot de passe mis a jour !' }); setNewPassword(''); setTimeout(() => setSecMsg(null), 3000); }
   };
 
   const saveApiKey = () => {
@@ -125,22 +125,21 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             </div>
           )}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Mot de passe actuel</label>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
+              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
               <button type="button" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                 {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
-            </div>
-          </div>
+          {/* Verification du mot de passe actuel : retiree pour la beta (decision
+              explicite du 2026-07-24, Option A) -- le champ existait mais
+              changePassword() ne le lisait jamais, un element trompeur plutot
+              qu'une vraie protection. Chantier de reauthentification reelle
+              (signInWithPassword avant updateUser) reporte apres la premiere
+              beta, voir memoire du projet. */}
           <button onClick={changePassword} className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm">
             <Save className="w-4 h-4" />
             Mettre a jour

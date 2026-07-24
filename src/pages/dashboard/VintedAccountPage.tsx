@@ -7,6 +7,7 @@ import type { Listing } from '../../lib/types';
 import { getConfiguredExtensionId, isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
+import { formatEUR } from '../../lib/currency';
 
 const UPCOMING = [
   { icon: MessageSquare, label: 'Messages et reponses rapides' },
@@ -261,7 +262,7 @@ export default function VintedAccountPage() {
                       </div>
                     </div>
                     {listing.price !== null && (
-                      <p className="text-sm font-bold text-neon-500 flex-shrink-0">{listing.price.toFixed(2)} €</p>
+                      <p className="text-sm font-bold text-neon-500 flex-shrink-0">{formatEUR(listing.price)}</p>
                     )}
                   </div>
                 ))}

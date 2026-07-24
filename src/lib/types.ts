@@ -12,7 +12,7 @@ export type DashboardPage =
   | 'stats'
   | 'subscription'
   | 'settings';
-  export type AppPage = "landing" | "auth" | "dashboard";
+  export type AppPage = "landing" | "auth" | "dashboard" | "reset-password";
 export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger';
 export type AuthMode = 'login' | 'register' | 'forgot';
 
@@ -37,14 +37,22 @@ export interface Listing {
   user_id: string;
 
   title: string;
-  description: string;
+  // Nullable en base malgre l'absence de "| null" apparente ici avant le
+  // 2026-07-23 : une annonce importee/synchronisee depuis Vinted
+  // (extension/src/background/sync.ts::recordListings) n'ecrit jamais
+  // description/category/color/material a la creation -- ces colonnes
+  // valent reellement null a l'execution pour ces lignes. Corrige pour
+  // que le type reflete la realite (voir EditListingModal.tsx pour la
+  // normalisation cote formulaire, et checks.ts::checkListingHasRequiredVintedFields
+  // pour la garde avant toute publication).
+  description: string | null;
 
-  brand: string;
-  category: string;
-  color: string;
-  size: string;
-  material: string;
-  condition: string;
+  brand: string | null;
+  category: string | null;
+  color: string | null;
+  size: string | null;
+  material: string | null;
+  condition: string | null;
 
   price: number;
   quick_price: number;

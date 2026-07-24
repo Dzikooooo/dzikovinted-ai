@@ -3,10 +3,12 @@ import {
   checkAuthenticated,
   checkExtensionConnected,
   checkListingHasPhotos,
+  checkListingHasRequiredVintedFields,
   checkListingLoaded,
   checkListingNotAlreadyPublished,
 } from '../checks';
 import type { ActionDefinition } from '../types';
+import { formatEUR } from '../../currency';
 
 // Duplique la forme de PublishListingPayload (extension/src/lib/messages.ts)
 // - meme convention de duplication assumee que pour ActionKind (extension/
@@ -44,12 +46,13 @@ export const publishListingDefinition: ActionDefinition<PublishListingPayload> =
     checkAccountSelected,
     checkListingLoaded,
     checkListingHasPhotos,
+    checkListingHasRequiredVintedFields,
     checkListingNotAlreadyPublished,
   ],
   buildPreview: (request) => {
     const { title, price, category, brand, size, condition, imageUrls, packageSize } = request.payload;
     return {
-      summary: `Publier « ${title} » — ${price.toFixed(2)} €`,
+      summary: `Publier « ${title} » — ${formatEUR(price)}`,
       details: {
         title,
         price,

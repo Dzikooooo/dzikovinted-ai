@@ -80,21 +80,111 @@ function isVerifiableField(field: string): field is VerifiableField {
   return field === "title" || field === "description" || field === "price";
 }
 
-// GARDE TEMPORAIRE (demande explicite 2026-07-15, phase de validation du
-// pipeline edit_listing) -- meme protection que src/lib/actions/checks.ts::
-// checkEditSandboxOnly cote app, dupliquee ici en defense en profondeur
-// puisque c'est CE code qui execute reellement l'ecriture sur Vinted.
-// Aucune annonce reelle (polos, jeans...) ne doit pouvoir etre touchee
-// pendant les tests repetes du pipeline. A RETIRER PROPREMENT (cette
-// constante + le bloc de verification dans handleEditListing) une fois le
-// pipeline valide de bout en bout -- ne doit jamais rester en production.
-const SANDBOX_TEST_VINTED_ITEM_ID = "9400476768";
-
-const GLOBAL_TIMEOUT_MS = 90000;
+// Porte a 120000ms (2026-07-18) : les deux attentes de chargement de
+// formulaire (vinted-edit.ts, FORM_FOUND + phase de verification) sont
+// chacune plafonnees a 30000ms sur la base d'une mesure reelle (baseline
+// ~8.8s, marge pour absorber la variance Vinted) -- le pire cas cumule
+// (30s + ecriture + 20s d'attente de navigation apres clic + 30s de
+// verification + tout l'overhead d'ouverture/injection d'onglet)
+// approchait deja l'ancien plafond de 90s, qui n'etait plus une marge de
+// securite mais un risque de faux echec par lui-meme. Ce plafond doit
+// rester cense avec ACTION_TIMEOUT_MS cote app (useActionEngine.ts).
+const GLOBAL_TIMEOUT_MS = 120000;
 // Delai raisonnable pour qu'une vraie navigation de page + chargement d'un
 // chunk JS dynamique se termine -- distinct et bien plus court que le
 // timeout global (qui couvre en plus tout le remplissage/soumission).
-const TAB_READY_TIMEOUT_MS = 20000;
+const TAB_READY_TIMEOUT_MS = 30000;
+// Accalmie (2026-07-20, cause racine #5) requise avant de forcer la
+// renavigation de verification : evite d'interrompre la propre navigation
+// client de Vinted encore en cours apres la sauvegarde (confirme provoquer
+// une page d'erreur Vinted si on interfere trop tot). Reinitialise a CHAQUE
+// evenement tab_updated reel -- ne retarde donc PAS les cas ou Vinted se
+// stabilise plus vite ; valeur de depart raisonnable, pas une mesure
+// precise comme les 30000ms ci-dessus -- a ajuster si un prochain test
+// montre qu'elle est encore trop courte.
+const NAVIGATION_SETTLE_DEBOUNCE_MS = 2000;
+
+// CAUSE RACINE #6 demontree en test reel le 2026-07-22 (modification de
+// titre) : la sauvegarde reussit reellement (titre visible sur l'annonce
+// publique, avec un badge "Verification en cours") mais Vinted invalide
+// /edit APRES coup pour ce type de champ -- la page renvoie une erreur
+// generique des la renavigation de la phase de verification. Contrairement
+// au prix (qui ne declenche jamais de revue Vinted, /edit reste toujours
+// accessible), le mecanisme de relecture existant (relire un <input> dans
+// le formulaire /edit) est structurellement inutilisable dans ce cas -- ce
+// n'est pas un probleme de delai/course, la page n'existe plus du tout.
+// Solution : relecture de secours via la page PUBLIQUE de l'annonce
+// (/items/{id}), qui reste toujours accessible et affiche deja la valeur
+// reelle (meme sous revue) via son bloc <script type="application/ld+json">
+// -- deja verifie en direct le 2026-07-13 pour l'import (voir
+// itemSelectors.ts::extractLdJsonProduct), duplique ici car
+// chrome.scripting.executeScript({func}) exige une fonction totalement
+// autonome (serialisee et executee dans la page cible, aucune fermeture
+// sur les variables de ce fichier n'est possible).
+// CAUSE RACINE #7 demontree en test reel le 2026-07-22 (description) : la
+// donnee ld+json EST reellement presente et correcte des que la page est
+// completement rendue (confirme manuellement en direct sur ce meme item,
+// hors pipeline, immediatement apres l'echec) -- mais le tout premier
+// "complete" observe par le background (declencheur de cette fonction) peut
+// correspondre a un etat pas encore completement hydrate cote Vinted, avant
+// que le bloc <script type="application/ld+json"> n'ait ete insere. Meme
+// classe de probleme que la navigation de verification (voir
+// NAVIGATION_SETTLE_DEBOUNCE_MS), resolue ici en attendant directement
+// l'element recherche (MutationObserver, jamais un sleep fixe) plutot qu'un
+// delai devine -- fonction async, chrome.scripting.executeScript attend
+// automatiquement la resolution de la promesse retournee.
+async function readLdJsonForVerification(expected: { title?: string; description?: string; price?: string }): Promise<{
+  matches: boolean;
+  details: Record<string, { expected: string; actual: string | null }>;
+}> {
+  const script = await new Promise<Element | null>((resolve) => {
+    const existing = document.querySelector('script[type="application/ld+json"]');
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      resolve(null);
+    }, 10000);
+    const observer = new MutationObserver(() => {
+      const found = document.querySelector('script[type="application/ld+json"]');
+      if (found) {
+        clearTimeout(timer);
+        observer.disconnect();
+        resolve(found);
+      }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  });
+  let data: { name?: string; description?: string; offers?: { price?: number } } = {};
+  if (script?.textContent) {
+    try {
+      data = JSON.parse(script.textContent) as typeof data;
+    } catch {
+      // data reste vide -- traite comme "champ introuvable" ci-dessous
+    }
+  }
+  const details: Record<string, { expected: string; actual: string | null }> = {};
+  const fieldMatches: Record<string, boolean> = {};
+  if (expected.title !== undefined) {
+    const actual = data.name ?? null;
+    details.title = { expected: expected.title, actual };
+    fieldMatches.title = actual === expected.title;
+  }
+  if (expected.description !== undefined) {
+    const actual = data.description ?? null;
+    details.description = { expected: expected.description, actual };
+    fieldMatches.description = actual === expected.description;
+  }
+  if (expected.price !== undefined) {
+    const actual = typeof data.offers?.price === "number" ? String(data.offers.price) : null;
+    details.price = { expected: expected.price, actual };
+    const parseNum = (s: string | null) => (s === null ? null : parseFloat(s.replace(",", ".")));
+    fieldMatches.price = parseNum(actual) === parseNum(expected.price);
+  }
+  return { matches: Object.values(fieldMatches).every(Boolean), details };
+}
 
 function sendCommandToTab(tabId: number, command: ContentCommand): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -134,20 +224,6 @@ export async function handleEditListing(
   // identifiant -- jamais utilise pour la logique metier.
   const payload: EditListingPayload = { ...(request.payload as unknown as EditListingPayload), historyId };
 
-  // GARDE TEMPORAIRE -- voir commentaire en tete de fichier. Refuse avant
-  // meme d'ouvrir un onglet.
-  if (payload.vintedItemId !== SANDBOX_TEST_VINTED_ITEM_ID) {
-    logger.error(`[${historyId}] handleEditListing: refuse (protection sandbox temporaire)`, {
-      vintedItemId: payload.vintedItemId,
-      sandboxAutorise: SANDBOX_TEST_VINTED_ITEM_ID,
-    });
-    return {
-      status: "error",
-      errorMessage:
-        'Protection temporaire active : seule l\'annonce sandbox de test ("Planche en bois") peut être modifiée pendant la phase de validation du pipeline.',
-    };
-  }
-
   pipeline("tab_created (creation de la tache d'edition)", { vintedItemId: payload.vintedItemId, price: payload.price });
   logger.info(`[${historyId}] handleEditListing: demarrage`, {
     vintedItemId: payload.vintedItemId,
@@ -160,7 +236,17 @@ export async function handleEditListing(
 
   let tab: chrome.tabs.Tab;
   try {
-    tab = await chrome.tabs.create({ url: editUrl, active: true });
+    // active: false (2026-07-21, finition UX demandee) : cet onglet est
+    // purement technique -- le remplissage/soumission se fait par
+    // simulation DOM depuis le content script, aucune interaction humaine
+    // requise. Le laisser en arriere-plan evite de voler le focus a
+    // l'utilisateur pendant toute la duree du pipeline (jusqu'a ~15-20s) et,
+    // combine avec l'accalmie de navigation (cause racine #5), evite aussi
+    // qu'il voie passer une eventuelle page d'erreur transitoire de Vinted
+    // pendant la renavigation de verification -- l'onglet se ferme de
+    // lui-meme (settle()) sans jamais avoir ete visible. Meme choix deja
+    // fait pour publish_listing (publishListing.ts).
+    tab = await chrome.tabs.create({ url: editUrl, active: false });
     pipeline("tab_created", { editUrl, tabId: tab.id });
     logger.debug(`[${historyId}] handleEditListing: onglet ouvert`, { editUrl, tabId: tab.id });
   } catch (err) {
@@ -184,6 +270,33 @@ export async function handleEditListing(
     let sendInFlight = false;
     let explicitlyInjectedAfterComplete = false;
     let phase: "editing" | "verifying" = "editing";
+    let navigationSettleTimer: ReturnType<typeof setTimeout> | null = null;
+    // Cause racine #6 : au plus UNE tentative de relecture via la page
+    // publique -- evite une boucle si CETTE relecture echoue aussi (ex.
+    // ld+json absent pour une raison imprevue).
+    let publicPageFallbackAttempted = false;
+    let publicPageReadyListener: ((tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) => void) | null = null;
+    // INSTRUMENTATION (2026-07-18, demande explicite) : trace precise du
+    // cycle de vie de messagerie pour localiser exactement ou "The message
+    // port closed before a response was received." se produit. Aucun de ces
+    // compteurs/logs ne change le comportement -- uniquement de la lecture.
+    // editTabReadyCount > 1 pendant la phase "editing" (ou > 1 pendant
+    // "verifying") est le signal le plus probant d'un EDIT_TAB_READY
+    // dupliqué (deux documents distincts qui bootent tous les deux, par ex.
+    // a cause d'une redirection interne Vinted apres le premier chargement) --
+    // cause plausible d'un second runEdit() declenche pendant que le
+    // premier tourne encore, expliquant a la fois le port ferme (sur le
+    // premier envoi, dont le document a ete detruit) ET le timeout
+    // waitForElement rapporte ensuite (le second runEdit() tournant sur un
+    // document deja navigue hors de /edit).
+    let editTabReadyCount = 0;
+    let editListingDispatchCount = 0;
+    let verifyFieldsDispatchCount = 0;
+    // Compte chaque cycle de navigation "complete" observe par Chrome, TOUS
+    // confondus (edition + verification) -- plus d'un "complete" avant le
+    // premier EDIT_TAB_READY de la phase editing serait la preuve directe
+    // d'une redirection interne Vinted non anticipee (voir onTabUpdated).
+    let completeCount = 0;
     // URL reelle post-sauvegarde (page de l'article, pas /edit) rapportee
     // par EDIT_SAVE_SUBMITTED -- conservee pour le resultPayload final
     // plutot que reutiliser editUrl, qui ne redevient valide qu'apres la
@@ -208,11 +321,25 @@ export async function handleEditListing(
     }
 
     function attemptSend(reason: string): void {
-      if (sendInFlight) return;
+      if (sendInFlight) {
+        pipeline("attemptSend ignore (envoi deja en cours)", { reason, phase, sendInFlight });
+        return;
+      }
       sendInFlight = true;
       const command = currentCommand();
-      pipeline(`${command.type}_sent`, { reason, tabId, phase });
-      logger.debug(`[${historyId}] handleEditListing: envoi de ${command.type} (${reason})`);
+      if (command.type === "EDIT_LISTING") editListingDispatchCount += 1;
+      if (command.type === "VERIFY_EDIT_FIELDS") verifyFieldsDispatchCount += 1;
+      pipeline(`${command.type}_sent`, {
+        reason,
+        tabId,
+        phase,
+        editListingDispatchCount,
+        verifyFieldsDispatchCount,
+      });
+      logger.debug(`[${historyId}] handleEditListing: envoi de ${command.type} (${reason})`, {
+        editListingDispatchCount,
+        verifyFieldsDispatchCount,
+      });
       sendCommandToTab(tabId, command)
         .then(() => {
           pipeline(`${command.type}_received (ACK du content script)`);
@@ -225,8 +352,18 @@ export async function handleEditListing(
           // nouvel EDIT_TAB_READY (reinjection explicite ci-dessous ou
           // reinjection declarative sur le document final) jusqu'au
           // timeout tabReadyTimeout.
-          pipeline("ECHEC envoi (non fatal, en attente d'un nouveau signal pret)", { message: errorMessage(err) });
-          logger.warn(`[${historyId}] handleEditListing: envoi de ${command.type} a echoue, en attente d'un nouveau signal`, errorMessage(err));
+          pipeline("ECHEC envoi (non fatal, en attente d'un nouveau signal pret)", {
+            message: errorMessage(err),
+            commandType: command.type,
+            phase,
+            editListingDispatchCount,
+            verifyFieldsDispatchCount,
+            editTabReadyCount,
+          });
+          logger.warn(
+            `[${historyId}] handleEditListing: envoi de ${command.type} a echoue, en attente d'un nouveau signal`,
+            { message: errorMessage(err), phase, editListingDispatchCount, verifyFieldsDispatchCount }
+          );
           sendInFlight = false;
         });
     }
@@ -238,7 +375,26 @@ export async function handleEditListing(
     // racine #3). Sinon : renavigue vers la MEME page d'edition et
     // reutilise EDIT_TAB_READY pour une seconde injection dediee a la
     // verification.
+    //
+    // CAUSE RACINE #4 demontree sur QUATRE tests reels consecutifs le
+    // 2026-07-20 (prix reellement sauvegarde a chaque fois, confirme sur
+    // Vinted -- 91, 93, 93, 93) : EDIT_SAVE_SUBMITTED, envoye en
+    // fire-and-forget par vinted-edit.ts juste apres la redirection vers
+    // /member/{userId}, n'est JAMAIS arrive jusqu'ici (verifyFieldsDispatchCount
+    // reste a 0 a chaque fois, aucune ligne "edit_save_submitted" dans les
+    // 4 runs). Consequence en cascade observee : phase reste "editing", donc
+    // si le navigateur revient un jour sur une URL /items/*/edit (redirection
+    // Vinted, hors de notre controle), le prochain EDIT_TAB_READY est relu
+    // comme "en train de demarrer" et redeclenche un EDIT_LISTING redondant
+    // (editListingDispatchCount:2 observe) -- un second essai qui a lui-meme
+    // fini par echouer sur un simple timeout de champ (formulaire pas encore
+    // pret sur ce rechargement). idempotent via `verificationStarted` ci-dessous
+    // pour pouvoir etre appelee depuis DEUX declencheurs desormais (le
+    // message ET onTabUpdated, voir plus bas).
+    let verificationStarted = false;
     function beginVerificationPhase(vintedUrl: string): void {
+      if (verificationStarted) return;
+      verificationStarted = true;
       if (verifiableFields.length === 0) {
         pipeline("verification_ignoree (aucun champ texte verifiable dans changedFields)", { changedFields: payload.changedFields });
         logger.info(`[${historyId}] handleEditListing: aucun champ verifiable, succes declare sans relecture reelle`, {
@@ -253,6 +409,14 @@ export async function handleEditListing(
       explicitlyInjectedAfterComplete = false;
       clearTimeout(tabReadyTimeout);
       tabReadyTimeout = setTimeout(onTabReadyTimeout, TAB_READY_TIMEOUT_MS);
+      // Rapportee directement ici (pas via un message PUBLISH_PROGRESS du
+      // content script) : cette phase est desormais declenchee par
+      // l'observation de navigation du background lui-meme (cause racine
+      // #4), qui n'a pas besoin d'un aller-retour par la page Vinted pour
+      // savoir qu'elle a demarre. Permet a l'UI (ResellOS) d'afficher une
+      // etape "Vérification" distincte plutot que de rester bloquee sur
+      // "Mise à jour du prix" pendant toute la renavigation.
+      onProgress("verifying");
 
       pipeline("verification_phase_started", { verifiableFields, editUrl });
       logger.info(`[${historyId}] handleEditListing: demarrage de la phase de verification (renavigation)`, { verifiableFields });
@@ -271,11 +435,86 @@ export async function handleEditListing(
         .join(" ; ");
     }
 
+    // Cause racine #6 : declenchee quand la phase de verification /edit
+    // rapporte un ECHEC INTERNE (page indisponible, PAS un vrai desaccord
+    // de valeur -- voir le garde "_error" au point d'appel). Renavigue vers
+    // la page publique de l'annonce (toujours accessible, meme sous revue
+    // Vinted) et y relit les champs via ld+json (readLdJsonForVerification,
+    // fonction autonome injectee directement, pas de content script dedie).
+    function attemptPublicPageFallback(): void {
+      if (publicPageFallbackAttempted) {
+        settle({ status: "error", errorMessage: "Vinted n'a pas confirmé la modification (page d'édition et page publique toutes deux indisponibles pour la vérification)." });
+        return;
+      }
+      publicPageFallbackAttempted = true;
+      const publicUrl = `https://www.vinted.fr/items/${payload.vintedItemId}`;
+      pipeline("public_page_fallback_started", { publicUrl });
+      logger.info(
+        `[${historyId}] handleEditListing: /edit indisponible apres sauvegarde (probable revue Vinted), tentative de verification via la page publique`,
+        { publicUrl }
+      );
+      chrome.tabs
+        .update(tabId, { url: publicUrl })
+        .then(() => {
+          publicPageReadyListener = (updatedTabId, changeInfo) => {
+            if (updatedTabId !== tabId || changeInfo.status !== "complete" || !publicPageReadyListener) return;
+            chrome.tabs.onUpdated.removeListener(publicPageReadyListener);
+            publicPageReadyListener = null;
+            pipeline("public_page_loaded", { publicUrl });
+            chrome.scripting
+              .executeScript({ target: { tabId }, func: readLdJsonForVerification, args: [buildExpected()] })
+              .then((results) => {
+                const result = results[0]?.result;
+                if (!result) {
+                  settle({ status: "error", errorMessage: "Impossible de relire la page publique de l'annonce pour confirmer la modification." });
+                  return;
+                }
+                pipeline("public_page_verification_result", result);
+                logger.info(`[${historyId}] handleEditListing: resultat de la relecture via la page publique`, result);
+                if (result.matches) {
+                  settle({ status: "success", resultPayload: { vintedItemId: payload.vintedItemId, vintedUrl: publicUrl } });
+                } else {
+                  settle({
+                    status: "error",
+                    errorMessage: `Vinted n'a pas confirmé la modification (relecture via la page publique). ${describeMismatch(result.details)}`,
+                  });
+                }
+              })
+              .catch((err) => {
+                settle({ status: "error", errorMessage: `Impossible de relire la page publique de l'annonce : ${errorMessage(err)}` });
+              });
+          };
+          chrome.tabs.onUpdated.addListener(publicPageReadyListener);
+        })
+        .catch((err) => {
+          settle({ status: "error", errorMessage: `Impossible de naviguer vers la page publique de l'annonce : ${errorMessage(err)}` });
+        });
+    }
+
     function onMessage(message: unknown, sender: chrome.runtime.MessageSender): boolean {
       if (sender.tab?.id !== tabId || !isContentReport(message)) return false;
 
       if (message.type === "EDIT_TAB_READY") {
-        pipeline("edit_ready_received", { phase });
+        editTabReadyCount += 1;
+        // senderUrl est LA preuve directe recherchee : si ce document (URL)
+        // differe du precedent EDIT_TAB_READY de la MEME phase, c'est qu'un
+        // second document a boote pendant que le premier tournait encore
+        // (redirection interne Vinted non anticipee) -- distinct d'une
+        // simple double-injection (declarative + explicite) sur le MEME
+        // document, qui elle est deja gardee par __resellosEditBooted cote
+        // content script et ne devrait jamais produire un second signal.
+        pipeline("edit_ready_received", {
+          phase,
+          editTabReadyCount,
+          senderUrl: sender.url,
+          senderFrameId: sender.frameId,
+        });
+        if (editTabReadyCount > 1) {
+          logger.warn(
+            `[${historyId}] handleEditListing: EDIT_TAB_READY recu ${editTabReadyCount} fois (phase ${phase}) -- signal potentiel d'un second document/runEdit()`,
+            { senderUrl: sender.url }
+          );
+        }
         clearTimeout(tabReadyTimeout);
         attemptSend("EDIT_TAB_READY recu");
         return false;
@@ -293,15 +532,23 @@ export async function handleEditListing(
         logger.info(`[${historyId}] handleEditListing: resultat recu du content script`, message.outcome);
         settle(message.outcome);
       } else if (message.type === "EDIT_SAVE_SUBMITTED") {
-        pipeline("edit_save_submitted (clic + navigation detectes, pas encore une preuve)", message);
-        logger.info(`[${historyId}] handleEditListing: EDIT_SAVE_SUBMITTED recu, demarrage de la verification`, message);
+        pipeline("edit_save_submitted (clic + navigation detectes, pas encore une preuve)", { ...message, senderUrl: sender.url });
+        logger.info(`[${historyId}] handleEditListing: EDIT_SAVE_SUBMITTED recu, demarrage de la verification`, { ...message, senderUrl: sender.url });
         confirmedVintedUrl = message.vintedUrl;
         beginVerificationPhase(message.vintedUrl);
       } else if (message.type === "EDIT_VERIFICATION_RESULT") {
-        pipeline("verification_result_received", message);
-        logger.info(`[${historyId}] handleEditListing: resultat de verification recu`, message);
+        pipeline("verification_result_received", { ...message, senderUrl: sender.url });
+        logger.info(`[${historyId}] handleEditListing: resultat de verification recu`, { ...message, senderUrl: sender.url });
         if (message.matches) {
           settle({ status: "success", resultPayload: { vintedItemId: payload.vintedItemId, vintedUrl: confirmedVintedUrl } });
+        } else if ("_error" in message.details) {
+          // Cause racine #6 : "_error" signifie que la phase de verification
+          // ELLE-MEME a echoue (page /edit indisponible, ex. revue Vinted
+          // apres modification de titre) -- PAS un vrai desaccord de
+          // valeur. Un vrai desaccord rapporte des cles par champ
+          // (price/title/description), jamais "_error". Tente la relecture
+          // via la page publique avant de conclure a un echec.
+          attemptPublicPageFallback();
         } else {
           settle({
             status: "error",
@@ -318,11 +565,81 @@ export async function handleEditListing(
     // pour garantir une instance vivante dans le document final. Reutilise
     // pour les DEUX phases (edition et verification) -- explicitlyInjectedAfterComplete
     // est reinitialise au debut de la phase de verification.
-    function onTabUpdated(updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo): void {
-      if (updatedTabId !== tabId || changeInfo.status !== "complete" || explicitlyInjectedAfterComplete) return;
+    function onTabUpdated(updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, updatedTab: chrome.tabs.Tab): void {
+      if (updatedTabId !== tabId) return;
+      // Log INCONDITIONNEL de CHAQUE evenement (pas seulement "complete") --
+      // preuve directe recherchee : si Vinted redirige en interne apres le
+      // premier chargement (ex. /edit -> /edit apres normalisation d'URL/
+      // session), on verra ICI deux cycles loading->complete distincts avec
+      // des URLs differentes, AVANT que quoi que ce soit d'autre dans le
+      // pipeline ne l'indique. changeInfo.url n'est present que lors d'un
+      // changement d'URL -- absent sinon (juste un changement de statut).
+      completeCount += changeInfo.status === "complete" ? 1 : 0;
+      pipeline("tab_updated", {
+        phase,
+        status: changeInfo.status,
+        changedUrl: changeInfo.url,
+        currentTabUrl: updatedTab.url,
+        completeCount,
+      });
+
+      // CAUSE RACINE #4 (voir commentaire de beginVerificationPhase ci-dessus) :
+      // EDIT_SAVE_SUBMITTED, envoye en fire-and-forget par le content script,
+      // s'est avere non fiable sur QUATRE tests reels consecutifs -- jamais
+      // recu, alors que CETTE observation (le tabId sous notre controle
+      // quitte reellement /edit) s'est averee fiable a CHAQUE fois, sur les
+      // 4 memes tests, en 5 a 15s. Plutot que d'attendre indefiniment un
+      // message qui ne vient jamais, la navigation reelle du tab -- deja
+      // observee directement par Chrome, independamment du content script --
+      // sert desormais de declencheur de secours pour la phase de
+      // verification. beginVerificationPhase() est idempotente
+      // (verificationStarted) : si EDIT_SAVE_SUBMITTED finit par arriver
+      // quand meme (juste avant ou juste apres), le second appel est un
+      // no-op sans effet secondaire.
+      //
+      // CAUSE RACINE #5 demontree le 2026-07-20 : declencher la
+      // renavigation vers /edit DES le premier evenement (souvent un simple
+      // "loading" du tout debut de la redirection Vinted) interrompt la
+      // propre navigation/rendu cote client de Vinted encore en cours (les
+      // logs montrent des cycles loading/complete repetes sur /member
+      // pendant 10+ secondes) -- confirme par un test manuel HORS extension
+      // le meme jour : /items/9400476768/edit se charge normalement quand
+      // on n'interfere pas. Vinted renvoie alors une page d'erreur generique
+      // pour la relecture suivante. Correctif : ACCALMIE (debounce) avant de
+      // declencher la verification -- reinitialise le minuteur a CHAQUE
+      // evenement tab_updated reel tant que phase reste "editing" ; ne
+      // demarre la verification qu'apres NAVIGATION_SETTLE_DEBOUNCE_MS sans
+      // le moindre nouvel evenement. Pilote par l'activite reelle du tab
+      // (jamais un sleep fixe inconditionnel) -- si Vinted continue de
+      // s'agiter, on continue d'attendre ; des que ca se calme, on enchaine
+      // immediatement, sans attente superflue.
+      if (phase === "editing" && updatedTab.url && !updatedTab.url.includes("/edit")) {
+        const path = (() => {
+          try {
+            return new URL(updatedTab.url).pathname;
+          } catch {
+            return updatedTab.url;
+          }
+        })();
+        if (/\/items\/\d+/.test(path) || /\/member\/\d+/.test(path)) {
+          pipeline("navigation_detectee_hors_edit (attente d'accalmie avant verification)", { tabUrl: updatedTab.url });
+          if (navigationSettleTimer) clearTimeout(navigationSettleTimer);
+          navigationSettleTimer = setTimeout(() => {
+            navigationSettleTimer = null;
+            pipeline(`navigation_stabilisee (accalmie de ${NAVIGATION_SETTLE_DEBOUNCE_MS}ms sans nouvel evenement), demarrage verification`, { tabUrl: updatedTab.url });
+            logger.info(`[${historyId}] handleEditListing: navigation hors de /edit stabilisee, demarrage de la verification sans attendre EDIT_SAVE_SUBMITTED`, {
+              tabUrl: updatedTab.url,
+            });
+            confirmedVintedUrl = `https://www.vinted.fr/items/${payload.vintedItemId}`;
+            beginVerificationPhase(confirmedVintedUrl);
+          }, NAVIGATION_SETTLE_DEBOUNCE_MS);
+        }
+      }
+
+      if (changeInfo.status !== "complete" || explicitlyInjectedAfterComplete) return;
       explicitlyInjectedAfterComplete = true;
-      pipeline("tab_complete", { phase });
-      logger.debug(`[${historyId}] handleEditListing: onglet status=complete, reinjection explicite`, { phase });
+      pipeline("tab_complete", { phase, completeCount, tabUrl: updatedTab.url });
+      logger.debug(`[${historyId}] handleEditListing: onglet status=complete, reinjection explicite`, { phase, completeCount, tabUrl: updatedTab.url });
 
       const files = findEditContentScriptFiles();
       if (files.length === 0) {
@@ -358,6 +675,8 @@ export async function handleEditListing(
       chrome.tabs.onUpdated.removeListener(onTabUpdated);
       clearTimeout(globalTimeout);
       clearTimeout(tabReadyTimeout);
+      if (navigationSettleTimer) clearTimeout(navigationSettleTimer);
+      if (publicPageReadyListener) chrome.tabs.onUpdated.removeListener(publicPageReadyListener);
     }
 
     function settle(outcome: RunActionOutcome): void {
@@ -366,8 +685,28 @@ export async function handleEditListing(
       cleanup();
       tabClosedByHandler = true;
       chrome.tabs.remove(tabId).catch(() => {});
-      pipeline("Pipeline termine", { status: outcome.status });
-      logger.info(`[${historyId}] handleEditListing: termine`, { status: outcome.status });
+      // Recapitulatif final UNIQUE (demande explicite 2026-07-18) : une
+      // seule ligne grep-able "PIPELINE_SUMMARY" reunissant tous les
+      // compteurs de cycle de vie de messagerie. editTabReadyCount > 2
+      // (1 pour l'edition + 1 pour la verification est le cas normal) ou
+      // editListingDispatchCount > 1 est la preuve directe d'un second
+      // document/runEdit() declenche pendant que le premier tournait encore.
+      pipeline("PIPELINE_SUMMARY", {
+        status: outcome.status,
+        finalPhase: phase,
+        editTabReadyCount,
+        editListingDispatchCount,
+        verifyFieldsDispatchCount,
+        navigationCompleteCount: completeCount,
+      });
+      logger.info(`[${historyId}] handleEditListing: termine`, {
+        status: outcome.status,
+        finalPhase: phase,
+        editTabReadyCount,
+        editListingDispatchCount,
+        verifyFieldsDispatchCount,
+        navigationCompleteCount: completeCount,
+      });
       resolve(outcome);
     }
 

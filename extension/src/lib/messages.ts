@@ -47,6 +47,13 @@ export type PublishStep =
   | "uploading_photos"
   | "filling_form"
   | "publishing"
+  // "verifying" (2026-07-21) : specifique a edit_listing -- rapportee
+  // directement par handleEditListing.ts (background), pas par un content
+  // script via PUBLISH_PROGRESS, puisque la phase de verification est
+  // desormais declenchee par l'observation de navigation du background
+  // lui-meme (voir cause racine #4 dans editListing.ts). publish_listing ne
+  // rapporte jamais cette valeur.
+  | "verifying"
   | "syncing";
 
 export interface PublishListingPayload {
@@ -196,7 +203,13 @@ export function isContentReport(msg: unknown): msg is ContentReport {
 // que le resultat terminal). Un seul port actif a la fois est supporte (une
 // seule action en cours a la fois cote UI) - voir EXTENSION.md.
 export const ACTION_PROGRESS_PORT_NAME = "action-progress";
-export type ActionProgressPortMessage = { type: "progress"; step: PublishStep };
+// "heartbeat" (2026-07-17) : maintien du service worker MV3 actif pendant
+// une action longue (voir runAction.ts) -- DISTINCT de "progress" pour que
+// l'app ne journalise jamais une entree "Centre des Actions" en double
+// pour la meme etape reemise periodiquement. Aucune signification metier,
+// uniquement un vrai appel chrome.runtime.Port.postMessage() qui
+// reinitialise le minuteur d'inactivite de Chrome cote background.
+export type ActionProgressPortMessage = { type: "progress"; step: PublishStep } | { type: "heartbeat" };
 
 // App web -> background, via chrome.runtime.sendMessage(EXTENSION_ID, ...)
 // (externally_connectable, limite a l'origine de l'app - voir manifest.config.ts)

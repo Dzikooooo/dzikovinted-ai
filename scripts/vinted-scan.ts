@@ -18,6 +18,16 @@ import { dedupeWatchlist, type WatchlistRow } from "./watchlistDedup";
 // exactement celui d'avant (aucune regression sur le cron).
 const actionId = process.env.ACTION_ID?.trim() || null;
 const scanStartedAt = Date.now();
+// A la difference de action_log (per-user, RLS auth.uid() = user_id), un run
+// cron n'a aucun utilisateur a qui l'attribuer - il scanne la watchlist
+// fusionnee de tous les utilisateurs. Sans cette table, un run cron qui
+// echouait apres avoir vide market_opportunities ne laissait absolument
+// aucune trace nulle part : un ecran "Aucune opportunite" identique a un
+// simple manque de donnees, sans aucun moyen de savoir qu'un echec reel
+// s'etait produit (audit du parcours Scanner, 2026-07-24). Ecrite pour
+// CHAQUE run (cron ou manuel), contrairement a action_log qui ne concerne
+// que les runs manuels via ACTION_ID.
+let scanRunId: string | null = null;
 
 async function logProgress(step: string, message: string): Promise<void> {
   if (!actionId) return;
@@ -33,6 +43,25 @@ async function writeTerminal(
   status: "success" | "error",
   extra: { resultPayload?: Record<string, unknown>; errorMessage?: string }
 ): Promise<void> {
+  const completedAt = new Date().toISOString();
+  const durationMs = Date.now() - scanStartedAt;
+  const opportunitiesFound = (extra.resultPayload?.opportunitiesFound as number | undefined) ?? null;
+  const failedSearchesCount = (extra.resultPayload?.failedSearches as number | undefined) ?? null;
+
+  if (scanRunId) {
+    const { error } = await supabase
+      .from("scan_runs")
+      .update({
+        status,
+        completed_at: completedAt,
+        opportunities_found: opportunitiesFound,
+        failed_searches: failedSearchesCount,
+        error_message: extra.errorMessage ?? null,
+      })
+      .eq("id", scanRunId);
+    if (error) console.error("scan_runs update failed:", error);
+  }
+
   if (!actionId) return;
   try {
     await supabase
@@ -41,8 +70,8 @@ async function writeTerminal(
         status,
         result_payload: extra.resultPayload ?? null,
         error_message: extra.errorMessage ?? null,
-        completed_at: new Date().toISOString(),
-        duration_ms: Date.now() - scanStartedAt,
+        completed_at: completedAt,
+        duration_ms: durationMs,
       })
       .eq("id", actionId);
   } catch (e) {
@@ -269,6 +298,14 @@ interface ScoredOpportunity extends ScrapedItem {
 }
 
 async function main() {
+  const { data: runRow, error: runInsertError } = await supabase
+    .from("scan_runs")
+    .insert({ triggered_by: actionId ? "manual" : "cron" })
+    .select("id")
+    .single();
+  if (runInsertError) console.error("scan_runs insert failed:", runInsertError);
+  else scanRunId = runRow.id;
+
   await logProgress("connecting", "Connexion à Vinted…");
   const browser = await chromium.launch({ headless: true });
 

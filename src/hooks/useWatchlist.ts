@@ -46,8 +46,14 @@ export function useWatchlist() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  async function addEntry(input: WatchlistEntryInput) {
-    if (!user) return;
+  // Chaque mutation retourne desormais un booleen de succes reel -
+  // WatchlistPage.tsx s'en sert pour decider si la modale peut se fermer
+  // (avant ce correctif, elle se fermait inconditionnellement meme apres un
+  // echec d'ecriture reel, laissant le bandeau d'erreur comme seul indice,
+  // facilement rate pendant l'animation de fermeture - bug confirme,
+  // audit du parcours Scanner, 2026-07-24).
+  async function addEntry(input: WatchlistEntryInput): Promise<boolean> {
+    if (!user) return false;
     const { error: insertError } = await supabase.from('watchlist').insert({
       user_id: user.id,
       brand: input.brand,
@@ -59,40 +65,52 @@ export function useWatchlist() {
     });
     if (insertError) {
       console.error(insertError);
-      setError("Impossible d'ajouter cette recherche. Réessaie plus tard.");
-      return;
+      setError(
+        insertError.code === '23505'
+          ? 'Tu suis déjà cette marque et ce modèle.'
+          : "Impossible d'ajouter cette recherche. Réessaie plus tard."
+      );
+      return false;
     }
     await loadWatchlist();
+    return true;
   }
 
-  async function updateEntry(id: string, patch: Partial<WatchlistEntryInput>) {
+  async function updateEntry(id: string, patch: Partial<WatchlistEntryInput>): Promise<boolean> {
     const { error: updateError } = await supabase.from('watchlist').update(patch).eq('id', id);
     if (updateError) {
       console.error(updateError);
-      setError('Impossible de modifier cette recherche. Réessaie plus tard.');
-      return;
+      setError(
+        updateError.code === '23505'
+          ? 'Tu suis déjà cette marque et ce modèle.'
+          : 'Impossible de modifier cette recherche. Réessaie plus tard.'
+      );
+      return false;
     }
     await loadWatchlist();
+    return true;
   }
 
-  async function toggleActive(id: string, active: boolean) {
+  async function toggleActive(id: string, active: boolean): Promise<boolean> {
     const { error: toggleError } = await supabase.from('watchlist').update({ active }).eq('id', id);
     if (toggleError) {
       console.error(toggleError);
       setError('Impossible de mettre à jour cette recherche. Réessaie plus tard.');
-      return;
+      return false;
     }
     await loadWatchlist();
+    return true;
   }
 
-  async function deleteEntry(id: string) {
+  async function deleteEntry(id: string): Promise<boolean> {
     const { error: deleteError } = await supabase.from('watchlist').delete().eq('id', id);
     if (deleteError) {
       console.error(deleteError);
       setError('Impossible de supprimer cette recherche. Réessaie plus tard.');
-      return;
+      return false;
     }
     await loadWatchlist();
+    return true;
   }
 
   return { myEntries, platformEntries, loading, error, addEntry, updateEntry, toggleActive, deleteEntry };

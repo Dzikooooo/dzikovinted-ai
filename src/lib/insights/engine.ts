@@ -6,7 +6,6 @@ import { computeRecommendations } from './recommendations';
 import { computeAlerts } from './alerts';
 import { computeTrendAlerts } from './trends';
 import { computeNarratives } from './narrative';
-import { computePriorities } from './priorities';
 
 // Point d'entree unique du moteur : fonction pure, aucun acces reseau/base
 // (voir src/hooks/useInsights.ts pour le pont avec Supabase). Prend
@@ -23,13 +22,11 @@ export function computeInsights(
   const recommendations = computeRecommendations(ctx);
   const alerts = [...computeAlerts(ctx), ...computeTrendAlerts(ctx)];
   const narratives = computeNarratives(ctx);
-  const priorities = computePriorities(alerts, recommendations, ctx);
 
   return {
     scores,
     recommendations,
     alerts,
-    priorities,
     narratives,
     generatedAt: ctx.now.toISOString(),
   };

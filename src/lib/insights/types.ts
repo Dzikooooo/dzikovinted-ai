@@ -49,12 +49,6 @@ export interface Alert {
   message: string;
 }
 
-export interface PriorityItem {
-  score: number; // priorite 0-100, plus haut = plus urgent
-  message: string;
-  listingId?: string;
-}
-
 export interface NarrativeInsight {
   message: string;
 }
@@ -63,7 +57,6 @@ export interface InsightsReport {
   scores: Map<string, ListingScore>;
   recommendations: Recommendation[];
   alerts: Alert[];
-  priorities: PriorityItem[];
   narratives: NarrativeInsight[];
   generatedAt: string;
 }

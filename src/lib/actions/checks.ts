@@ -54,6 +54,27 @@ export const checkListingHasPhotos: ActionCheck = (_ctx, deps) => {
   return { ok: true };
 };
 
+// Categorie et etat sont les deux SEULS champs texte que Vinted refuse
+// structurellement de laisser vides -- confirme des deux cotes du pipeline
+// deja teste en direct : extension/src/content/vinted-edit.ts appelle
+// selectMatchingOption(..., { required: true }) uniquement pour l'etat
+// (brand/size/color/material utilisent { required: false }), et
+// resolveCategory() n'a pas d'equivalent optionnel. Volontairement limite a
+// ces deux champs (demande explicite 2026-07-23, "n'ajoute pas de regles
+// produit arbitraires") -- ne bloque QUE publish_listing (une nouvelle
+// annonce envoie toujours ces deux champs) et jamais edit_listing (qui
+// n'envoie que les champs reellement modifies, changedFields, invisible a
+// ce niveau de verification -- voir StockPage.tsx::buildEditPayload).
+export const checkListingHasRequiredVintedFields: ActionCheck = (_ctx, deps) => {
+  if (!deps.targetListing?.category) {
+    return { ok: false, failure: { code: 'missing_category', message: "L'annonce n'a pas de catégorie renseignée." } };
+  }
+  if (!deps.targetListing?.condition) {
+    return { ok: false, failure: { code: 'missing_condition', message: "L'annonce n'a pas d'état renseigné." } };
+  }
+  return { ok: true };
+};
+
 export const checkListingNotAlreadyPublished: ActionCheck = (_ctx, deps) => {
   if (deps.targetListing?.vinted_item_id) {
     return {
@@ -72,31 +93,6 @@ export const checkListingAlreadyPublished: ActionCheck = (_ctx, deps) => {
     return {
       ok: false,
       failure: { code: 'not_published_yet', message: "Cette annonce n'est pas encore publiée sur Vinted." },
-    };
-  }
-  return { ok: true };
-};
-
-// GARDE TEMPORAIRE (demande explicite 2026-07-15, phase de validation du
-// pipeline edit_listing) : bloque tout push ResellOS -> Vinted sauf sur
-// l'annonce sandbox de test explicitement designee ("Planche en bois",
-// compte alexisdzk, vinted_item_id confirme par lecture DB directe).
-// Objectif : aucune annonce reelle (polos, jeans...) ne peut etre touchee
-// pendant les tests repetes du pipeline. A RETIRER PROPREMENT (supprimer
-// cette fonction + son usage dans handlers/index.ts) une fois le pipeline
-// edit_listing valide de bout en bout en conditions reelles -- ne doit
-// jamais rester en production au-dela de cette phase.
-const SANDBOX_TEST_VINTED_ITEM_ID = '9400476768';
-
-export const checkEditSandboxOnly: ActionCheck = (_ctx, deps) => {
-  if (deps.targetListing?.vinted_item_id !== SANDBOX_TEST_VINTED_ITEM_ID) {
-    return {
-      ok: false,
-      failure: {
-        code: 'sandbox_only',
-        message:
-          'Protection temporaire active : seule l\'annonce sandbox de test ("Planche en bois") peut être modifiée pendant la phase de validation du pipeline. Cette annonce n\'est pas la sandbox autorisée.',
-      },
     };
   }
   return { ok: true };

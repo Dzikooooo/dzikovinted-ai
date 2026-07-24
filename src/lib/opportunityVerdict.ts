@@ -25,20 +25,17 @@ export function computeVerdict(
   return 'recommande';
 }
 
-export const VERDICT_BADGES: Record<Verdict, { emoji: string; label: string; className: string }> = {
-  excellent: { emoji: '🔥', label: 'Excellent Deal', className: 'bg-neon-500 text-black' },
+export const VERDICT_BADGES: Record<Verdict, { label: string; className: string }> = {
+  excellent: { label: 'Excellente affaire', className: 'bg-neon-500 text-black' },
   recommande: {
-    emoji: '🟢',
     label: 'Achat recommandé',
     className: 'bg-neon-500/15 text-neon-500 border border-neon-500/30',
   },
   a_surveiller: {
-    emoji: '🟡',
     label: 'À surveiller',
     className: 'bg-amber-400/15 text-amber-400 border border-amber-400/30',
   },
   trop_risque: {
-    emoji: '🔴',
     label: 'Trop risqué',
     className: 'bg-red-400/15 text-red-400 border border-red-400/30',
   },

@@ -8,6 +8,7 @@ import { StatCard } from '../../components/ui/StatCard';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { toLocalDateString } from '../../lib/date';
+import { formatEUR } from '../../lib/currency';
 
 const VAT_RATE = 0.2;
 const URSSAF_RATE = 0.123;
@@ -121,9 +122,9 @@ export default function AccountingPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard label="Chiffre d'affaires" value={`${stats.revenue.toFixed(0)} EUR`} />
-            <StatCard label="Marge brute" value={`${stats.margin.toFixed(0)} EUR`} highlight />
-            <StatCard label="Benefice net" value={`${stats.netProfit.toFixed(0)} EUR`} highlight />
+            <StatCard label="Chiffre d'affaires" value={formatEUR(stats.revenue)} />
+            <StatCard label="Marge brute" value={formatEUR(stats.margin)} highlight />
+            <StatCard label="Benefice net" value={formatEUR(stats.netProfit)} highlight />
             <StatCard label="ROI moyen" value={`${stats.roi} %`} highlight />
           </div>
 
@@ -132,7 +133,7 @@ export default function AccountingPage() {
             <div className="bg-surface border border-white/5 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="font-bold text-sm">Depenses par categorie</h2>
-                <span className="text-sm font-bold text-gray-300">{stats.expensesTotal.toFixed(0)} EUR</span>
+                <span className="text-sm font-bold text-gray-300">{formatEUR(stats.expensesTotal)}</span>
               </div>
               {stats.sortedExpenses.length === 0 ? (
                 <div className="h-24 flex items-center justify-center text-sm text-gray-600">Aucune depense sur la periode</div>
@@ -147,7 +148,7 @@ export default function AccountingPage() {
                           style={{ width: `${(amount / maxExpense) * 100}%` }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-gray-400 w-16 flex-shrink-0 text-right">{amount.toFixed(0)} EUR</span>
+                      <span className="text-xs font-mono text-gray-400 w-16 flex-shrink-0 text-right">{formatEUR(amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -160,16 +161,16 @@ export default function AccountingPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-400">Marge brute ({stats.soldCount} vente{stats.soldCount > 1 ? 's' : ''})</span>
-                  <span className="font-bold text-gray-200">{stats.margin.toFixed(0)} EUR</span>
+                  <span className="font-bold text-gray-200">{formatEUR(stats.margin)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-400">Depenses</span>
-                  <span className="font-bold text-red-400">-{stats.expensesTotal.toFixed(0)} EUR</span>
+                  <span className="font-bold text-red-400">-{formatEUR(stats.expensesTotal)}</span>
                 </div>
                 <div className="h-px bg-white/5" />
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-200">Benefice net</span>
-                  <span className="text-lg font-black text-neon-500">{stats.netProfit.toFixed(0)} EUR</span>
+                  <span className="text-lg font-black text-neon-500">{formatEUR(stats.netProfit)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-gray-500">
                   <span>Marge nette sur CA</span>
@@ -190,12 +191,12 @@ export default function AccountingPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-dark-400 border border-white/5 rounded-xl p-4">
                 <p className="text-gray-500 text-xs mb-1">TVA sur la marge (20%)</p>
-                <p className="text-2xl font-black text-gray-200">{stats.vatDue.toFixed(0)} EUR</p>
+                <p className="text-2xl font-black text-gray-200">{formatEUR(stats.vatDue)}</p>
                 <p className="text-[10px] text-gray-600 mt-1">Calculee sur la marge brute, taux normal</p>
               </div>
               <div className="bg-dark-400 border border-white/5 rounded-xl p-4">
                 <p className="text-gray-500 text-xs mb-1">URSSAF (estimation, 12,3%)</p>
-                <p className="text-2xl font-black text-gray-200">{stats.urssafDue.toFixed(0)} EUR</p>
+                <p className="text-2xl font-black text-gray-200">{formatEUR(stats.urssafDue)}</p>
                 <p className="text-[10px] text-gray-600 mt-1">Calculee sur le chiffre d'affaires</p>
               </div>
             </div>

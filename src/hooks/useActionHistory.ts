@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVintedAccountFilter } from '../contexts/VintedAccountFilterContext';
 import { supabase } from '../lib/supabase';
@@ -68,31 +68,89 @@ function mapRow(row: RawActionLogRow): ActionHistoryRow {
 // (EXTENSION.md §7), qui concerne un probleme de cycle de vie different.
 // S'abonne aux changements de `action_log` pour refleter une action en
 // cours meme si elle a ete declenchee depuis un autre onglet/page.
+// Nombre de lignes charge par page -- la liste n'etait auparavant bornee
+// par aucun `.limit()`/`.range()` (P0 #8 de l'audit pre-lancement,
+// 2026-07-10), un historique d'actions grandissant indefiniment avec
+// l'usage reel du produit. Purement une pagination d'affichage : les 3
+// compteurs (total/succes/erreurs) viennent de requetes `count` separees
+// (voir loadCounts), jamais de `rows.length`, pour rester exacts au-dela
+// de la premiere page.
+const PAGE_SIZE = 30;
+
+// Prend les champs de filtre individuellement (pas l'objet `filters` en bloc)
+// pour que les `useCallback` ci-dessous puissent lister des dependances
+// primitives stables plutot que l'objet `{ search, period, kind, result }`
+// recree a chaque rendu de ActionsPage -- `search` n'est volontairement pas
+// un parametre ici, voir le filtre cote client plus bas.
+function buildFilteredQuery(
+  userId: string,
+  selectedAccountId: string,
+  kind: ActionKind | 'all',
+  result: 'all' | 'success' | 'error',
+  period: ActionPeriod,
+  selectColumns: string,
+  countOnly = false
+) {
+  let query = supabase
+    .from('action_log')
+    .select(selectColumns, countOnly ? { count: 'exact', head: true } : undefined)
+    .eq('user_id', userId);
+
+  if (selectedAccountId !== 'all') query = query.eq('vinted_account_id', selectedAccountId);
+  if (kind !== 'all') query = query.eq('kind', kind);
+  if (result !== 'all') query = query.eq('status', result);
+
+  const { from } = computePeriodRange(period);
+  if (from) query = query.gte('started_at', from);
+
+  return query;
+}
+
 export function useActionHistory(filters: ActionHistoryFilters) {
   const { user } = useAuth();
   const { selectedAccountId } = useVintedAccountFilter();
   const [rows, setRows] = useState<ActionHistoryRow[]>([]);
+  const [counts, setCounts] = useState({ total: 0, success: 0, error: 0 });
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Compteurs independants de la pagination -- reproduisent exactement les
+  // filtres deja appliques a `rows` (y compris `filters.result`, pour ne
+  // pas changer le comportement existant quand un filtre resultat est
+  // actif : `success`/`error` retombent alors sur les memes valeurs que
+  // `total`, comme avant ce correctif).
+  const loadCounts = useCallback(async () => {
+    if (!user) return;
+    const [totalRes, successRes, errorRes] = await Promise.all([
+      buildFilteredQuery(user.id, selectedAccountId, filters.kind, filters.result, filters.period, '*', true),
+      buildFilteredQuery(user.id, selectedAccountId, filters.kind, filters.result, filters.period, '*', true).eq(
+        'status',
+        'success'
+      ),
+      buildFilteredQuery(user.id, selectedAccountId, filters.kind, filters.result, filters.period, '*', true).eq(
+        'status',
+        'error'
+      ),
+    ]);
+    setCounts({ total: totalRes.count ?? 0, success: successRes.count ?? 0, error: errorRes.count ?? 0 });
+  }, [user, selectedAccountId, filters.kind, filters.result, filters.period]);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
 
-    let query = supabase
-      .from('action_log')
-      .select(
-        'id, kind, status, current_step, vinted_account_id, listing_id, error_message, started_at, completed_at, duration_ms, vinted_accounts(label), listings(title, image_urls)'
-      )
-      .eq('user_id', user.id)
-      .order('started_at', { ascending: false });
-
-    if (selectedAccountId !== 'all') query = query.eq('vinted_account_id', selectedAccountId);
-    if (filters.kind !== 'all') query = query.eq('kind', filters.kind);
-    if (filters.result !== 'all') query = query.eq('status', filters.result);
-
-    const { from } = computePeriodRange(filters.period);
-    if (from) query = query.gte('started_at', from);
+    const query = buildFilteredQuery(
+      user.id,
+      selectedAccountId,
+      filters.kind,
+      filters.result,
+      filters.period,
+      'id, kind, status, current_step, vinted_account_id, listing_id, error_message, started_at, completed_at, duration_ms, vinted_accounts(label), listings(title, image_urls)'
+    )
+      .order('started_at', { ascending: false })
+      .range(0, PAGE_SIZE - 1);
 
     const { data, error: queryError } = await query;
     if (queryError) {
@@ -100,14 +158,76 @@ export function useActionHistory(filters: ActionHistoryFilters) {
       setError("Impossible de charger l'historique des actions. Réessaie plus tard.");
     } else {
       setError(null);
-      setRows((data as unknown as RawActionLogRow[]).map(mapRow));
+      const mapped = (data as unknown as RawActionLogRow[]).map(mapRow);
+      setRows(mapped);
+      setHasMore(mapped.length === PAGE_SIZE);
     }
     setLoading(false);
-  }, [user, selectedAccountId, filters.kind, filters.result, filters.period]);
+    void loadCounts();
+  }, [user, selectedAccountId, filters.kind, filters.result, filters.period, loadCounts]);
+
+  const loadMore = useCallback(async () => {
+    if (!user || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+
+    const query = buildFilteredQuery(
+      user.id,
+      selectedAccountId,
+      filters.kind,
+      filters.result,
+      filters.period,
+      'id, kind, status, current_step, vinted_account_id, listing_id, error_message, started_at, completed_at, duration_ms, vinted_accounts(label), listings(title, image_urls)'
+    )
+      .order('started_at', { ascending: false })
+      .range(rows.length, rows.length + PAGE_SIZE - 1);
+
+    const { data, error: queryError } = await query;
+    if (queryError) {
+      console.error(queryError);
+      setError("Impossible de charger la suite de l'historique. Réessaie plus tard.");
+    } else {
+      const mapped = (data as unknown as RawActionLogRow[]).map(mapRow);
+      setRows((prev) => [...prev, ...mapped]);
+      setHasMore(mapped.length === PAGE_SIZE);
+    }
+    setLoadingMore(false);
+  }, [user, selectedAccountId, filters.kind, filters.result, filters.period, rows.length, loadingMore, hasMore]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Combien de lignes etaient deja chargees (via loadMore) au moment d'un
+  // evenement Realtime -- lu par `refresh` ci-dessous pour re-synchroniser
+  // sans faire regresser silencieusement la pagination de l'utilisateur a
+  // la premiere page a chaque changement (ex. une autre action qui progresse).
+  const loadedCountRef = useRef(0);
+  useEffect(() => {
+    loadedCountRef.current = rows.length;
+  }, [rows.length]);
+
+  const refresh = useCallback(async () => {
+    if (!user) return;
+    const count = Math.max(loadedCountRef.current, PAGE_SIZE);
+    const query = buildFilteredQuery(
+      user.id,
+      selectedAccountId,
+      filters.kind,
+      filters.result,
+      filters.period,
+      'id, kind, status, current_step, vinted_account_id, listing_id, error_message, started_at, completed_at, duration_ms, vinted_accounts(label), listings(title, image_urls)'
+    )
+      .order('started_at', { ascending: false })
+      .range(0, count - 1);
+
+    const { data, error: queryError } = await query;
+    if (!queryError && data) {
+      const mapped = (data as unknown as RawActionLogRow[]).map(mapRow);
+      setRows(mapped);
+      setHasMore(mapped.length === count);
+    }
+    void loadCounts();
+  }, [user, selectedAccountId, filters.kind, filters.result, filters.period, loadCounts]);
 
   useEffect(() => {
     if (!user) return;
@@ -116,14 +236,20 @@ export function useActionHistory(filters: ActionHistoryFilters) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'action_log', filter: `user_id=eq.${user.id}` },
-        () => void load()
+        () => void refresh()
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [user, load]);
+  }, [user, refresh]);
 
+  // Filtre cote client, volontairement instantane (pas de requete reseau a
+  // chaque frappe) -- limite honnete introduite par la pagination : ne
+  // cherche que parmi les lignes deja chargees (premiere page + eventuels
+  // "Charger plus"), pas sur tout l'historique. Un vrai filtre serveur
+  // (ilike sur listings.title + kind) reste un chantier separe si cette
+  // limite s'avere genante en usage reel.
   const searchTerm = filters.search.trim().toLowerCase();
   const filteredRows = searchTerm
     ? rows.filter(
@@ -133,7 +259,7 @@ export function useActionHistory(filters: ActionHistoryFilters) {
       )
     : rows;
 
-  return { rows: filteredRows, loading, error, refetch: load };
+  return { rows: filteredRows, counts, hasMore, loading, loadingMore, error, refetch: load, loadMore };
 }
 
 export interface ActionLogEntryRow {

@@ -1,13 +1,13 @@
 import {
   checkAccountSelected,
   checkAuthenticated,
-  checkEditSandboxOnly,
   checkExtensionConnected,
   checkListingAlreadyPublished,
   checkListingLoaded,
   checkListingOwnership,
 } from '../checks';
 import type { ActionDefinition } from '../types';
+import { formatEUR } from '../../currency';
 
 // Champs Vinted editables pouvant chacun etre modifie independamment --
 // duplique dans extension/src/lib/messages.ts (meme convention).
@@ -70,15 +70,11 @@ export const editListingDefinition: ActionDefinition<EditListingPayload> = {
     checkListingLoaded,
     checkListingOwnership,
     checkListingAlreadyPublished,
-    // GARDE TEMPORAIRE (voir checks.ts::checkEditSandboxOnly) -- a retirer
-    // proprement (cette ligne + l'import + la fonction dans checks.ts)
-    // une fois le pipeline edit_listing valide de bout en bout.
-    checkEditSandboxOnly,
   ],
   buildPreview: (request) => {
     const { title, price, category, brand, size, condition } = request.payload;
     return {
-      summary: `Mettre à jour « ${title} » — ${price.toFixed(2)} €`,
+      summary: `Mettre à jour « ${title} » — ${formatEUR(price)}`,
       details: { title, price, category, brand, size, condition },
     };
   },

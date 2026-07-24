@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Check, Sparkles } from 'lucide-react';
 
 const LOADING_MESSAGES = [
@@ -12,6 +13,18 @@ interface LoadingStepProps {
 }
 
 export function LoadingStep({ loadingStep }: LoadingStepProps) {
+  // Les 4 etapes ci-dessous avancent sur un minuteur fixe (voir
+  // GeneratorPage.tsx::handleGenerate), decouple de la duree reelle de
+  // l'appel a analyze-clothing -- au-dela de ce minuteur, l'ecran restait
+  // bloque sur "Quelques secondes..." sans jamais rassurer l'utilisateur si
+  // l'analyse prend reellement plus longtemps (audit du parcours
+  // Generateur, 2026-07-24).
+  const [isSlow, setIsSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setIsSlow(true), 8000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] p-8">
       <div className="text-center max-w-sm w-full">
@@ -23,7 +36,9 @@ export function LoadingStep({ loadingStep }: LoadingStepProps) {
           </div>
         </div>
         <h2 className="text-xl font-black mb-2">L'IA analyse ton vetement</h2>
-        <p className="text-gray-500 text-sm mb-8">Quelques secondes...</p>
+        <p className="text-gray-500 text-sm mb-8">
+          {isSlow ? "Ça prend plus de temps que d'habitude, merci de patienter..." : 'Quelques secondes...'}
+        </p>
         <div className="space-y-3">
           {LOADING_MESSAGES.map(({ text, sub }, i) => {
             const isActive = i === loadingStep;

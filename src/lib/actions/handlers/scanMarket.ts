@@ -21,6 +21,18 @@ interface DispatchResponse {
 // prise ici.
 const TERMINAL_WAIT_TIMEOUT_MS = 6 * 60 * 1000;
 
+// Message ecrit tel quel dans action_log.error_message au timeout client -
+// useActionEngine.ts::prepareAction() s'appuie sur ce texte exact pour
+// continuer a considerer un scan comme "en cours" apres ce timeout (voir
+// checkNoScanInProgress) : le job GitHub Actions peut tres bien tourner
+// encore et ecrire son propre statut terminal plus tard via service_role,
+// qui ecrasera alors ce message. Sans ce garde-fou, le timeout client
+// levait a tort le blocage anti-double-scan, permettant de lancer un 2e
+// scan concurrent pendant que le 1er tournait toujours (race confirmee,
+// audit du parcours Scanner, 2026-07-24).
+export const SCAN_TIMEOUT_ERROR_MESSAGE =
+  "Le scan prend plus de temps que prévu. Vérifie le Centre des Actions dans quelques minutes — il se peut qu'il se termine quand même.";
+
 async function extractErrorMessage(error: unknown): Promise<string> {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: unknown }).context;
@@ -58,11 +70,7 @@ function waitForTerminalOutcome(historyId: string): Promise<ActionOutcome> {
     };
 
     const timeoutHandle = setTimeout(() => {
-      settle({
-        status: 'error',
-        errorMessage:
-          "Le scan prend plus de temps que prévu. Vérifie le Centre des Actions dans quelques minutes — il se peut qu'il se termine quand même.",
-      });
+      settle({ status: 'error', errorMessage: SCAN_TIMEOUT_ERROR_MESSAGE });
     }, TERMINAL_WAIT_TIMEOUT_MS);
 
     async function checkNow() {

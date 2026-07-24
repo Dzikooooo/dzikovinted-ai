@@ -91,14 +91,14 @@ active:scale-[0.98] bg-neon-500/10 border border-neon-500/20 flex items-center j
         <div className="flex justify-between">
           <span className="text-gray-400">Prix conseillé</span>
           <span className="text-neon-500 font-bold">
-            34,90€
+            34,90 €
           </span>
         </div>
 
         <div className="flex justify-between">
           <span className="text-gray-400">Marge estimée</span>
           <span className="font-bold text-white">
-            +18€
+            +18 €
           </span>
         </div>
 
@@ -112,7 +112,7 @@ active:scale-[0.98] bg-neon-500/10 border border-neon-500/20 flex items-center j
         <div className="flex justify-between">
           <span className="text-gray-400">CA du mois</span>
           <span className="font-bold text-white">
-            1 240€
+            1 240 €
           </span>
         </div>
       </div>

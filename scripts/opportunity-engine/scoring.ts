@@ -40,10 +40,10 @@ function scoreFromRoi(item: ScorableItem, add: AddFn) {
 }
 
 function scoreFromProfit(item: ScorableItem, add: AddFn) {
-  if (item.profit >= 100) add('Profit potentiel élevé (≥100€)', 25);
-  else if (item.profit >= 70) add('Bon profit potentiel (≥70€)', 20);
-  else if (item.profit >= 40) add('Profit potentiel correct (≥40€)', 15);
-  else if (item.profit >= 25) add('Profit potentiel modeste (≥25€)', 10);
+  if (item.profit >= 100) add('Profit potentiel élevé (≥100 €)', 25);
+  else if (item.profit >= 70) add('Bon profit potentiel (≥70 €)', 20);
+  else if (item.profit >= 40) add('Profit potentiel correct (≥40 €)', 15);
+  else if (item.profit >= 25) add('Profit potentiel modeste (≥25 €)', 10);
 }
 
 // Favoris relatifs à la médiane de la catégorie (tout le batch du scan), pas
@@ -68,6 +68,6 @@ function scoreFromPriority(item: ScorableItem, add: AddFn) {
 }
 
 function scoreFromPriceBand(item: ScorableItem, add: AddFn) {
-  if (item.price <= 50) add('Faible ticket d\'entrée (≤50€)', 5);
-  if (item.price >= 150) add('Ticket d\'entrée élevé (≥150€)', -10);
+  if (item.price <= 50) add('Faible ticket d\'entrée (≤50 €)', 5);
+  if (item.price >= 150) add('Ticket d\'entrée élevé (≥150 €)', -10);
 }

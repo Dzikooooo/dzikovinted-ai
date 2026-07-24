@@ -4,13 +4,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import type { Listing } from '../../lib/types';
+import { formatEUR } from '../../lib/currency';
 
 export default function StatsPage() {
   const { user } = useAuth();
   const { selectedAccountId } = useVintedAccountFilter();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -20,8 +23,14 @@ export default function StatsPage() {
       if (selectedAccountId !== 'all') {
         query = query.eq('vinted_account_id', selectedAccountId);
       }
-      const { data } = await query;
-      setListings((data ?? []) as Listing[]);
+      const { data, error } = await query;
+      if (error) {
+        console.error(error);
+        setLoadError('Impossible de charger les statistiques. Réessaie plus tard.');
+      } else {
+        setLoadError(null);
+        setListings((data ?? []) as Listing[]);
+      }
       setLoading(false);
     })();
   }, [user, selectedAccountId]);
@@ -81,12 +90,14 @@ export default function StatsPage() {
         <p className="text-gray-400 text-sm">Vue d'ensemble de ton activite de revente sur Resell OS.</p>
       </div>
 
+      {loadError && <ErrorBanner message={loadError} className="mb-6" />}
+
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         {[
           { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-neon-500', bg: 'bg-neon-500/10' },
-          { icon: DollarSign, label: 'Prix moyen', value: `${avgPrice.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-          { icon: TrendingUp, label: 'Valeur du catalogue', value: `${catalogValue.toFixed(0)} EUR`, color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+          { icon: DollarSign, label: 'Prix moyen', value: formatEUR(avgPrice), color: 'text-blue-400', bg: 'bg-blue-400/10' },
+          { icon: TrendingUp, label: 'Valeur du catalogue', value: formatEUR(catalogValue), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
           { icon: BarChart2, label: 'Ce mois-ci', value: thisMonthCount.toString(), color: 'text-teal-400', bg: 'bg-teal-400/10' },
           { icon: Star, label: 'Favoris', value: favCount.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
         ].map(({ icon: Icon, label, value, color, bg }) => (
@@ -186,10 +197,10 @@ export default function StatsPage() {
           ) : (
             <div className="space-y-3">
               {[
-                { label: '< 30 EUR', count: listings.filter((l) => l.price < 30).length, color: 'from-gray-500/40 to-gray-500/60' },
-                { label: '30 - 75 EUR', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-neon-500/40 to-neon-500/70' },
-                { label: '75 - 150 EUR', count: listings.filter((l) => l.price >= 75 && l.price < 150).length, color: 'from-yellow-400/40 to-yellow-400/70' },
-                { label: '150+ EUR', count: listings.filter((l) => l.price >= 150).length, color: 'from-blue-400/40 to-blue-400/70' },
+                { label: '< 30 €', count: listings.filter((l) => l.price < 30).length, color: 'from-gray-500/40 to-gray-500/60' },
+                { label: '30 - 75 €', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-neon-500/40 to-neon-500/70' },
+                { label: '75 - 150 €', count: listings.filter((l) => l.price >= 75 && l.price < 150).length, color: 'from-yellow-400/40 to-yellow-400/70' },
+                { label: '150+ €', count: listings.filter((l) => l.price >= 150).length, color: 'from-blue-400/40 to-blue-400/70' },
               ].map(({ label, count, color }) => (
                 <div key={label} className="flex items-center gap-3">
                   <span className="text-xs text-gray-400 w-20 flex-shrink-0">{label}</span>

@@ -3,6 +3,7 @@ import { X, Package } from 'lucide-react';
 import AccountAvatar from '../ui/AccountAvatar';
 import { Modal } from '../ui/Modal';
 import type { Listing, VintedAccount } from '../../lib/types';
+import { formatEUR } from '../../lib/currency';
 
 export type PackageSize = 'small' | 'medium' | 'large';
 
@@ -17,8 +18,14 @@ const PACKAGE_SIZE_OPTIONS: { value: PackageSize; label: string; hint: string }[
 // d'equivalent dans le modele Listing, decision utilisateur explicite
 // (voir plan) de toujours la demander en confirmation avec une valeur par
 // defaut ajustable plutot que de la deviner silencieusement.
-function defaultPackageSize(category: string): PackageSize {
-  const normalized = category.toLowerCase();
+// Accepte null (Listing.category peut reellement l'etre, voir types.ts) --
+// bug confirme le 2026-07-23 : category.toLowerCase() plantait sans garde
+// pour toute annonce importee/synchronisee sans categorie jamais capturee.
+// checkListingHasRequiredVintedFields (checks.ts) bloque desormais
+// publish_listing en amont dans ce cas, mais cette fonction reste
+// defensive independamment de cette garde.
+function defaultPackageSize(category: string | null): PackageSize {
+  const normalized = (category ?? '').toLowerCase();
   if (/(chaussure|sac|accessoire|bijou|montre)/.test(normalized)) return 'small';
   if (/(manteau|veste|doudoune|canapé|meuble)/.test(normalized)) return 'large';
   return 'medium';
@@ -66,7 +73,7 @@ export default function PublishConfirmationModal({
         )}
 
         <div className="bg-dark-400 border border-white/10 rounded-xl p-4 space-y-2 text-sm">
-          <Row label="Prix" value={`${listing.price} €`} />
+          <Row label="Prix" value={formatEUR(listing.price)} />
           <Row label="Catégorie" value={listing.category || '—'} />
           <Row label="Marque" value={listing.brand || '—'} />
           <Row label="Taille" value={listing.size || '—'} />

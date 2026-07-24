@@ -5,6 +5,7 @@ import { StatCard } from '../../components/ui/StatCard';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Modal } from '../../components/ui/Modal';
+import { formatEUR } from '../../lib/currency';
 
 const CATEGORIES = [
   'Emballage',
@@ -73,8 +74,8 @@ export default function ExpensesPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        <StatCard label="Total depenses" value={`${total.toFixed(2)} €`} />
-        <StatCard label="Ce mois-ci" value={`${totalThisMonth.toFixed(2)} €`} highlight />
+        <StatCard label="Total depenses" value={formatEUR(total)} />
+        <StatCard label="Ce mois-ci" value={formatEUR(totalThisMonth)} highlight />
         <StatCard label="Categorie principale" value={topCategory ? topCategory[0] : '—'} />
       </div>
 
@@ -101,7 +102,7 @@ export default function ExpensesPage() {
               </div>
 
               <div className="flex items-center gap-4">
-                <p className="text-sm font-bold text-gray-200">{expense.amount.toFixed(2)} €</p>
+                <p className="text-sm font-bold text-gray-200">{formatEUR(expense.amount)}</p>
                 <button
                   onClick={() => deleteExpense(expense.id)}
                   aria-label="Supprimer la dépense"

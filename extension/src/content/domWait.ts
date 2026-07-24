@@ -20,6 +20,19 @@ export class WaitTimeoutError extends Error {
   }
 }
 
+// Message oriente utilisateur (Cycle B pre-beta, 2026-07-24) : traduit le
+// timeout technique (message brut souvent charge d'un selecteur CSS) en une
+// phrase comprehensible avec une action concrete, sans jamais supprimer le
+// detail d'origine -- toujours utile pour le diagnostic (demande explicite
+// du 2026-07-16, "je veux savoir precisement laquelle de ces etapes
+// echoue"), simplement place en second plan plutot qu'en premiere lecture.
+// Point de verite unique reutilise par vinted-publish.ts et vinted-edit.ts,
+// qui divergeaient jusqu'ici (l'un taisait le detail, l'autre l'affichait
+// brut en tete).
+export function describeTimeout(err: WaitTimeoutError): string {
+  return `La page Vinted n'a pas répondu à temps. Réessaie ; si le problème persiste, contacte le support. (${err.message})`;
+}
+
 export function waitForElement<T extends Element = Element>(
   selector: string,
   options: WaitOptions = {}

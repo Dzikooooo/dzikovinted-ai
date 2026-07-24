@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { waitForCondition, waitForElement, WaitTimeoutError } from "../domWait";
+import { describeTimeout, waitForCondition, waitForElement, WaitTimeoutError } from "../domWait";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -47,5 +47,14 @@ describe("waitForCondition", () => {
 
   it("rejects with WaitTimeoutError if the predicate never becomes true", async () => {
     await expect(waitForCondition(() => false, { timeoutMs: 50 })).rejects.toBeInstanceOf(WaitTimeoutError);
+  });
+});
+
+describe("describeTimeout", () => {
+  it("leads with a human-readable message and preserves the raw detail", () => {
+    const err = new WaitTimeoutError('waitForElement: délai dépassé (8000ms) pour "[data-testid=x]"');
+    const result = describeTimeout(err);
+    expect(result.startsWith("La page Vinted n'a pas répondu à temps.")).toBe(true);
+    expect(result).toContain('[data-testid=x]');
   });
 });

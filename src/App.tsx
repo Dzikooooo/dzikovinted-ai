@@ -5,6 +5,7 @@ import type { AppPage } from './lib/types';
 
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const DashboardLayout = lazy(() => import('./pages/dashboard/DashboardLayout'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 
 function PageFallback() {
   return (
@@ -15,14 +16,22 @@ function PageFallback() {
 }
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, passwordRecovery } = useAuth();
   const [page, setPage] = useState<AppPage>('landing');
 
   useEffect(() => {
-    if (!loading) {
-      if (user && (page === 'landing' || page === 'auth')) setPage('dashboard');
+    if (loading) return;
+    // Priorite absolue : un lien de reinitialisation vient d'etre ouvert
+    // (evenement Supabase PASSWORD_RECOVERY) -- meme si une session valide
+    // existe deja, on ne doit jamais envoyer directement au dashboard sans
+    // passer par l'ecran de definition du nouveau mot de passe (parcours
+    // valide le 2026-07-24).
+    if (passwordRecovery) {
+      if (page !== 'reset-password') setPage('reset-password');
+      return;
     }
-  }, [user, loading, page]);
+    if (user && (page === 'landing' || page === 'auth')) setPage('dashboard');
+  }, [user, loading, page, passwordRecovery]);
 
   const navigate = (p: AppPage) => {
     setPage(p);
@@ -37,6 +46,14 @@ function AppContent() {
           <p className="text-sm text-gray-500">Chargement...</p>
         </div>
       </div>
+    );
+  }
+
+  if (page === 'reset-password') {
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <ResetPasswordPage onNavigate={navigate} />
+      </Suspense>
     );
   }
 

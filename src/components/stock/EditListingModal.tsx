@@ -23,16 +23,25 @@ interface EditForm {
   vinted_filters: VintedFilter[];
 }
 
+// Ces colonnes sont nullables en base (voir supabase/migrations) malgre un
+// type TypeScript qui les declare `string` -- une annonce importee/
+// synchronisee depuis Vinted (extension/src/background/sync.ts::recordListings)
+// n'ecrit jamais category/color/material/description a la creation, donc
+// `listing.brand` etc. valent reellement `null` a l'execution pour ces
+// annonces malgre ce que dit le type. Sans normalisation, un <input
+// value={null}> passe React en mode non controle (avertissement console,
+// comportement de saisie non fiable) -- voir aussi la normalisation
+// symetrique dans le calcul de changedFields ci-dessous.
 function toEditForm(listing: Listing): EditForm {
   return {
     title: listing.title,
-    description: listing.description,
-    brand: listing.brand,
-    category: listing.category,
-    color: listing.color,
-    size: listing.size,
-    material: listing.material,
-    condition: listing.condition,
+    description: listing.description ?? '',
+    brand: listing.brand ?? '',
+    category: listing.category ?? '',
+    color: listing.color ?? '',
+    size: listing.size ?? '',
+    material: listing.material ?? '',
+    condition: listing.condition ?? '',
     price: listing.price,
     quick_price: listing.quick_price,
     premium_price: listing.premium_price,
@@ -135,6 +144,20 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
   };
 
   const save = async (intent: SaveIntent) => {
+    // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing silencieux,
+    // 2026-07-24) -- a retirer une fois la cause racine confirmee. Premiere
+    // ligne de save(), avant tout await : si ce log n'apparait jamais apres
+    // un clic sur "Enregistrer et mettre a jour sur Vinted", le bouton
+    // lui-meme n'a pas declenche save('update') (bouton non rendu/disabled,
+    // ou mauvais bouton clique).
+    console.log('[ResellOS][DIAGNOSTIC] EditListingModal.save() demarre', {
+      intent,
+      listingId: listing.id,
+      isLinkedToVinted,
+      canUpdateOnVinted,
+      formPrice: form.price,
+      listingPrice: listing.price,
+    });
     setSaving(true);
     setError(null);
     try {
@@ -199,9 +222,20 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
       // a reellement change. Le titre SKU-formate n'est jamais compare
       // directement ici (buildEditPayload s'en charge cote StockPage.tsx) :
       // seul le titre "brut" saisi par l'utilisateur compte.
-      const changedFields = (Object.keys(vintedPushedFields) as (keyof typeof vintedPushedFields)[]).filter(
-        (key) => vintedPushedFields[key] !== listing[key]
-      );
+      //
+      // `vintedPushedFields[key]` est TOUJOURS une chaine (toEditForm
+      // normalise null -> '' juste au-dessus), mais `listing[key]` peut
+      // encore valoir reellement `null` pour une annonce synchronisee
+      // (voir le commentaire de toEditForm). Sans normaliser l'original de
+      // la meme facon ici, un champ jamais touche par l'utilisateur
+      // ('' cote formulaire, null cote annonce d'origine) serait marque a
+      // tort comme "modifie" des l'ouverture de la modale.
+      const changedFields = (Object.keys(vintedPushedFields) as (keyof typeof vintedPushedFields)[]).filter((key) => {
+        const current = vintedPushedFields[key];
+        const original = listing[key];
+        const normalizedOriginal = typeof current === 'string' ? (original ?? '') : original;
+        return current !== normalizedOriginal;
+      });
 
       if (intent === 'update') {
         console.log(

@@ -10,6 +10,13 @@ export type PublishStep =
   | 'uploading_photos'
   | 'filling_form'
   | 'publishing'
+  // "verifying" (2026-07-21) : specifique a edit_listing (phase de
+  // relecture post-sauvegarde, voir extension/src/background/handlers/
+  // editListing.ts) -- jamais rapportee par publish_listing, donc absente
+  // de PUBLISH_STEP_ORDER (l'ecran de publication ne l'affiche pas), mais
+  // doit rester une valeur reconnue par isPublishStep pour que le canal de
+  // progression partage la laisse passer jusqu'a StockPage.tsx.
+  | 'verifying'
   | 'syncing';
 
 export const PUBLISH_STEP_ORDER: PublishStep[] = [
@@ -27,9 +34,25 @@ export const PUBLISH_STEP_LABELS: Record<PublishStep, string> = {
   uploading_photos: 'Import des photos…',
   filling_form: 'Remplissage…',
   publishing: 'En attente de confirmation Vinted…',
+  verifying: 'Vérification…',
   syncing: 'Synchronisation…',
 };
 
+// Distinct de PUBLISH_STEP_ORDER (qui ne sert qu'a decider l'ordre/etat des
+// lignes de l'ecran de PUBLICATION) -- valide TOUTE valeur PublishStep
+// reconnue, y compris "verifying" qu'edit_listing seul rapporte. Sans cette
+// distinction, isPublishStep('verifying') aurait renvoye false et
+// StockPage.tsx aurait silencieusement ignore cette etape de progression.
+const ALL_PUBLISH_STEPS: PublishStep[] = [
+  'preparing',
+  'connecting',
+  'uploading_photos',
+  'filling_form',
+  'publishing',
+  'verifying',
+  'syncing',
+];
+
 export function isPublishStep(value: string): value is PublishStep {
-  return (PUBLISH_STEP_ORDER as string[]).includes(value);
+  return (ALL_PUBLISH_STEPS as string[]).includes(value);
 }

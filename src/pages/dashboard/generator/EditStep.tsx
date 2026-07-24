@@ -7,6 +7,7 @@ interface EditStepProps {
   onBack: () => void;
   onReset: () => void;
   onSaveAndReturn: () => void;
+  saving: boolean;
 }
 
 const TEXT_FIELDS: { k: keyof GeneratedListing; label: string }[] = [
@@ -23,7 +24,7 @@ const PRICE_FIELDS: { k: keyof GeneratedListing; label: string }[] = [
   { k: 'premium_price', label: 'Prix premium' },
 ];
 
-export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn }: EditStepProps) {
+export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn, saving }: EditStepProps) {
   const updateField = (key: keyof GeneratedListing, value: string | number | string[] | VintedFilter[]) => {
     onChange({ ...editForm, [key]: value });
   };
@@ -41,9 +42,10 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn 
           </button>
           <button
             onClick={onSaveAndReturn}
-            className="flex items-center gap-2 bg-neon-500 text-black font-bold px-4 py-2 rounded-xl hover:bg-neon-600 transition-all text-sm"
+            disabled={saving}
+            className="flex items-center gap-2 bg-neon-500 text-black font-bold px-4 py-2 rounded-xl hover:bg-neon-600 transition-all text-sm disabled:opacity-50"
           >
-            <Save className="w-4 h-4" /> Sauvegarder
+            <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </button>
         </div>
       </div>

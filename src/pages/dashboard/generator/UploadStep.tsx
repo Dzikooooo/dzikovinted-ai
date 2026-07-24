@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, Clock, GripVertical, ImageIcon, Sparkles, Upload, X, Zap } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, GripVertical, ImageIcon, Sparkles, Upload, X, Zap } from 'lucide-react';
 
 interface UploadStepProps {
   images: string[];
@@ -12,13 +12,6 @@ interface UploadStepProps {
   isAdmin: boolean;
   onGenerate: () => void;
 }
-
-const PHOTO_STYLES = [
-  { id: 'white', label: 'Fond blanc' },
-  { id: 'studio', label: 'Studio' },
-  { id: 'wood', label: 'Bois' },
-  { id: 'lifestyle', label: 'Lifestyle' },
-];
 
 export function UploadStep({
   images,
@@ -35,14 +28,32 @@ export function UploadStep({
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Fichiers rejetes silencieusement jusqu'ici (format non image, ou depassement
+  // de photoLimit) -- l'utilisateur n'avait aucune indication que sa selection
+  // avait ete partiellement ignoree (audit du parcours Generateur, 2026-07-24).
+  const [warning, setWarning] = useState<string | null>(null);
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files) return;
-    const newUrls: string[] = [];
-    Array.from(files).slice(0, photoLimit - images.length).forEach((f) => {
-      if (f.type.startsWith('image/')) newUrls.push(URL.createObjectURL(f));
-    });
-    onImagesChange([...images, ...newUrls].slice(0, photoLimit));
+    const incoming = Array.from(files);
+    const imageFiles = incoming.filter((f) => f.type.startsWith('image/'));
+    const nonImageCount = incoming.length - imageFiles.length;
+    const availableSlots = Math.max(0, photoLimit - images.length);
+    const accepted = imageFiles.slice(0, availableSlots);
+    const excessCount = imageFiles.length - accepted.length;
+
+    const messages: string[] = [];
+    if (nonImageCount > 0) {
+      messages.push(`${nonImageCount} fichier${nonImageCount > 1 ? 's' : ''} ignoré${nonImageCount > 1 ? 's' : ''} (format non supporté, images uniquement)`);
+    }
+    if (excessCount > 0) {
+      messages.push(`${excessCount} photo${excessCount > 1 ? 's' : ''} non ajoutée${excessCount > 1 ? 's' : ''} (limite de ${photoLimit} photo${photoLimit > 1 ? 's' : ''} atteinte)`);
+    }
+    setWarning(messages.length > 0 ? messages.join(' — ') : null);
+
+    if (accepted.length > 0) {
+      onImagesChange([...images, ...accepted.map((f) => URL.createObjectURL(f))]);
+    }
   }, [images, onImagesChange, photoLimit]);
 
   const moveImage = (from: number, to: number) => {
@@ -106,6 +117,13 @@ export function UploadStep({
         <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
           <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
+
+      {warning && (
+        <div className="flex items-center gap-3 bg-orange-400/10 border border-orange-400/20 rounded-xl px-4 py-3 mb-6">
+          <AlertCircle className="w-4 h-4 text-orange-400 flex-shrink-0" />
+          <p className="text-sm text-orange-400">{warning}</p>
         </div>
       )}
 
@@ -207,35 +225,6 @@ export function UploadStep({
                 </label>
               )}
             </div>
-            <div className="mb-5 bg-dark-400 border border-white/5 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500">
-                  Options IA Photo
-                </p>
-                <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md">
-                  <Clock className="w-2.5 h-2.5" /> Bientôt disponible
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mb-3">
-                Ces réglages ne modifient pas encore la photo : tes images sont utilisées telles quelles.
-              </p>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 opacity-50 pointer-events-none" aria-disabled="true">
-                {PHOTO_STYLES.map((style) => (
-                  <span
-                    key={style.id}
-                    className="rounded-xl px-3 py-2 text-xs font-bold border bg-surface text-gray-400 border-white/10 text-center"
-                  >
-                    {style.label}
-                  </span>
-                ))}
-              </div>
-
-              <label className="flex items-center gap-3 text-sm text-gray-500 opacity-50 pointer-events-none" aria-disabled="true">
-                <input type="checkbox" checked={false} disabled className="accent-neon-500" />
-                Améliorer automatiquement la qualité
-              </label>
-            </div>
             <div className="flex items-center justify-between pt-2 border-t border-white/5">
               <p className="text-sm text-gray-500">{images.length} photo{images.length > 1 ? 's' : ''} selectionnee{images.length > 1 ? 's' : ''}</p>
               <button
@@ -254,7 +243,7 @@ export function UploadStep({
       {/* How it works */}
       <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { step: '01', title: 'Upload', desc: 'Ajoute 1 a 4 photos de ton vetement' },
+          { step: '01', title: 'Upload', desc: `Ajoute 1 a ${photoLimit} photo${photoLimit > 1 ? 's' : ''} de ton vetement` },
           { step: '02', title: 'Analyse IA', desc: 'L\'IA detecte marque, couleur, etat...' },
           { step: '03', title: 'Annonce prete', desc: 'Copie le titre et la description optimises' },
         ].map(({ step: s, title, desc }) => (

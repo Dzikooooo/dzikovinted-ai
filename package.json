@@ -12,6 +12,7 @@
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
     "test": "vitest run",
     "scan": "tsx scripts/vinted-scan.ts",
+    "seed:demo": "tsx scripts/seed-demo-data.ts",
     "audit:schema": "node scripts/audit-project.mjs",
     "audit:deadcode": "ts-prune -p tsconfig.audit.json",
     "audit": "npm run typecheck && npm run audit:schema && npm run audit:deadcode"

@@ -36,7 +36,11 @@ export default defineManifest({
     service_worker: "src/background/index.ts",
     type: "module",
   },
-  permissions: ["storage", "alarms", "tabs", "scripting"],
+  // "alarms" retiree (2026-07-23, revue de coherence) : jamais utilisee par
+  // aucun code de l'extension (grep exhaustif de chrome.alarms/alarms.* sur
+  // extension/src/, aucun resultat) -- une permission Chrome non justifiee
+  // est un risque et une confusion pour rien.
+  permissions: ["storage", "tabs", "scripting"],
   host_permissions: ["https://www.vinted.fr/*"],
   externally_connectable: {
     matches: ["http://localhost:5173/*", "https://dzikovinted-ai.vercel.app/*"],

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Eye, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, ChevronDown, Search, Info } from 'lucide-react';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { OPPORTUNITY_CATEGORIES } from '../../lib/opportunityCategories';
-import type { WatchlistEntry } from '../../lib/types';
+import type { DashboardPage, WatchlistEntry } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -41,7 +41,11 @@ function entryToForm(entry: WatchlistEntry): FormState {
   };
 }
 
-export default function WatchlistPage() {
+interface WatchlistPageProps {
+  onNavigate: (page: DashboardPage) => void;
+}
+
+export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
   const { myEntries, platformEntries, loading, error, addEntry, updateEntry, toggleActive, deleteEntry } =
     useWatchlist();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -77,13 +81,13 @@ export default function WatchlistPage() {
       min_profit: Number(form.minProfit) || DEFAULT_MIN_PROFIT,
       min_roi: Number(form.minRoi) || DEFAULT_MIN_ROI,
     };
-    if (editingId) {
-      await updateEntry(editingId, payload);
-    } else {
-      await addEntry(payload);
-    }
+    const ok = editingId ? await updateEntry(editingId, payload) : await addEntry(payload);
     setSaving(false);
-    setShowForm(false);
+    // Ne ferme la modale qu'en cas de succes reel - avant ce correctif elle
+    // se fermait inconditionnellement, laissant croire a une sauvegarde
+    // reussie meme apres un echec (bug confirme, audit du parcours
+    // Scanner, 2026-07-24). Le bandeau d'erreur reste visible derriere.
+    if (ok) setShowForm(false);
   }
 
   return (
@@ -106,6 +110,28 @@ export default function WatchlistPage() {
       </div>
 
       {error && <ErrorBanner message={error} className="mb-6" />}
+
+      {/* Pedagogie explicite : sans ca, un nouvel utilisateur ajoutait une
+          recherche, allait voir "Aucune opportunite" sur la page
+          Opportunites (qui suggerait a tort un probleme de filtres), et
+          n'avait aucun moyen de savoir qu'un scan devait d'abord tourner -
+          les deux pages n'etaient jamais reliees (audit du parcours
+          Scanner, 2026-07-24). */}
+      <div className="flex items-start gap-3 bg-surface border border-white/5 rounded-xl px-4 py-3 mb-6">
+        <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-gray-500 flex-1">
+          Le scan tourne automatiquement toutes les 4h. Les résultats correspondant à tes recherches
+          (et remplissant certains critères : popularité, marge minimum...) apparaissent ensuite sur la
+          page Opportunités.
+        </p>
+        <button
+          onClick={() => onNavigate('opportunities')}
+          className="flex items-center gap-1.5 text-xs font-bold text-neon-500 hover:underline flex-shrink-0"
+        >
+          <Search className="w-3.5 h-3.5" />
+          Voir les opportunités
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 gap-4 mb-6">
         <StatCard label="Recherches actives" value={activeCount} highlight />

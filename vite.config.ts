@@ -29,4 +29,9 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
+  server: {
+    // Dev uniquement : accepte tout hostname (ex. *.trycloudflare.com) --
+    // le sous-domaine change a chaque lancement du tunnel Cloudflare.
+    allowedHosts: true,
+  },
 });

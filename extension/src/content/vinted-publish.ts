@@ -10,7 +10,7 @@
 // test live (liste complete des etats, comportement exact de l'upload
 // photo, bandeau d'erreur Vinted).
 
-import { waitForElement, waitForCondition, WaitTimeoutError } from "./domWait";
+import { waitForElement, waitForCondition, WaitTimeoutError, describeTimeout } from "./domWait";
 import * as sel from "./publishSelectors";
 import {
   PublishError,
@@ -125,7 +125,7 @@ async function runPublish(payload: PublishListingPayload): Promise<void> {
         status: "error",
         errorMessage: looksLikeLoginPage
           ? "Session Vinted expirée, reconnecte-toi sur vinted.fr"
-          : "La page Vinted n'a pas répondu à temps",
+          : describeTimeout(err),
       });
       return;
     }

@@ -1,7 +1,8 @@
-import { AlertCircle, ArrowLeft, Copy, DollarSign, Filter, Layers, Palette, Pencil, Ruler, Save, Star, Tag } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Star, Tag } from 'lucide-react';
 import type { GeneratedListing } from '../../../lib/types';
 import { CopyBtn } from '../../../components/ui/CopyBtn';
 import { FieldCard } from '../../../components/ui/FieldCard';
+import { formatEUR } from '../../../lib/currency';
 
 interface ResultStepProps {
   result: GeneratedListing;
@@ -12,16 +13,18 @@ interface ResultStepProps {
   onSave: () => void;
   saving: boolean;
   saved: boolean;
+  onGoToStock: () => void;
+  onCreateNew: () => void;
 }
 
-export function ResultStep({ result, images, error, onReset, onEdit, onSave, saving, saved }: ResultStepProps) {
+export function ResultStep({ result, images, error, onReset, onEdit, onSave, saving, saved, onGoToStock, onCreateNew }: ResultStepProps) {
   const handleCopyAll = () => {
     const t = [
       result.title, '',
       result.description, '',
-      `Prix recommande: ${result.price} EUR`,
-      `Vente rapide: ${result.quick_price} EUR`,
-      `Premium: ${result.premium_price} EUR`,
+      `Prix recommande: ${formatEUR(result.price)}`,
+      `Vente rapide: ${formatEUR(result.quick_price)}`,
+      `Premium: ${formatEUR(result.premium_price)}`,
       `Marque: ${result.brand}`,
       `Categorie: ${result.category}`,
       `Taille: ${result.size}`,
@@ -70,6 +73,27 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
         </div>
       )}
 
+      {/* Empeche l'ecran-sans-suite apres sauvegarde : deux actions
+          principales plutot que laisser l'utilisateur seul face a
+          l'annonce deja enregistree (decision produit validee le
+          2026-07-24, audit du parcours Generateur). */}
+      {saved && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3.5 mb-6">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-4 h-4 text-neon-500 flex-shrink-0" />
+            <p className="text-sm text-neon-500">Annonce enregistrée dans ton Stock.</p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={onGoToStock} className="flex items-center gap-2 bg-neon-500 text-black font-medium px-3.5 py-1.5 rounded-lg hover:bg-neon-600 transition-all text-xs">
+              <Package className="w-3.5 h-3.5" /> Voir dans mon Stock
+            </button>
+            <button onClick={onCreateNew} className="flex items-center gap-2 border border-neon-500/30 text-neon-500 font-medium px-3.5 py-1.5 rounded-lg hover:bg-neon-500/10 transition-all text-xs">
+              Créer une nouvelle annonce
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Image preview strip */}
       {images.length > 0 && (
         <div className="flex gap-2 mb-5 overflow-x-auto pb-2">
@@ -85,21 +109,33 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
         <FieldCard label="Titre SEO" value={result.title} icon={Tag} />
         <FieldCard label="Description" value={result.description} icon={Layers} />
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Un seul prix dominant (le recommande) -- les deux alternatives
+            restent visibles mais nettement secondaires, memes couleurs
+            neutres que les FieldCard d'attributs ci-dessous plutot que
+            trois accents concurrents de poids visuel egal (audit Brand
+            Book, 2026-07-23). */}
+        <div className="bg-neon-500/5 border border-neon-500/20 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-neon-500" />
+              <span className="text-[10px] font-mono uppercase tracking-wider text-neon-500/80">Prix recommandé</span>
+            </div>
+            <CopyBtn text={formatEUR(result.price)} />
+          </div>
+          <p className="text-3xl sm:text-4xl font-black text-neon-500">{formatEUR(result.price)}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           {[
-            { label: 'Prix recommande', val: `${result.price} EUR`, color: 'text-neon-500', border: 'border-neon-500/20', bg: 'bg-neon-500/5' },
-            { label: 'Vente rapide', val: `${result.quick_price} EUR`, color: 'text-orange-400', border: 'border-orange-400/20', bg: 'bg-orange-400/5' },
-            { label: 'Prix premium', val: `${result.premium_price} EUR`, color: 'text-blue-400', border: 'border-blue-400/20', bg: 'bg-blue-400/5' },
-          ].map(({ label, val, color, border, bg }) => (
-            <div key={label} className={`${bg} border ${border} rounded-xl p-4`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <DollarSign className={`w-3.5 h-3.5 ${color}`} />
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500">{label}</span>
-                </div>
+            { label: 'Vente rapide', val: formatEUR(result.quick_price) },
+            { label: 'Prix premium', val: formatEUR(result.premium_price) },
+          ].map(({ label, val }) => (
+            <div key={label} className="bg-dark-400 border border-white/5 rounded-xl p-3.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500">{label}</span>
                 <CopyBtn text={val} />
               </div>
-              <p className={`text-2xl font-black ${color}`}>{val}</p>
+              <p className="text-lg font-bold text-gray-300">{val}</p>
             </div>
           ))}
         </div>

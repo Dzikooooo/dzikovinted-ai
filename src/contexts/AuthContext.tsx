@@ -2,12 +2,19 @@ import { createContext, useCallback, useContext, useEffect, useState, useRef, ty
 import { supabase } from '../lib/supabase';
 import type { Profile } from '../lib/types';
 import type { User, Session } from '@supabase/supabase-js';
+import { translateAuthError } from '../lib/errorMessages';
 
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  // true uniquement entre le clic sur le lien de reinitialisation recu par
+  // email (evenement Supabase PASSWORD_RECOVERY) et la confirmation du
+  // nouveau mot de passe -- App.tsx s'en sert pour router vers l'ecran
+  // dedie au lieu du dashboard, meme si une session valide existe deja.
+  passwordRecovery: boolean;
+  clearPasswordRecovery: () => void;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null; confirmEmail: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -22,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const initializedRef = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string, retries = 3): Promise<void> => {
@@ -52,7 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      // PASSWORD_RECOVERY : signal officiel Supabase declenche par le clic
+      // sur le lien recu par email (voir resetPassword ci-dessous) -- une
+      // vraie session est etablie en meme temps, distincte d'une connexion
+      // normale uniquement par cet evenement.
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
@@ -73,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) {
-      return { error: error.message, confirmEmail: false };
+      return { error: translateAuthError(error.message), confirmEmail: false };
     }
 
     if (!data.user) {
@@ -95,13 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      if (error.message === 'Invalid login credentials') {
-        return { error: 'Email ou mot de passe incorrect.' };
-      }
-      if (error.message.includes('Email not confirmed')) {
-        return { error: 'Veuillez confirmer votre email avant de vous connecter.' };
-      }
-      return { error: error.message };
+      return { error: translateAuthError(error.message) };
     }
 
     if (data.user) {
@@ -121,17 +128,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) return { error: error.message };
+    // redirectTo explicite (2026-07-24) : evite de dependre d'un reglage
+    // externe (Site URL du projet Supabase) invisible depuis ce code --
+    // ramene toujours l'utilisateur sur le domaine d'ou la demande est partie.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) return { error: translateAuthError(error.message) };
     return { error: null };
   };
+
+  const clearPasswordRecovery = () => setPasswordRecovery(false);
 
   const refreshProfile = async () => {
     if (user) await fetchProfile(user.id);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, resetPassword, refreshProfile }}>
+    <AuthContext.Provider
+      value={{ user, session, profile, loading, passwordRecovery, clearPasswordRecovery, signUp, signIn, signOut, resetPassword, refreshProfile }}
+    >
       {children}
     </AuthContext.Provider>
   );

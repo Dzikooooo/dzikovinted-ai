@@ -14,30 +14,38 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Modal } from '../../components/ui/Modal';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
+import { OneScoreBar } from '../../components/ui/OneScoreBar';
 import PublishConfirmationModal, { type PackageSize } from '../../components/publish/PublishConfirmationModal';
 import PublishProgressModal from '../../components/publish/PublishProgressModal';
 import { EditListingModal } from '../../components/stock/EditListingModal';
-import { isExtensionConfigured, pingExtension } from '../../lib/extensionBridge';
+import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR } from '../../lib/extensionBridge';
 import { formatRelativeSync } from '../../lib/formatRelativeTime';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 import { isActivelyInStock } from '../../lib/listingStatus';
 import { toLocalDateString } from '../../lib/date';
 import { isPublishStep, type PublishStep } from '../../lib/actions/publishSteps';
+import { EDIT_STEP_ORDER, buildEditStepLabels, normalizeEditStepForDisplay } from '../../lib/actions/editListingSteps';
 import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
 import type { EditableFieldName, EditListingPayload } from '../../lib/actions/handlers/editListing';
 import type { VintedAccount } from '../../lib/types';
 import { formatTitleWithSku } from '../../lib/sku';
+import { formatEUR } from '../../lib/currency';
 import type { ActionKind } from '../../lib/actions/types';
 
+// description/category/condition sont ici garantis non-vides par
+// checkListingHasRequiredVintedFields (checks.ts) avant que publish_listing
+// ne puisse etre prepare -- le "?? ''" satisfait uniquement le type
+// (PublishListingPayload les declare `string`, jamais envoyes vides en
+// pratique pour cette action).
 function buildPublishPayload(listing: Listing, account: VintedAccount, packageSize: PackageSize): PublishListingPayload {
   return {
     title: formatTitleWithSku(listing.title, listing.sku),
-    description: listing.description,
+    description: listing.description ?? '',
     price: listing.price,
-    category: listing.category,
+    category: listing.category ?? '',
     brand: listing.brand || null,
     size: listing.size || null,
-    condition: listing.condition,
+    condition: listing.condition ?? '',
     color: listing.color || null,
     material: listing.material || null,
     imageUrls: listing.image_urls,
@@ -57,16 +65,24 @@ function buildPublishPayload(listing: Listing, account: VintedAccount, packageSi
 // valeurs ci-dessous restent necessaires (reconstruire le titre avec SKU,
 // etc.) meme pour un champ non modifie, mais elles ne seront PAS ecrites
 // sur Vinted si le champ correspondant n'est pas dans changedFields.
+// Contrairement a buildPublishPayload, aucune garde n'exige que
+// description/category/condition soient renseignes ici : une annonce deja
+// liee a Vinted (seul cas ou edit_listing s'applique) les a necessairement
+// sur Vinted lui-meme, meme si ResellOS ne les a jamais captures depuis la
+// synchro passive (voir Listing.category, types.ts). Le "?? ''" est donc un
+// repli reellement possible en pratique ici, pas seulement une formalite de
+// type -- inoffensif : vinted-edit.ts n'ecrit que les champs presents dans
+// `changedFields`, jamais une valeur "actuelle" non modifiee.
 function buildEditPayload(listing: Listing, account: VintedAccount, changedFields: EditableFieldName[]): EditListingPayload {
   return {
     vintedItemId: listing.vinted_item_id!,
     title: formatTitleWithSku(listing.title, listing.sku),
-    description: listing.description,
+    description: listing.description ?? '',
     price: listing.price,
-    category: listing.category,
+    category: listing.category ?? '',
     brand: listing.brand || null,
     size: listing.size || null,
-    condition: listing.condition,
+    condition: listing.condition ?? '',
     color: listing.color || null,
     material: listing.material || null,
     expectedVintedUsername: account.vinted_username,
@@ -94,6 +110,18 @@ const SYNC_WINDOW_NAME = 'resellos_vinted_sync';
 const SYNC_POLL_INTERVAL_MS = 3000;
 const SYNC_POLL_MAX_ATTEMPTS = 10;
 
+// P0 #8 de l'audit pre-lancement (2026-07-10), decision validee le
+// 2026-07-24 : bouton "Charger plus" plutot qu'infinite scroll (demande
+// explicite -- "simple, previsible, facile a maintenir" pour un outil de
+// gestion). Fenetrage purement cote client sur `filtered` (deja charge en
+// entier via `items`) : aucune deuxieme requete reseau, contrairement au
+// Centre des Actions (useActionHistory.ts) dont l'historique grandit sans
+// limite naturelle. Les StatCards continuent de lire `items` en entier
+// (jamais `filtered`/`visibleCount`) pour rester des totaux exacts --
+// meme raisonnement que le report explicite de la pagination des pages
+// financieres (Dashboard/Comptabilite/Stats) a une phase ulterieure.
+const STOCK_PAGE_SIZE = 30;
+
 interface StockPageProps {
   onViewAction?: (actionId: string) => void;
 }
@@ -115,9 +143,12 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
+  const [visibleCount, setVisibleCount] = useState(STOCK_PAGE_SIZE);
   const [sellingItem, setSellingItem] = useState<Listing | null>(null);
   const [soldPrice, setSoldPrice] = useState('');
   const [fees, setFees] = useState('0');
+  const [sellSaving, setSellSaving] = useState(false);
+  const [sellError, setSellError] = useState<string | null>(null);
   const [extensionState, setExtensionState] = useState<'checking' | 'not-installed' | 'ready'>('checking');
   const [syncing, setSyncing] = useState(false);
   const [syncHint, setSyncHint] = useState<string | null>(null);
@@ -127,6 +158,11 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     step: PublishStep | 'done' | null;
     error: string | null;
     historyId: string | null;
+    // Finition UX (2026-07-21) : permet au modal de progression d'adapter
+    // son affichage (etapes/libelles) selon l'action reellement en cours --
+    // null pour publish_listing, qui garde l'ecran original inchange.
+    kind: ActionKind | null;
+    changedFields: EditableFieldName[] | null;
   } | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
 
@@ -173,8 +209,16 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     load();
   }, [load]);
 
+  // Un nouveau filtre/recherche repart de la premiere page -- sinon "Charger
+  // plus" resterait bloque sur un visibleCount herite du contexte precedent.
+  useEffect(() => {
+    setVisibleCount(STOCK_PAGE_SIZE);
+  }, [search, filter, selectedAccountId]);
+
   const markAsSold = async () => {
-    if (!sellingItem) return;
+    if (!sellingItem || sellSaving) return;
+    setSellSaving(true);
+    setSellError(null);
 
     const { error } = await supabase
       .from('listings')
@@ -186,10 +230,15 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       })
       .eq('id', sellingItem.id);
 
-    if (!error) {
+    if (error) {
+      console.error(error);
+      setSellError('Impossible d’enregistrer la vente. Réessaie plus tard.');
+      setSellSaving(false);
+    } else {
       setSellingItem(null);
       setSoldPrice('');
       setFees('0');
+      setSellSaving(false);
       await load();
     }
   };
@@ -204,13 +253,67 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   // handleEditListing.ts) -- correle les trois couches (app/background/
   // content script) pour un meme run dans la console du navigateur.
   const runVintedAction = async (kind: ActionKind, payload: PublishListingPayload | EditListingPayload, listing: Listing) => {
-    setPublishState({ step: 'preparing', error: null, historyId: null });
+    // Garde anti-doublon (demande explicite 2026-07-17) : EditListingModal
+    // se ferme immediatement apres onSaved (voir plus bas), pendant que
+    // handleConfirmUpdate/runVintedAction continue en arriere-plan -- rien
+    // n'empechait jusqu'ici de rouvrir la modale sur la MEME annonce et de
+    // relancer une deuxieme action pendant que la premiere tourne encore.
+    // publishState reste non-null tant que l'utilisateur n'a pas ferme la
+    // modale de progression (meme apres succes/echec) -- un step distinct
+    // de 'done' et sans erreur signifie qu'une action est REELLEMENT en
+    // cours.
+    // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing silencieux,
+    // 2026-07-24) -- a retirer une fois la cause racine confirmee. Ce log
+    // s'affiche a CHAQUE appel de runVintedAction, garde comprise -- si un
+    // clic sur "Enregistrer et mettre a jour sur Vinted" ne produit AUCUN
+    // log ici, runVintedAction n'a jamais ete appelee du tout (la cause est
+    // en amont : bouton non rendu, handleConfirmUpdate jamais atteint, ou
+    // save() jamais arrivee a son terme -- voir les logs EditListingModal).
+    console.log('[ResellOS][DIAGNOSTIC] runVintedAction() appelee', {
+      kind,
+      listingId: listing.id,
+      publishStateActuel: publishState,
+    });
+    if (publishState && publishState.step !== 'done' && !publishState.error) {
+      console.warn('[ResellOS][DIAGNOSTIC] runVintedAction IGNOREE (garde anti-doublon) : une action est deja en cours', {
+        kind,
+        listingId: listing.id,
+        etapeEnCours: publishState.step,
+        publishStateComplet: publishState,
+      });
+      return;
+    }
+
+    // Calcule une seule fois (finition UX 2026-07-21) : conditionne l'ecran
+    // de progression (etapes/libelles) affiche pour toute la duree de cette
+    // action -- null pour publish_listing, qui garde l'ecran original.
+    const changedFields = kind === 'edit_listing' ? (payload as EditListingPayload).changedFields : null;
+    setPublishState({ step: 'preparing', error: null, historyId: null, kind, changedFields });
     console.log(`[ResellOS][action] prepareAction('${kind}')`, { listingId: listing.id, payload });
+
+    // Reconciliation immediate du badge (demande explicite 2026-07-17) :
+    // "sync_failed" (d'une eventuelle tentative precedente) resterait
+    // affiche pendant toute la duree de CETTE tentative si rien ne le
+    // change des le clic -- trompeur, laisse penser que rien ne se passe.
+    // Ecrit sync_pending tout de suite, avant meme prepareAction(), et
+    // reflete l'etat localement sans attendre un rechargement complet.
+    // Best-effort : une erreur ici ne doit jamais bloquer l'action reelle.
+    if (kind === 'edit_listing') {
+      const { error: pendingError } = await supabase
+        .from('listings')
+        .update({ vinted_sync_status: 'sync_pending' as const })
+        .eq('id', listing.id);
+      if (pendingError) {
+        console.warn("[ResellOS][action] echec de l'ecriture de sync_pending (non bloquant)", pendingError.message);
+      } else {
+        setItems((prev) => prev.map((i) => (i.id === listing.id ? { ...i, vinted_sync_status: 'sync_pending' } : i)));
+      }
+    }
 
     const prepared = await prepareAction(kind, payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
       console.warn('[ResellOS][action] prepare() refuse par les checks :', prepared.failure);
-      setPublishState({ step: null, error: prepared.failure.message, historyId: null });
+      setPublishState({ step: null, error: prepared.failure.message, historyId: null, kind, changedFields });
       return;
     }
     const historyId = prepared.prepared.id;
@@ -218,7 +321,12 @@ export default function StockPage({ onViewAction }: StockPageProps) {
 
     const result = await confirmAction(prepared.prepared, (step) => {
       console.log(`[ResellOS][action][${historyId}] progression :`, step);
-      if (isPublishStep(step)) setPublishState({ step, error: null, historyId });
+      if (!isPublishStep(step)) return;
+      // filling_form/publishing fusionnes en une seule ligne visible pour
+      // edit_listing (voir editListingSteps.ts) -- normalisation purement
+      // d'affichage, ne change rien au deroulement reel du pipeline.
+      const displayStep = kind === 'edit_listing' ? normalizeEditStepForDisplay(step) : step;
+      setPublishState({ step: displayStep, error: null, historyId, kind, changedFields });
     });
     // "retour dans ResellOS" : le content script Vinted a rapporte un
     // resultat terminal (succes ou echec) jusqu'ici, via le background.
@@ -257,6 +365,19 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         if (statusError) {
           console.error(`[ResellOS][action][${historyId}] echec de l'ecriture de la confirmation Vinted`, statusError);
         }
+      } else if (result.outcome.status === 'error' && result.outcome.errorMessage === RUN_ACTION_TIMEOUT_ERROR) {
+        // Bug reel demontre le 2026-07-17 (audit direct de action_log) : un
+        // delai LOCAL depasse (aucune reponse recue a temps) n'est PAS une
+        // preuve d'echec -- le pipeline cote extension continue de tourner
+        // independamment (son propre timeout, plus genereux) et peut
+        // reussir REELLEMENT apres coup (prix confirme sur Vinted alors que
+        // ResellOS affichait deja "Echec"). Ecrire sync_failed ici ecraserait
+        // silencieusement un succes qui arrive plus tard sans jamais pouvoir
+        // etre observe. Laisse le statut a sync_pending (deja ecrit au
+        // clic) -- ni succes ni echec confirmes, honnete sur l'incertitude.
+        console.warn(
+          `[ResellOS][action][${historyId}] delai local depasse -- statut laisse a sync_pending (l'extension continue peut-etre en arriere-plan)`
+        );
       } else {
         console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_failed (aucun champ modifie)`);
         const { error: statusError } = await supabase
@@ -270,16 +391,16 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     }
 
     if (result.outcome.status === 'success') {
-      setPublishState({ step: 'syncing', error: null, historyId });
+      setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields });
       console.log(`[ResellOS][action][${historyId}] mise a jour locale : relecture de confirmation (load())`);
       await load();
       console.log(`[ResellOS][action][${historyId}] mise a jour locale terminee`);
-      setPublishState({ step: 'done', error: null, historyId });
+      setPublishState({ step: 'done', error: null, historyId, kind, changedFields });
     } else if (result.outcome.status === 'error') {
       await load();
-      setPublishState({ step: null, error: result.outcome.errorMessage, historyId });
+      setPublishState({ step: null, error: result.outcome.errorMessage, historyId, kind, changedFields });
     } else {
-      setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.', historyId });
+      setPublishState({ step: null, error: 'Cette action n’est pas encore disponible.', historyId, kind, changedFields });
     }
   };
 
@@ -310,6 +431,8 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         step: null,
         error: "Aucun compte Vinted sélectionné dans le filtre en haut de page. Sélectionne le compte de cette annonce avant de réessayer.",
         historyId: null,
+        kind: 'edit_listing',
+        changedFields,
       });
       return;
     }
@@ -372,6 +495,8 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     const matchesFilter = filter === 'all' || item.vinted_status === filter;
     return matchesSearch && matchesFilter;
   });
+  const visibleItems = filtered.slice(0, visibleCount);
+  const hasMoreItems = filtered.length > visibleCount;
 
   const stockItems = items.filter(isActivelyInStock);
   const soldItems = items.filter((item) => item.status === 'vendu');
@@ -452,9 +577,9 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">Stock actif</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Articles en stock" value={stockItems.length.toString()} />
-          <StatCard label="Valeur du stock" value={`${stockValue.toFixed(0)} €`} />
-          <StatCard label="Investissement" value={`${investment.toFixed(0)} €`} />
-          <StatCard label="Marge potentielle" value={`${potentialMargin.toFixed(0)} €`} highlight />
+          <StatCard label="Valeur du stock" value={formatEUR(stockValue)} />
+          <StatCard label="Investissement" value={formatEUR(investment)} />
+          <StatCard label="Marge potentielle" value={formatEUR(potentialMargin)} highlight />
         </div>
       </div>
 
@@ -462,8 +587,8 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">Ventes</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Articles vendus" value={soldItems.length.toString()} />
-          <StatCard label="Chiffre d'affaires" value={`${revenue.toFixed(0)} €`} />
-          <StatCard label="Bénéfice" value={`${profit.toFixed(0)} €`} highlight />
+          <StatCard label="Chiffre d'affaires" value={formatEUR(revenue)} />
+          <StatCard label="Bénéfice" value={formatEUR(profit)} highlight />
           <StatCard label="ROI moyen" value={`${averageRoi} %`} highlight />
         </div>
       </div>
@@ -530,8 +655,9 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           description="Ajoute un article depuis le générateur, ou synchronise un compte Vinted."
         />
       ) : (
+        <>
         <div className="grid grid-cols-1 gap-3">
-          {filtered.map((item) => {
+          {visibleItems.map((item) => {
             const isSold = item.status === 'vendu';
             const aging = isAging(item);
             const hasCost = item.purchase_price !== null;
@@ -609,34 +735,41 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                         )}
                       </div>
                       {score !== null && (
-                        <div className="mt-2 max-w-[160px]">
-                          <div className="flex items-center justify-between text-[10px] text-gray-600 mb-1">
-                            <span>Score IA</span>
-                            <span>{score}/100</span>
-                          </div>
-                          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-neon-500 rounded-full transition-all duration-500"
-                              style={{ width: `${score}%` }}
-                            />
-                          </div>
-                        </div>
+                        <OneScoreBar score={score} size="sm" className="mt-2 max-w-[160px]" />
                       )}
                     </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between sm:justify-end gap-3 sm:gap-5 flex-shrink-0">
                     <div className="grid grid-cols-4 gap-3 text-right">
-                      <MiniValue label={isSold ? 'Vente' : 'Valeur'} value={`${isSold ? item.sold_price ?? 0 : item.price ?? 0} €`} />
-                      <MiniValue label="Achat" value={hasCost ? `${item.purchase_price} €` : '—'} />
-                      <MiniValue label={isSold ? 'Bénéfice' : 'Marge'} value={hasCost ? `${margin} €` : '—'} highlight={hasCost} />
+                      <MiniValue label={isSold ? 'Vente' : 'Valeur'} value={formatEUR(isSold ? item.sold_price ?? 0 : item.price ?? 0)} />
+                      <MiniValue label="Achat" value={hasCost ? formatEUR(item.purchase_price!) : '—'} />
+                      <MiniValue label={isSold ? 'Bénéfice' : 'Marge'} value={hasCost ? formatEUR(margin) : '—'} highlight={hasCost} />
                       <MiniValue label="ROI" value={hasCost ? `${roi} %` : '—'} highlight={hasCost} />
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {!isSold && (
                         <button
-                          onClick={() => setEditingItem(item)}
+                          onClick={() => {
+                            // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing
+                            // silencieux, 2026-07-24) -- a retirer une fois la
+                            // cause racine confirmee. Capture l'etat exact au
+                            // moment de l'ouverture de la modale : si
+                            // canUpdateOnVinted vaut false ici, le bouton
+                            // "Enregistrer et mettre a jour sur Vinted" ne sera
+                            // PAS rendu dans la modale, meme si l'annonce est
+                            // bien liee a Vinted.
+                            console.log('[ResellOS][DIAGNOSTIC] ouverture EditListingModal', {
+                              listingId: item.id,
+                              listingVintedAccountId: item.vinted_account_id,
+                              listingVintedItemId: item.vinted_item_id,
+                              selectedAccountId: selectedAccount?.id ?? null,
+                              canUpdateOnVinted: !!selectedAccount && selectedAccount.id === item.vinted_account_id,
+                              extensionState,
+                            });
+                            setEditingItem(item);
+                          }}
                           className="flex items-center gap-1.5 text-xs font-semibold bg-dark-400 border border-white/10 text-gray-200 px-3 py-2 rounded-xl hover:border-neon-500/40 transition-all"
                         >
                           <Pencil className="w-3.5 h-3.5" />
@@ -671,17 +804,26 @@ export default function StockPage({ onViewAction }: StockPageProps) {
             );
           })}
         </div>
+        {hasMoreItems && (
+          <button
+            onClick={() => setVisibleCount((v) => v + STOCK_PAGE_SIZE)}
+            className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold text-gray-400 bg-surface border border-white/5 hover:border-white/10 hover:text-gray-200 transition-all"
+          >
+            Charger plus
+          </button>
+        )}
+        </>
       )}
 
       {sellingItem && (
-        <Modal onClose={() => setSellingItem(null)} size="md">
+        <Modal onClose={() => { setSellingItem(null); setSellError(null); }} size="md">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="text-lg font-black">Marquer comme vendu</h2>
               <p className="text-xs text-gray-500 mt-1">{sellingItem.title}</p>
             </div>
             <button
-              onClick={() => setSellingItem(null)}
+              onClick={() => { setSellingItem(null); setSellError(null); }}
               aria-label="Fermer"
               className="p-1.5 rounded-lg hover:bg-white/5"
             >
@@ -690,6 +832,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           </div>
 
           <div className="space-y-4">
+            {sellError && <ErrorBanner message={sellError} />}
             <div>
               <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">
                 Prix de vente
@@ -716,9 +859,10 @@ export default function StockPage({ onViewAction }: StockPageProps) {
 
             <button
               onClick={markAsSold}
-              className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
+              disabled={sellSaving}
+              className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all disabled:opacity-50"
             >
-              Confirmer la vente
+              {sellSaving ? 'Enregistrement...' : 'Confirmer la vente'}
             </button>
           </div>
         </Modal>
@@ -747,6 +891,14 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                 }
               : undefined
           }
+          {...(publishState.kind === 'edit_listing'
+            ? {
+                stepOrder: EDIT_STEP_ORDER,
+                stepLabels: buildEditStepLabels(publishState.changedFields ?? []),
+                title: 'Mise à jour Vinted en cours',
+                errorTitle: 'Échec de la mise à jour',
+              }
+            : {})}
         />
       )}
 

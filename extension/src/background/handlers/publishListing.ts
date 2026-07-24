@@ -11,6 +11,21 @@ import type { ContentCommand, PublishListingPayload, PublishStep, RunActionOutco
 import { errorMessage } from "../../lib/errorMessage";
 
 const VINTED_NEW_LISTING_URL = "https://www.vinted.fr/items/new";
+// NON MESURE (2026-07-23, revue de coherence des timeouts) -- contrairement
+// a editListing.ts::GLOBAL_TIMEOUT_MS (120000ms, derive d'une somme reelle
+// de phases mesurees en direct), cette valeur n'a jamais ete confirmee par
+// un test live : publish_listing n'a jamais ete execute de bout en bout en
+// conditions reelles (voir taches "Live test part A/B" du suivi de projet).
+// Documentee plutot qu'harmonisee arbitrairement a 120000ms : ce pipeline
+// est structurellement plus simple (une seule phase remplissage+soumission,
+// contre remplissage+navigation+VERIFICATION SEPAREE pour l'edition), donc
+// rien ne prouve qu'il ait besoin du meme plafond -- copier la valeur
+// d'edit_listing serait devine, pas mesure, exactement ce que la
+// methodologie de ce projet interdit. Le plafond partage cote app
+// (ACTION_TIMEOUT_MS, src/hooks/useActionEngine.ts = 120000ms) reste
+// suffisamment genereux pour couvrir cette valeur sans conflit (90000 <
+// 120000). A remesurer et documenter avec la meme rigueur qu'editListing.ts
+// des le premier test live reel de ce pipeline.
 const GLOBAL_TIMEOUT_MS = 90000;
 
 async function sendCommandWhenReady(tabId: number, payload: PublishListingPayload): Promise<void> {

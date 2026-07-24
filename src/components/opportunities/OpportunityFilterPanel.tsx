@@ -100,7 +100,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
                   : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
               }`}
             >
-              {VERDICT_BADGES[verdict].emoji} {VERDICT_BADGES[verdict].label}
+              {VERDICT_BADGES[verdict].label}
             </button>
           ))}
         </div>

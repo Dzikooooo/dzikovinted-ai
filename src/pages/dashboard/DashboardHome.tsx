@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers, Lightbulb } from 'lucide-react';
+import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers, Lightbulb, AlertTriangle, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
@@ -10,8 +10,11 @@ import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 import { isActivelyInStock } from '../../lib/listingStatus';
 import { startOfLocalDayISO, toLocalDateString } from '../../lib/date';
 import { formatRelativeSync } from '../../lib/formatRelativeTime';
+import { computeDominantSignal, type DominantSignalTier } from '../../lib/dominantSignal';
+import { formatEUR } from '../../lib/currency';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { OneScoreBar } from '../../components/ui/OneScoreBar';
 
 // Au-dela de ce seuil, une synchro Vinted est consideree trop ancienne pour
 // que le Copilote affiche ses chiffres comme fiables -- meme convention que
@@ -26,6 +29,14 @@ function profitOf(l: Listing) {
   return Number(l.sold_price || 0) - Number(l.purchase_price || 0) - Number(l.fees || 0);
 }
 
+const DOMINANT_SIGNAL_STYLES: Record<DominantSignalTier, { bg: string; border: string; text: string; icon: typeof AlertTriangle; label: string }> = {
+  critical_alert: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', icon: AlertTriangle, label: 'Alerte critique' },
+  warning_alert: { bg: 'bg-amber-400/10', border: 'border-amber-400/30', text: 'text-amber-400', icon: AlertTriangle, label: 'À surveiller' },
+  opportunity: { bg: 'bg-blue-400/10', border: 'border-blue-400/30', text: 'text-blue-400', icon: Search, label: 'Opportunité' },
+  recommendation: { bg: 'bg-neon-500/10', border: 'border-neon-500/30', text: 'text-neon-500', icon: Lightbulb, label: 'Recommandation' },
+  stat: { bg: 'bg-neon-500/10', border: 'border-neon-500/30', text: 'text-neon-500', icon: TrendingUp, label: 'Aperçu du mois' },
+};
+
 export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
   const { accounts, selectedAccountId, selectedAccount } = useVintedAccountFilter();
@@ -35,6 +46,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const [opportunityStats, setOpportunityStats] = useState({ today: 0, avgRoi: 0, avgProfit: 0 });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -171,14 +183,29 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     : relevantAccounts.reduce<string>((oldest, a) => (a.last_synced_at! < oldest ? a.last_synced_at! : oldest), relevantAccounts[0].last_synced_at!);
   const syncStaleHours = oldestSync ? (Date.now() - new Date(oldestSync).getTime()) / 3_600_000 : null;
   const isSyncStale = relevantAccounts.length > 0 && (oldestSync === null || syncStaleHours! > STALE_SYNC_THRESHOLD_HOURS);
-  const hasNarrativeContent = !!insights && (insights.narratives.length > 0 || insights.priorities.length > 0);
+  const hasNarrativeContent = !!insights && insights.narratives.length > 0;
   const showCopilote = hasNarrativeContent || (relevantAccounts.length > 0 && isSyncStale);
+
+  // Information dominante de l'ecran (decision produit validee le
+  // 2026-07-23) : une seule chaine de conditions deterministe, voir
+  // src/lib/dominantSignal.ts pour l'ordre exact et sa justification.
+  // Remplace l'ancienne liste "Priorites du jour" (score continu).
+  const dominantSignal = useMemo(
+    () =>
+      computeDominantSignal({
+        alerts: insights?.alerts ?? [],
+        recommendations: insights?.recommendations ?? [],
+        newOpportunitiesLast24h: newOpportunities,
+        profitMonth: metrics.profitMonth,
+      }),
+    [insights, newOpportunities, metrics.profitMonth]
+  );
 
   const todayCards = [
     {
       icon: ShoppingBag,
       label: metrics.soldTodayCount > 0 ? `${metrics.soldTodayCount} vente${metrics.soldTodayCount > 1 ? 's' : ''} aujourd'hui` : 'Aucune vente aujourd\'hui',
-      detail: metrics.profitToday > 0 ? `+${metrics.profitToday.toFixed(0)} EUR de benefice` : 'Reviens plus tard',
+      detail: metrics.profitToday > 0 ? `+${formatEUR(metrics.profitToday)} de benefice` : 'Reviens plus tard',
       page: 'stock' as DashboardPage,
       color: 'text-neon-500',
       bg: 'bg-neon-500/10',
@@ -280,6 +307,29 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         </div>
       )}
 
+      {/* Information dominante -- une seule chose merite l'attention immediate,
+          voir src/lib/dominantSignal.ts pour la regle deterministe. */}
+      {!loading && (
+        <button
+          onClick={() => onNavigate(dominantSignal.actionPage)}
+          className={`w-full text-left mb-6 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} border ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].border} rounded-2xl p-5 flex items-center gap-4 hover:-translate-y-0.5 transition-all duration-200 group`}
+        >
+          <div className={`w-11 h-11 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+            {(() => {
+              const Icon = DOMINANT_SIGNAL_STYLES[dominantSignal.tier].icon;
+              return <Icon className={`w-5 h-5 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text}`} />;
+            })()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`text-[10px] font-mono uppercase tracking-wider ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} mb-1`}>
+              {DOMINANT_SIGNAL_STYLES[dominantSignal.tier].label}
+            </p>
+            <p className="text-base font-bold text-gray-100">{dominantSignal.message}</p>
+          </div>
+          <ArrowRight className={`w-4 h-4 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`} />
+        </button>
+      )}
+
       {/* Copilote */}
       {showCopilote && (
         <div className="mb-8 bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-neon-500/20 rounded-2xl p-5">
@@ -309,107 +359,103 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           )}
 
           {!!insights?.narratives.length && (
-            <div className="space-y-1.5 mb-4">
+            <div className="space-y-1.5">
               {insights.narratives.map((n, i) => (
                 <p key={i} className="text-sm text-gray-300">{n.message}</p>
               ))}
             </div>
           )}
-
-          {!!insights?.priorities.length && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-2">Priorités du jour</p>
-              <div className="space-y-1.5">
-                {insights.priorities.map((p, i) => (
-                  <button
-                    key={i}
-                    onClick={() => onNavigate('stock')}
-                    className="w-full flex items-center gap-2.5 text-left text-xs text-gray-400 hover:text-gray-200 transition-colors py-1"
-                  >
-                    <span className="w-5 h-5 rounded-full bg-neon-500/10 text-neon-500 font-bold flex items-center justify-center flex-shrink-0 text-[10px]">
-                      {i + 1}
-                    </span>
-                    {p.message}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Aujourd'hui */}
-      <div className="mb-8">
-        <h2 className="font-bold text-sm text-gray-300 mb-4">Aujourd'hui</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {todayCards.map(({ icon: Icon, label, detail, page, color, bg }) => (
-            <button
-              key={label}
-              onClick={() => onNavigate(page)}
-              className="bg-surface border border-white/5 rounded-2xl p-5 text-left hover:border-white/10 hover:-translate-y-0.5 transition-all duration-200 group"
-            >
-              <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-                <Icon className={`w-4 h-4 ${color}`} />
-              </div>
-              <h3 className="font-semibold text-sm mb-1">{loading ? '...' : label}</h3>
-              <p className="text-xs text-gray-500">{detail}</p>
-              <ArrowRight className={`w-4 h-4 ${color} mt-3 opacity-0 group-hover:opacity-100 transition-opacity`} />
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Detail replie par defaut -- l'information dominante ci-dessus porte
+          deja ce qui merite l'attention immediate ; le reste reste
+          accessible sur demande plutot que d'imposer 11 chiffres en meme
+          temps (audit Brand Book, 2026-07-23). */}
+      <button
+        onClick={() => setShowDetail((v) => !v)}
+        className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors mb-6"
+      >
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showDetail ? 'rotate-180' : ''}`} />
+        {showDetail ? 'Masquer le détail' : 'Voir le détail'}
+      </button>
 
-      {/* Vue financiere */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-sm text-gray-300">Ce mois-ci</h2>
-          <button onClick={() => onNavigate('stats')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-            Voir le detail <ArrowRight className="w-3 h-3" />
-          </button>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { icon: TrendingUp, label: "Chiffre d'affaires", value: loading ? '-' : `${metrics.revenueMonth.toFixed(0)} EUR`, color: 'text-gray-100', bg: 'bg-white/5' },
-            { icon: Sparkles, label: 'Benefice', value: loading ? '-' : `${metrics.profitMonth.toFixed(0)} EUR`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
-            { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
-            { icon: Package, label: 'Valeur du stock', value: loading ? '-' : `${metrics.stockValue.toFixed(0)} EUR`, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-          ].map(({ icon: Icon, label, value, color, bg }) => (
-            <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
-              <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-                <Icon className={`w-4 h-4 ${color}`} />
-              </div>
-              <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
-              <p className="text-[11px] text-gray-500">{label}</p>
+      {showDetail && (
+        <div className="space-y-8 mb-8">
+          {/* Aujourd'hui */}
+          <div>
+            <h2 className="font-bold text-sm text-gray-300 mb-4">Aujourd'hui</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {todayCards.map(({ icon: Icon, label, detail, page, color, bg }) => (
+                <button
+                  key={label}
+                  onClick={() => onNavigate(page)}
+                  className="bg-surface border border-white/5 rounded-2xl p-5 text-left hover:border-white/10 hover:-translate-y-0.5 transition-all duration-200 group"
+                >
+                  <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                    <Icon className={`w-4 h-4 ${color}`} />
+                  </div>
+                  <h3 className="font-semibold text-sm mb-1">{loading ? '...' : label}</h3>
+                  <p className="text-xs text-gray-500">{detail}</p>
+                  <ArrowRight className={`w-4 h-4 ${color} mt-3 opacity-0 group-hover:opacity-100 transition-opacity`} />
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      {/* Marché */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-sm text-gray-300">Marché</h2>
-          <button onClick={() => onNavigate('opportunities')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-            Voir les opportunités <ArrowRight className="w-3 h-3" />
-          </button>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { icon: Search, label: 'Opportunités aujourd\'hui', value: loading ? '-' : opportunityStats.today.toString(), color: 'text-blue-400', bg: 'bg-blue-400/10' },
-            { icon: TrendingUp, label: 'ROI moyen (marché)', value: loading ? '-' : `${opportunityStats.avgRoi} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
-            { icon: Sparkles, label: 'Bénéfice estimé (marché)', value: loading ? '-' : `${opportunityStats.avgProfit} EUR`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
-            { icon: Package, label: 'Nouvelles annonces (stock)', value: loading ? '-' : metrics.newListingsToday.toString(), color: 'text-gray-100', bg: 'bg-white/5' },
-          ].map(({ icon: Icon, label, value, color, bg }) => (
-            <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
-              <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-                <Icon className={`w-4 h-4 ${color}`} />
-              </div>
-              <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
-              <p className="text-[11px] text-gray-500">{label}</p>
+          {/* Vue financiere */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-sm text-gray-300">Ce mois-ci</h2>
+              <button onClick={() => onNavigate('stats')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                Voir le detail <ArrowRight className="w-3 h-3" />
+              </button>
             </div>
-          ))}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { icon: TrendingUp, label: "Chiffre d'affaires", value: loading ? '-' : formatEUR(metrics.revenueMonth), color: 'text-gray-100', bg: 'bg-white/5' },
+                { icon: Sparkles, label: 'Benefice', value: loading ? '-' : formatEUR(metrics.profitMonth), color: 'text-neon-500', bg: 'bg-neon-500/10' },
+                { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
+                { icon: Package, label: 'Valeur du stock', value: loading ? '-' : formatEUR(metrics.stockValue), color: 'text-blue-400', bg: 'bg-blue-400/10' },
+              ].map(({ icon: Icon, label, value, color, bg }) => (
+                <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
+                  <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                    <Icon className={`w-4 h-4 ${color}`} />
+                  </div>
+                  <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
+                  <p className="text-[11px] text-gray-500">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Marché */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-sm text-gray-300">Marché</h2>
+              <button onClick={() => onNavigate('opportunities')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                Voir les opportunités <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { icon: Search, label: 'Opportunités aujourd\'hui', value: loading ? '-' : opportunityStats.today.toString(), color: 'text-blue-400', bg: 'bg-blue-400/10' },
+                { icon: TrendingUp, label: 'ROI moyen (marché)', value: loading ? '-' : `${opportunityStats.avgRoi} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
+                { icon: Sparkles, label: 'Bénéfice estimé (marché)', value: loading ? '-' : formatEUR(opportunityStats.avgProfit), color: 'text-neon-500', bg: 'bg-neon-500/10' },
+                { icon: Package, label: 'Nouvelles annonces (stock)', value: loading ? '-' : metrics.newListingsToday.toString(), color: 'text-gray-100', bg: 'bg-white/5' },
+              ].map(({ icon: Icon, label, value, color, bg }) => (
+                <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
+                  <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                    <Icon className={`w-4 h-4 ${color}`} />
+                  </div>
+                  <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
+                  <p className="text-[11px] text-gray-500">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Compte Vinted */}
       <button
@@ -482,25 +528,34 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           </div>
         ) : (
           <div className="space-y-2">
-            {metrics.recentListings.map((l) => (
-              <div key={l.id} className="bg-surface border border-white/5 rounded-xl px-4 py-3 flex items-center gap-4 hover:border-white/10 transition-colors group">
-                {l.image_urls?.[0] ? (
-                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
-                    <img src={l.image_urls[0]} alt="" className="w-full h-full object-cover" />
+            {metrics.recentListings.map((l) => {
+              const listingScore = insights?.scores.get(l.id)?.score;
+              return (
+                <div key={l.id} className="bg-surface border border-white/5 rounded-xl px-4 py-3 flex items-center gap-4 hover:border-white/10 transition-colors group">
+                  {l.image_urls?.[0] ? (
+                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+                      <img src={l.image_urls[0]} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 bg-neon-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-4 h-4 text-neon-500/70" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate group-hover:text-gray-100 transition-colors">{l.title}</p>
+                    <p className="text-xs text-gray-500">{l.brand} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</p>
                   </div>
-                ) : (
-                  <div className="w-10 h-10 bg-neon-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-4 h-4 text-neon-500/70" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate group-hover:text-gray-100 transition-colors">{l.title}</p>
-                  <p className="text-xs text-gray-500">{l.brand} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</p>
+                  {l.is_favorite && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />}
+                  <p className="text-sm font-bold text-neon-500 flex-shrink-0">{formatEUR(l.price)}</p>
+                  {/* Indicateur secondaire de comparaison, pas l'element dominant de la
+                      ligne (decision produit validee le 2026-07-23) -- titre et prix
+                      restent la lecture principale, le score n'aide qu'a comparer. */}
+                  {listingScore !== undefined && (
+                    <OneScoreBar score={listingScore} size="sm" className="hidden sm:block w-20 flex-shrink-0" />
+                  )}
                 </div>
-                {l.is_favorite && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />}
-                <p className="text-sm font-bold text-neon-500 flex-shrink-0">{l.price} EUR</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

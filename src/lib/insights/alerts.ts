@@ -2,6 +2,7 @@ import type { Listing } from '../types';
 import type { Alert, EngineContext } from './types';
 import { AGING_STOCK_DAYS, LOW_MARGIN_THRESHOLD_EUR, REPUBLISH_AFTER_DAYS } from './constants';
 import { daysSince, normalizeKey } from './math';
+import { formatEUR } from '../currency';
 
 // Meme principe de registre que recommendations.ts : chaque regle est une
 // fonction pure independante, ajouter une regle n'affecte jamais les autres.
@@ -72,8 +73,8 @@ function ruleIncoherentPrice(listing: Listing, ctx: EngineContext): Alert | null
     vintedAccountId: listing.vinted_account_id,
     message:
       deviation > 0
-        ? `"${listing.title}" est affiché bien au-dessus du prix de vente moyen constaté sur cette catégorie (${Math.round(stats.avgSoldPrice)} €).`
-        : `"${listing.title}" est affiché bien en dessous du prix de vente moyen constaté sur cette catégorie (${Math.round(stats.avgSoldPrice)} €).`,
+        ? `"${listing.title}" est affiché bien au-dessus du prix de vente moyen constaté sur cette catégorie (${formatEUR(stats.avgSoldPrice)}).`
+        : `"${listing.title}" est affiché bien en dessous du prix de vente moyen constaté sur cette catégorie (${formatEUR(stats.avgSoldPrice)}).`,
   };
 }
 
@@ -104,7 +105,11 @@ function ruleInsufficientMargin(listing: Listing): Alert | null {
     scope: 'listing',
     listingId: listing.id,
     vintedAccountId: listing.vinted_account_id,
-    message: `"${listing.title}" a une marge ${listing.status === 'vendu' ? 'réalisée' : 'potentielle'} de seulement ${margin.toFixed(2)} €.`,
+    // formatEUR arrondit a l'euro pres (convention unique, 2026-07-24) --
+    // une marge inferieure a 0.50 EUR s'affiche donc "0 €", ce qui reste
+    // une alerte honnete (la marge reelle est bien quasi nulle) meme si la
+    // decimale exacte n'est plus visible dans ce message.
+    message: `"${listing.title}" a une marge ${listing.status === 'vendu' ? 'réalisée' : 'potentielle'} de seulement ${formatEUR(margin)}.`,
   };
 }
 

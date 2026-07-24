@@ -110,7 +110,7 @@ export function ProductPreview() {
                     ["1", "Annonces générées"],
                     ["FREE", "Plan actuel"],
                     ["0", "Favoris"],
-                    ["35 EUR", "Revenus estimés"],
+                    ["35 €", "Revenus estimés"],
                   ].map(([value, label]) => (
                     <div
                       key={label}
@@ -143,7 +143,7 @@ export function ProductPreview() {
                     <p className="font-bold">Polo Ralph Lauren homme bleu marine taille L</p>
                     <p className="text-gray-500 text-sm mt-1">Ralph Lauren · 25 juin</p>
                   </div>
-                  <p className="text-neon-500 font-black">35 EUR</p>
+                  <p className="text-neon-500 font-black">35 €</p>
                   </div> {/* dernière carte */}
 
     </div> {/* contenu principal */}

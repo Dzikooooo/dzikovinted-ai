@@ -9,6 +9,7 @@ interface ScanProgressModalProps {
   done: boolean;
   error?: string | null;
   opportunitiesFound?: number | null;
+  failedSearches?: number | null;
   onClose: () => void;
   onViewAction?: () => void;
 }
@@ -46,7 +47,7 @@ function buildRows(currentStep: ScanStep | null, done: boolean, error: string | 
 // Edge Function scan-market ecrit directement dans action_log_entries
 // pendant qu'elle tourne (voir handlers/scanMarket.ts), ce composant se
 // contente d'afficher ce qui arrive reellement - aucun timing fabrique.
-export default function ScanProgressModal({ actionId, done, error, opportunitiesFound, onClose, onViewAction }: ScanProgressModalProps) {
+export default function ScanProgressModal({ actionId, done, error, opportunitiesFound, failedSearches, onClose, onViewAction }: ScanProgressModalProps) {
   const { entries } = useActionLogEntries(actionId);
   const currentStep = latestScanStep(entries);
   const isTerminal = done || !!error;
@@ -68,11 +69,18 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
       )}
 
       {done && !error && (
-        <p className="mt-4 text-sm text-neon-500 font-semibold">
-          {opportunitiesFound === 0
-            ? 'Terminé — aucune opportunité trouvée cette fois.'
-            : `Terminé — ${opportunitiesFound} opportunité${opportunitiesFound === 1 ? '' : 's'} trouvée${opportunitiesFound === 1 ? '' : 's'}.`}
-        </p>
+        <>
+          <p className="mt-4 text-sm text-neon-500 font-semibold">
+            {opportunitiesFound === 0
+              ? 'Terminé — aucune opportunité trouvée cette fois.'
+              : `Terminé — ${opportunitiesFound} opportunité${opportunitiesFound === 1 ? '' : 's'} trouvée${opportunitiesFound === 1 ? '' : 's'}.`}
+          </p>
+          {!!failedSearches && failedSearches > 0 && (
+            <p className="mt-1.5 text-xs text-amber-400">
+              {failedSearches} recherche{failedSearches > 1 ? 's' : ''} de ta watchlist n'{failedSearches > 1 ? 'ont' : 'a'} pas pu être vérifiée{failedSearches > 1 ? 's' : ''} cette fois (Vinted indisponible) — elle{failedSearches > 1 ? 's' : ''} sera{failedSearches > 1 ? 'nt' : ''} retentée{failedSearches > 1 ? 's' : ''} au prochain scan.
+            </p>
+          )}
+        </>
       )}
 
       {isTerminal && onViewAction && (

@@ -38,7 +38,7 @@ describe('publishListingDefinition', () => {
 
   it('buildPreview summarizes title, price, and details from the payload', () => {
     const preview = publishListingDefinition.buildPreview(request, makeActionContext());
-    expect(preview.summary).toBe('Publier « Pull Zara » — 15.00 €');
+    expect(preview.summary).toBe('Publier « Pull Zara » — 15 €');
     expect(preview.details).toEqual({
       title: 'Pull Zara',
       price: 15,

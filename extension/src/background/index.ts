@@ -37,6 +37,14 @@ function reportActionProgress(step: PublishStep): void {
   activeProgressPort?.postMessage({ type: "progress", step } satisfies ActionProgressPortMessage);
 }
 
+// Maintien du service worker MV3 actif pendant une action longue (voir
+// commentaire detaille dans runAction.ts) -- reutilise le MEME port deja
+// ouvert par l'app, distinct de reportActionProgress() pour ne jamais
+// declencher de journalisation cote app (voir ActionProgressPortMessage).
+function sendKeepaliveHeartbeat(): void {
+  activeProgressPort?.postMessage({ type: "heartbeat" } satisfies ActionProgressPortMessage);
+}
+
 // Messages venant de l'app web (externally_connectable, voir manifest.config.ts).
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (!isExternalMessage(message)) {
@@ -70,7 +78,7 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
       vintedAccountId: message.request.vintedAccountId,
       listingId: message.request.listingId,
     });
-    runAction(message.request, reportActionProgress)
+    runAction(message.request, reportActionProgress, sendKeepaliveHeartbeat)
       .then((outcome) => sendResponse({ ok: true, outcome } satisfies RunActionResponse))
       .catch((err: unknown) => {
         console.error("[ResellOS][action]", err);

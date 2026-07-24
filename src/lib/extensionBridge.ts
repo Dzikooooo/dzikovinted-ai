@@ -3,6 +3,7 @@
 // separee ici : on relaie la session Supabase deja ouverte dans l'app web.
 
 import type { ActionOutcome, ActionRequest } from './actions/types';
+import { translateExtensionError } from './errorMessages';
 
 interface ExtensionPort {
   onMessage: { addListener: (callback: (message: unknown) => void) => void };
@@ -130,9 +131,9 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
         { type: "PAIR", access_token: accessToken, refresh_token: refreshToken },
         (response) => {
           if (runtime.lastError) {
-            const error = runtime.lastError.message ?? "Échec de la connexion à l'extension";
-            console.error('[ResellOS][pairing] pairExtension() chrome.runtime.lastError :', error);
-            resolve({ ok: false, error });
+            const raw = runtime.lastError.message ?? "Échec de la connexion à l'extension";
+            console.error('[ResellOS][pairing] pairExtension() chrome.runtime.lastError :', raw);
+            resolve({ ok: false, error: translateExtensionError(raw) });
             return;
           }
           const result = (response as PairResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" };
@@ -141,9 +142,9 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
         }
       );
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      console.error('[ResellOS][pairing] pairExtension() exception :', error);
-      resolve({ ok: false, error });
+      const raw = err instanceof Error ? err.message : String(err);
+      console.error('[ResellOS][pairing] pairExtension() exception :', raw);
+      resolve({ ok: false, error: translateExtensionError(raw) });
     }
   });
 }
@@ -152,7 +153,23 @@ export interface RunActionResult {
   ok: boolean;
   outcome?: ActionOutcome;
   error?: string;
+  // Bug reel demontre le 2026-07-17 : un delai local depasse ICI (aucune
+  // reponse RUN_ACTION recue a temps) n'est PAS une preuve d'echec -- le
+  // pipeline cote extension continue de tourner independamment (son propre
+  // GLOBAL_TIMEOUT_MS, plus genereux) et peut reussir reellement APRES que
+  // ce cote-ci ait abandonne. Sans cette distinction, StockPage.tsx
+  // ecrivait vinted_sync_status=sync_failed sur un simple "on ne sait pas
+  // encore", ecrasant potentiellement un succes reel qui arrive plus tard
+  // sans jamais pouvoir etre observe. Uniquement true dans ce cas precis --
+  // jamais pour une erreur reellement rapportee par l'extension.
+  timedOut?: boolean;
 }
+
+// Chaine EXACTE utilisee au timeout local ci-dessous -- exportee pour que
+// les appelants (StockPage.tsx) puissent distinguer honnetement "on n'a
+// pas eu de reponse a temps" d'une erreur reellement rapportee, sans dupliquer
+// la chaine (source unique de verite).
+export const RUN_ACTION_TIMEOUT_ERROR = "Délai dépassé (aucune réponse de l'extension)";
 
 export interface RunActionOptions {
   timeoutMs?: number;
@@ -202,7 +219,7 @@ export async function runAction(
         settled = true;
         console.warn(`[ResellOS][action][${historyId}] runAction() : delai depasse (${timeoutMs}ms) sans reponse de l'extension`);
         port?.disconnect();
-        resolve({ ok: false, error: "Délai dépassé" });
+        resolve({ ok: false, error: RUN_ACTION_TIMEOUT_ERROR, timedOut: true });
       }
     }, timeoutMs);
 
@@ -231,7 +248,7 @@ export async function runAction(
           clearTimeout(timer);
           port?.disconnect();
           if (runtime.lastError) {
-            resolve({ ok: false, error: runtime.lastError.message ?? "Échec de la connexion à l'extension" });
+            resolve({ ok: false, error: translateExtensionError(runtime.lastError.message ?? "Échec de la connexion à l'extension") });
             return;
           }
           resolve((response as RunActionResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" });
@@ -242,7 +259,7 @@ export async function runAction(
         settled = true;
         clearTimeout(timer);
         port?.disconnect();
-        resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        resolve({ ok: false, error: translateExtensionError(err instanceof Error ? err.message : String(err)) });
       }
     }
   });

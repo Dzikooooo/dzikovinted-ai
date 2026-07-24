@@ -1,4 +1,4 @@
-import { Camera, TrendingUp, Shield, Star, Users, Sparkles } from 'lucide-react';
+import { Camera, TrendingUp, Shield, Star, Search, Sparkles } from 'lucide-react';
 
 const features = [
   {
@@ -22,9 +22,9 @@ const features = [
     desc: 'Suivez votre chiffre d’affaires, vos bénéfices, vos marges et vos performances.'
   },
   {
-    icon: Users,
-    title: 'Multi-marketplace (Bientôt)',
-    desc: 'Publiez vos annonces sur plusieurs marketplaces depuis une seule interface.'
+    icon: Search,
+    title: 'Opportunités Vinted',
+    desc: 'Détection automatique des meilleures affaires du marché, avec un score expliqué pour chaque annonce.'
   },
   {
     icon: Sparkles,

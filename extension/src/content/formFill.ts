@@ -41,7 +41,18 @@ export class PublishError extends Error {
 // rien ne le signale ailleurs. Logue donc explicitement avant/apres
 // chaque dispatch, tag identique quel que soit l'appelant (publish ou
 // edit) puisque c'est la meme fonction partagee.
-export function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+// onEvent (2026-07-22, demande explicite -- audit branche titre) : callback
+// optionnel invoque apres CHAQUE dispatch (succes ou exception), pour que
+// l'appelant puisse journaliser dans le canal PERSISTE (chrome.storage.local)
+// avec un nom d'etape specifique au champ (ex. TITLE_INPUT_EVENT) sans
+// dupliquer les dispatchEvent() ci-dessous. Aucun callback fourni = aucun
+// changement de comportement (typeIntoPriceField/le flux prix ne passent
+// jamais par cette fonction, fillTextFields ne fournit pas ce parametre).
+export function setNativeValue(
+  el: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+  onEvent?: (eventName: "input" | "change" | "blur", detail: { ok: boolean; domValueAfter: string; error?: string }) => void
+): void {
   const fieldLabel = el.getAttribute("data-testid") ?? el.tagName;
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
@@ -51,23 +62,71 @@ export function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value
   try {
     el.dispatchEvent(new Event("input", { bubbles: true }));
     console.log(`[ResellOS][STEP] INPUT_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+    onEvent?.("input", { ok: true, domValueAfter: el.value });
   } catch (err) {
     console.error(`[ResellOS][STEP] INPUT_EVENT leve une exception`, { field: fieldLabel, err });
+    onEvent?.("input", { ok: false, domValueAfter: el.value, error: String(err) });
   }
 
   try {
     el.dispatchEvent(new Event("change", { bubbles: true }));
     console.log(`[ResellOS][STEP] CHANGE_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+    onEvent?.("change", { ok: true, domValueAfter: el.value });
   } catch (err) {
     console.error(`[ResellOS][STEP] CHANGE_EVENT leve une exception`, { field: fieldLabel, err });
+    onEvent?.("change", { ok: false, domValueAfter: el.value, error: String(err) });
   }
 
   try {
     el.dispatchEvent(new Event("blur", { bubbles: true }));
     console.log(`[ResellOS][STEP] BLUR_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+    onEvent?.("blur", { ok: true, domValueAfter: el.value });
   } catch (err) {
     console.error(`[ResellOS][STEP] BLUR_EVENT leve une exception`, { field: fieldLabel, err });
+    onEvent?.("blur", { ok: false, domValueAfter: el.value, error: String(err) });
   }
+}
+
+// Ecriture par frappe caractere par caractere, reservee au champ PRIX de
+// la page d'edition (/items/{id}/edit) -- BUG REEL demontre en test manuel
+// direct le 2026-07-16 : setNativeValue() (ecriture "98" en un seul bloc,
+// puis un seul jeu d'evenements input/change/blur) VIDE silencieusement ce
+// champ precis (passe de "99,00 €" a "") au lieu de le reformater --
+// reproduit deux fois depuis un etat frais. Le composant de prix de cette
+// page semble exiger un flux de frappes incrementales (comme un vrai
+// utilisateur) plutot qu'un remplacement en bloc pour recalculer son
+// masque de devise correctement. Verifie en test manuel direct : la meme
+// sequence (selection totale, suppression, puis un evenement input par
+// caractere ajoute) produit fidelement "98,00 €", stable apres blur.
+// N'affecte QUE ce champ -- titre/description/autres champs continuent
+// d'utiliser setNativeValue (jamais reproduit comme fautif ailleurs).
+export async function typeIntoPriceField(el: HTMLInputElement, value: string): Promise<void> {
+  const fieldLabel = el.getAttribute("data-testid") ?? el.tagName;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
+  el.focus();
+  el.setSelectionRange(0, el.value.length);
+  setter?.call(el, "");
+  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  console.log(`[ResellOS][STEP] FIELD_CLEARED (frappe simulee)`, { field: fieldLabel, domValueAfter: el.value });
+
+  let current = "";
+  for (const char of value) {
+    current += char;
+    setter?.call(el, current);
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, data: char, inputType: "insertText" }));
+    // Delai court entre chaque caractere : laisse le composant Vinted
+    // (masque de devise controle) traiter chaque frappe individuellement
+    // plutot que de recevoir plusieurs evenements synchrones empiles avant
+    // tout re-render -- comportement observe necessaire en test manuel.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  console.log(`[ResellOS][STEP] FIELD_TYPED (frappe simulee)`, { field: fieldLabel, value, domValueAfter: el.value });
+
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+  console.log(`[ResellOS][STEP] CHANGE_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  el.dispatchEvent(new Event("blur", { bubbles: true }));
+  console.log(`[ResellOS][STEP] BLUR_EVENT`, { field: fieldLabel, domValueAfter: el.value });
 }
 
 export async function fillTextFields(fields: { title: string; description: string; price: number }): Promise<void> {

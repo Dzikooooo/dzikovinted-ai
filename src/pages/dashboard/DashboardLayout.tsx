@@ -69,6 +69,21 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
 
 export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const [activePage, setActivePage] = useState<DashboardPage>('home');
+  // Vrai uniquement pendant une analyse Generateur en cours ou un resultat
+  // genere pas encore sauvegarde (voir GeneratorPage.tsx) -- un credit est
+  // deja reserve cote serveur des le lancement de l'analyse ; quitter cet
+  // ecran sans avertissement le perdrait silencieusement, sans annonce
+  // creee ni trace nulle part (bug confirme le 2026-07-24, audit du
+  // parcours Generateur). navigateToPage() confirme avant de partir.
+  const [generatorBusy, setGeneratorBusy] = useState(false);
+  const confirmLeaveGenerator = () =>
+    !generatorBusy ||
+    window.confirm(
+      "Une génération est en cours ou n'a pas encore été sauvegardée. Si tu quittes maintenant, le crédit utilisé sera perdu. Continuer ?"
+    );
+  const navigateToPage = (page: DashboardPage) => {
+    if (page === 'generator' || confirmLeaveGenerator()) setActivePage(page);
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
   const [actionsInitialSelectedId, setActionsInitialSelectedId] = useState<string | undefined>(undefined);
@@ -136,15 +151,17 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
   const handleViewAction = (actionId: string) => {
     setActionsInitialSelectedId(actionId);
-    setActivePage('actions');
+    navigateToPage('actions');
   };
 
   const handleSignOut = async () => {
+    if (!confirmLeaveGenerator()) return;
     await signOut();
     onNavigate('landing');
   };
 
   const handleManageAccounts = () => {
+    if (!confirmLeaveGenerator()) return;
     setSettingsInitialTab('accounts');
     setActivePage('settings');
     setSidebarOpen(false);
@@ -162,7 +179,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-5 border-b border-white/5">
-        <button onClick={() => onNavigate('landing')} className="flex items-center gap-2">
+        <button onClick={() => { if (confirmLeaveGenerator()) onNavigate('landing'); }} className="flex items-center gap-2">
           <div className="w-8 h-8 bg-neon-500 rounded-lg flex items-center justify-center flex-shrink-0">
             <Zap className="w-5 h-5 text-black" />
           </div>
@@ -185,7 +202,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
             <button
               key={page}
               onClick={() => {
-                setActivePage(page);
+                navigateToPage(page);
                 setSidebarOpen(false);
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 group ${
@@ -302,10 +319,12 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
           {/* Page content */}
           <main className="flex-1 overflow-y-auto bg-dark-400">
             <Suspense fallback={<PageFallback />}>
-              {activePage === 'home' && <DashboardHome onNavigate={setActivePage} />}
-              {activePage === 'generator' && <GeneratorPage />}
+              {activePage === 'home' && <DashboardHome onNavigate={navigateToPage} />}
+              {activePage === 'generator' && (
+                <GeneratorPage onNavigate={navigateToPage} onBusyChange={setGeneratorBusy} />
+              )}
               {activePage === 'opportunities' && <Opportunities onViewAction={handleViewAction} />}
-              {activePage === 'watchlist' && <WatchlistPage />}
+              {activePage === 'watchlist' && <WatchlistPage onNavigate={navigateToPage} />}
               {activePage === 'stock' && <StockPage onViewAction={handleViewAction} />}
               {activePage === 'vinted-account' && <VintedAccountPage />}
               {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}

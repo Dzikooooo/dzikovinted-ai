@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { pingExtension, runAction as runActionViaExtension } from '../lib/extensionBridge';
 import { createActionEngine } from '../lib/actions/engine';
 import { ACTION_STEP_LOG_MESSAGES } from '../lib/actions/labels';
+import { SCAN_TIMEOUT_ERROR_MESSAGE } from '../lib/actions/handlers/scanMarket';
 import type {
   ActionCheckDeps,
   ActionContext,
@@ -25,8 +26,11 @@ export interface PrepareActionOptions {
 // Delai plus genereux que le defaut de extensionBridge.runAction() (8s) :
 // une action reelle (Phase 3.1+) peut ouvrir un onglet, remplir un
 // formulaire et importer des photos, largement plus long qu'un simple
-// aller-retour de message.
-const ACTION_TIMEOUT_MS = 90000;
+// aller-retour de message. Porte a 120000ms (2026-07-18), cense avec
+// GLOBAL_TIMEOUT_MS cote extension (editListing.ts) -- le pire cas cumule
+// des attentes de chargement de formulaire (chacune plafonnee a 30s sur
+// la base d'une mesure reelle) approchait deja l'ancien plafond de 90s.
+const ACTION_TIMEOUT_MS = 120000;
 
 export interface UseActionEngineResult {
   prepareAction: <TPayload>(
@@ -180,12 +184,34 @@ export function useActionEngine(): UseActionEngineResult {
       // fonctions pures, donc tout acces reseau/BDD est fait ici, avant
       // engine.prepare(). count:'exact', head:true evite de rapatrier des
       // lignes pour ne compter que leur nombre.
-      const { count: activeScanCount } = await supabase
-        .from('action_log')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('kind', 'scan_market')
-        .eq('status', 'pending_confirmation');
+      //
+      // Deux requetes plutot qu'une : un scan est "en cours" soit tant que
+      // sa ligne action_log n'a pas encore de statut terminal
+      // (pending_confirmation), soit quand le CLIENT a abandonne d'attendre
+      // apres 6 minutes (scanMarket.ts::TERMINAL_WAIT_TIMEOUT_MS) alors que
+      // le job GitHub Actions peut tres bien tourner encore - sans ce
+      // second cas, ce timeout ecrivait un statut 'error' qui levait le
+      // garde-fou anti-double-scan a tort, permettant un 2e scan concurrent
+      // (race confirmee, audit du parcours Scanner, 2026-07-24).
+      // SCAN_TIMEOUT_ERROR_MESSAGE n'est ecrit que par ce timeout precis ;
+      // des que le vrai statut terminal arrive (service_role, bypasse RLS),
+      // ce message est ecrase et cette requete ne le compte plus.
+      const [{ count: pendingScanCount }, { count: timedOutScanCount }] = await Promise.all([
+        supabase
+          .from('action_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('kind', 'scan_market')
+          .eq('status', 'pending_confirmation'),
+        supabase
+          .from('action_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('kind', 'scan_market')
+          .eq('status', 'error')
+          .eq('error_message', SCAN_TIMEOUT_ERROR_MESSAGE),
+      ]);
+      const activeScanCount = (pendingScanCount ?? 0) + (timedOutScanCount ?? 0);
 
       const ctx: ActionContext = {
         userId: user.id,

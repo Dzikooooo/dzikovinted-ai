@@ -62,12 +62,13 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
   const [result, setResult] = useState<'all' | 'success' | 'error'>('all');
   const [selectedActionId, setSelectedActionId] = useState<string | null>(initialSelectedActionId ?? null);
 
-  const { rows, loading, error } = useActionHistory({ search, period, kind, result });
+  const { rows, counts, hasMore, loading, loadingMore, error, loadMore } = useActionHistory({
+    search,
+    period,
+    kind,
+    result,
+  });
   const selectedRow = rows.find((r) => r.id === selectedActionId) ?? null;
-
-  const total = rows.length;
-  const successCount = rows.filter((r) => r.status === 'success').length;
-  const errorCount = rows.filter((r) => r.status === 'error').length;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -80,19 +81,19 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
 
       {error && <ErrorBanner message={error} className="mb-6" />}
 
-      {total > 0 && (
+      {counts.total > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-surface border border-white/5 rounded-2xl p-4">
             <p className="text-[10px] uppercase tracking-wider text-gray-500">Actions</p>
-            <p className="text-xl font-black">{total}</p>
+            <p className="text-xl font-black">{counts.total}</p>
           </div>
           <div className="bg-surface border border-white/5 rounded-2xl p-4">
             <p className="text-[10px] uppercase tracking-wider text-gray-500">Réussies</p>
-            <p className="text-xl font-black text-neon-500">{successCount}</p>
+            <p className="text-xl font-black text-neon-500">{counts.success}</p>
           </div>
           <div className="bg-surface border border-white/5 rounded-2xl p-4">
             <p className="text-[10px] uppercase tracking-wider text-gray-500">Erreurs</p>
-            <p className="text-xl font-black text-red-400">{errorCount}</p>
+            <p className="text-xl font-black text-red-400">{counts.error}</p>
           </div>
         </div>
       )}
@@ -163,16 +164,27 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
           description="Publie ou modifie une annonce pour voir l'historique ici."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {rows.map((row) => (
-            <ActionRow
-              key={row.id}
-              row={row}
-              showAccount={selectedAccountId === 'all'}
-              onClick={() => setSelectedActionId(row.id)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-3">
+            {rows.map((row) => (
+              <ActionRow
+                key={row.id}
+                row={row}
+                showAccount={selectedAccountId === 'all'}
+                onClick={() => setSelectedActionId(row.id)}
+              />
+            ))}
+          </div>
+          {hasMore && (
+            <button
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
+              className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold text-gray-400 bg-surface border border-white/5 hover:border-white/10 hover:text-gray-200 transition-all disabled:opacity-50"
+            >
+              {loadingMore ? 'Chargement...' : 'Charger plus'}
+            </button>
+          )}
+        </>
       )}
 
       {selectedRow && <ActionDetailPanel row={selectedRow} onClose={() => setSelectedActionId(null)} />}

@@ -1,0 +1,20 @@
+-- P0 #11 de l'audit pre-lancement (2026-07-10) : la policy
+-- "listing_images_public_read" (creee dans 20260713100000) accorde `select`
+-- sur storage.objects a `public` sans aucune restriction de ligne au-dela
+-- de bucket_id -- ce qui autorise n'importe qui a lister/enumerer
+-- integralement le contenu du bucket (`.storage.from(...).list(...)`),
+-- exactement le souci deja documente dans DATABASE.md ("supabase db
+-- advisors") et jamais corrige jusqu'ici.
+--
+-- Cette policy n'est pas necessaire a l'affichage reel des photos : le
+-- bucket `listing-images` est `public = true`, et `getPublicUrl()` (seule
+-- methode utilisee par src/lib/storage.ts) renvoie l'URL CDN publique
+-- (`/storage/v1/object/public/...`), qui contourne entierement les RLS de
+-- storage.objects pour un bucket public -- confirme par grep sur tout
+-- src/ et extension/ : aucun appel a `.list()` ni `.download()` sur ce
+-- bucket, uniquement `.upload()` et `.getPublicUrl()`.
+--
+-- Retirer cette policy ferme donc le trou d'enumeration sans rien casser :
+-- <img src>, la lecture cote extension (formulaire de publication Vinted)
+-- et le prefill restent tous alimentes par la meme URL publique directe.
+drop policy if exists "listing_images_public_read" on storage.objects;

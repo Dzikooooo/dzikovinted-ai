@@ -158,7 +158,12 @@ export async function recordListings(
     const todayLocal = toLocalDateString(now);
 
     const toInsert: Record<string, unknown>[] = [];
-    const toUpdate: { id: string; payload: Record<string, unknown> }[] = [];
+    // guardSyncStatus : true quand ce payload inclut price (donc draftPending
+    // etait faux AU MOMENT DE LA LECTURE, quelques lignes plus haut) -- voir
+    // la garde ajoutee dans la boucle d'ecriture ci-dessous, qui re-verifie
+    // cette meme condition AU MOMENT DE L'ECRITURE pour fermer la fenetre de
+    // course.
+    const toUpdate: { id: string; payload: Record<string, unknown>; guardSyncStatus: boolean }[] = [];
 
     for (const l of listings) {
       const existing = existingByItemId.get(l.vintedItemId);
@@ -225,7 +230,7 @@ export async function recordListings(
         }
       }
 
-      toUpdate.push({ id: existing.id, payload });
+      toUpdate.push({ id: existing.id, payload, guardSyncStatus: !draftPending });
     }
 
     // Utilise pour l'historique (listing_metric_snapshots) ci-dessous : il
@@ -250,7 +255,31 @@ export async function recordListings(
     if (toUpdate.length > 0) {
       await withRetry(async () => {
         const results = await Promise.all(
-          toUpdate.map(({ id, payload }) => client.from("listings").update(payload).eq("id", id))
+          toUpdate.map(({ id, payload, guardSyncStatus }) => {
+            let query = client.from("listings").update(payload).eq("id", id);
+            // Cause racine identifiee le 2026-07-23 (jamais reproduite en
+            // direct, confirmee par lecture du code) : draftPending est
+            // decide une seule fois, a la lecture de existingRows tout en
+            // haut de cette fonction -- si un edit_listing utilisateur passe
+            // cette meme ligne en sync_pending/sync_failed PENDANT que cette
+            // synchro passive est encore en vol (entre la lecture et cette
+            // ecriture, potentiellement apres plusieurs awaits/retries),
+            // price serait ecrase par une valeur Vinted obsolete malgre une
+            // modification locale non encore synchronisee. Re-verifie ici,
+            // au moment reel de l'ecriture, la meme condition plutot que de
+            // faire confiance a l'instantane de lecture -- ferme la fenetre
+            // de course de facon atomique (l'ecriture entiere de cette ligne
+            // est silencieusement ignoree si la condition n'est plus vraie,
+            // jamais une ecriture partielle). N'affecte que les lignes ou
+            // price est inclus (guardSyncStatus) ; les autres champs
+            // (vinted_status/favourites/views/synced_at) restent toujours en
+            // lecture seule depuis Vinted, sans rapport avec un brouillon
+            // local, donc jamais concernes par cette garde.
+            if (guardSyncStatus) {
+              query = query.not("vinted_sync_status", "in", "(sync_pending,sync_failed)");
+            }
+            return query;
+          })
         );
         const failed = results.find((r) => r.error);
         if (failed?.error) {
@@ -477,40 +506,41 @@ export async function recordSingleItemImport(
     image_urls: item.imageUrls,
     vinted_url: item.vintedUrl,
     synced_at: syncedAt,
+    // Reconciliation explicite (bug reel demontre le 2026-07-16) : ce
+    // bouton EST le mecanisme de reconciliation en lecture seule -- son
+    // seul but est de faire refleter a ResellOS l'etat REEL de Vinted, sur
+    // un clic delibere de l'utilisateur. Retirer vinted_sync_status="sync_failed"
+    // (banniere d'echec obsolete une fois les valeurs reelles relues et
+    // ecrites) fait partie de cette reconciliation.
+    vinted_sync_status: "sync_success" as const,
   };
 
   if (existing) {
-    // "Ne pas ecraser silencieusement le brouillon lors d'un nouvel import
-    // sans avertissement" (demande explicite 2026-07-15) -- bug reel
-    // constate : re-importer une annonce apres une modification locale non
-    // encore synchronisee (vinted_sync_status = sync_pending/sync_failed)
-    // remplacait le prix/titre/description modifies par les anciennes
-    // valeurs Vinted, sans que rien ne le signale. Si un brouillon local
-    // est en attente, seuls les champs jamais editables depuis ResellOS
-    // (vinted_url/synced_at) sont rafraichis -- le brouillon (titre/prix/
-    // description/marque/categorie/couleur/taille/matiere/etat/photos)
-    // est preserve. Le sku, une fois attribue, ne doit de toute facon
-    // jamais etre reecrit par un import (regle explicite : "une
-    // modification conserve le meme SKU").
-    const draftPending = existing.vinted_sync_status === "sync_pending" || existing.vinted_sync_status === "sync_failed";
-    const updatePayload = draftPending
-      ? { vinted_url: vintedFields.vinted_url, synced_at: vintedFields.synced_at }
-      : vintedFields;
-
-    if (draftPending) {
-      logger.warn("Import ignore les champs modifies : brouillon local non synchronise en attente", {
-        vintedItemId: item.vintedItemId,
-        vintedSyncStatus: existing.vinted_sync_status,
-      });
-    }
-
-    const { error: updateError } = await client.from("listings").update(updatePayload).eq("id", existing.id);
+    // ANCIEN comportement (introduit 2026-07-15, RETIRE le 2026-07-16) :
+    // ce bloc protegeait un "brouillon local en attente" (vinted_sync_status
+    // = sync_pending/sync_failed) en n'ecrivant QUE vinted_url/synced_at,
+    // preservant titre/prix/description existants. Bug reel demontre en
+    // audit direct de l'historique action_log : cette protection s'applique
+    // aussi bien a une VRAIE edition en attente qu'a un ECHEC d'edition deja
+    // abandonne par l'utilisateur (comme ici : plusieurs tentatives
+    // d'edition ont echoue, le prix local est simplement PERIME, pas un
+    // brouillon volontaire) -- dans ce second cas, la protection empechait
+    // silencieusement le SEUL mecanisme de reconciliation disponible de
+    // fonctionner ("Mettre a jour dans ResellOS" rapportait un succes sans
+    // jamais ecrire le prix reel). Le import explicite (Partie 2, doc
+    // d'origine : "une action deliberee de l'utilisateur sur cet article
+    // precis, pas une synchro de fond") est cense TOUJOURS refleter Vinted
+    // sur un clic explicite -- seule la synchro PASSIVE en masse
+    // (recordListings ci-dessus) doit encore proteger un brouillon non
+    // synchronise, car elle n'est jamais un choix delibere de l'utilisateur
+    // sur CET article precis.
+    const { error: updateError } = await client.from("listings").update(vintedFields).eq("id", existing.id);
     if (updateError) {
       logger.error("Mise a jour de l'article importe a echoue", updateError.message);
       throw updateError;
     }
-    logger.info("Article Vinted reimporte (mis a jour)", { vintedItemId: item.vintedItemId, draftPending });
-    return { created: false, draftProtected: draftPending };
+    logger.info("Article Vinted reimporte (mis a jour, reconciliation complete)", { vintedItemId: item.vintedItemId });
+    return { created: false, draftProtected: false };
   }
 
   await insertListingWithSkuRetry(client, {
