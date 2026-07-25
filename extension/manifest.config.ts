@@ -51,7 +51,13 @@ export default defineManifest({
   // "blocking"), scopee au seul onglet d'edition ouvert par
   // handleEditListing.ts (voir son commentaire).
   permissions: ["storage", "tabs", "scripting", "webRequest"],
-  host_permissions: ["https://www.vinted.fr/*"],
+  // host_permissions elargi de https://www.vinted.fr/* a https://*.vinted.fr/*
+  // (2026-07-25, diagnostic edit_listing) : la vraie requete de sauvegarde
+  // reste introuvable parmi le trafic www.vinted.fr capture -- si elle part
+  // vers un sous-domaine dedie (API separee), le filtre precedent la
+  // rendait invisible a webRequest. Reste strictement scope aux domaines
+  // Vinted, pas d'elargissement au-dela.
+  host_permissions: ["https://*.vinted.fr/*"],
   externally_connectable: {
     matches: ["http://localhost:5173/*", "https://dzikovinted-ai.vercel.app/*"],
   },

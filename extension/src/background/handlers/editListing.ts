@@ -243,10 +243,17 @@ function decodeRequestBody(requestBody: chrome.webRequest.OnBeforeRequestDetails
 }
 
 function installWebRequestObserver(tabId: number, historyId: string | undefined): () => void {
+  // urls elargi a *.vinted.fr et types etendu a "ping"/"websocket" (2026-07-25) :
+  // le run precedent n'a capture aucune requete de sauvegarde -- seulement des
+  // appels de verification/tracking sur www.vinted.fr. "ping" est le type que
+  // Chrome attribue specifiquement a navigator.sendBeacon(), plausible ici
+  // (clic -> sauvegarde fiable -> navigation immediate, cas d'usage typique de
+  // sendBeacon) et exclu du filtre precedent ; *.vinted.fr couvre un eventuel
+  // sous-domaine d'API dedie, jusque-la invisible.
   const filter: chrome.webRequest.RequestFilter = {
-    urls: ["https://www.vinted.fr/*"],
+    urls: ["https://*.vinted.fr/*"],
     tabId,
-    types: ["main_frame", "sub_frame", "xmlhttprequest", "other"],
+    types: ["main_frame", "sub_frame", "xmlhttprequest", "other", "ping", "websocket"],
   };
 
   const onBeforeRequest = (details: chrome.webRequest.OnBeforeRequestDetails): undefined => {
