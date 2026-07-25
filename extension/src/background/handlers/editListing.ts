@@ -236,6 +236,13 @@ export async function handleEditListing(
 
   let tab: chrome.tabs.Tab;
   try {
+    // active: true TEMPORAIRE (2026-07-25, diagnostic clic manuel, demande
+    // explicite -- a remettre a false une fois la vraie requete de
+    // sauvegarde identifiee) : le clic synthetique n'a jamais declenche la
+    // moindre requete reseau malgre une sequence complete d'evenements ;
+    // ce test necessite que l'utilisateur clique lui-meme, reellement, sur
+    // "Valider" dans cet onglet -- impossible s'il reste en arriere-plan.
+    //
     // active: false (2026-07-21, finition UX demandee) : cet onglet est
     // purement technique -- le remplissage/soumission se fait par
     // simulation DOM depuis le content script, aucune interaction humaine
@@ -246,7 +253,7 @@ export async function handleEditListing(
     // pendant la renavigation de verification -- l'onglet se ferme de
     // lui-meme (settle()) sans jamais avoir ete visible. Meme choix deja
     // fait pour publish_listing (publishListing.ts).
-    tab = await chrome.tabs.create({ url: editUrl, active: false });
+    tab = await chrome.tabs.create({ url: editUrl, active: true });
     pipeline("tab_created", { editUrl, tabId: tab.id });
     logger.debug(`[${historyId}] handleEditListing: onglet ouvert`, { editUrl, tabId: tab.id });
   } catch (err) {
