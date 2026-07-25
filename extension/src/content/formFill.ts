@@ -31,7 +31,7 @@ export class PublishError extends Error {
 // sur mousedown plutot que click, precisement pour gerer proprement le clic
 // exterieur qui referme le menu. bubbles:true pour atteindre un eventuel
 // handler delegue plus haut dans l'arbre.
-function dispatchFullClick(el: HTMLElement): void {
+export function dispatchFullClick(el: HTMLElement): void {
   const pointerInit: PointerEventInit = {
     bubbles: true,
     cancelable: true,
@@ -203,7 +203,17 @@ function isLeafCategoryReached(): boolean {
 // vers une autre) n'est pas gere par cette version, jamais teste en direct.
 export async function resolveCategory(categoryText: string): Promise<void> {
   const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
-  trigger.click();
+  // dispatchFullClick (pas trigger.click()) : timeout reel confirme en test
+  // live sur CATEGORY_DROPDOWN_CONTENT_SELECTOR (2026-07-25, test edition
+  // categorie), symptome identique a celui deja resolu pour la marque --
+  // meme famille de widget Vinted ("core"), meme mecanisme d'ouverture sur
+  // mousedown plutot que click (voir le commentaire de dispatchFullClick
+  // ci-dessus). Seule l'OUVERTURE du trigger est concernee ici -- les clics
+  // de navigation suivants dans l'arbre (optionEl.click() plus bas)
+  // restent des clics simples, comme pour la marque (selection d'un
+  // element dans un panneau deja ouvert, interaction differente de
+  // l'ouverture d'un widget ferme).
+  dispatchFullClick(trigger);
   await waitForElement(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
 
   const MAX_DEPTH = 6;
