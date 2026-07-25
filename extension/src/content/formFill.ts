@@ -247,9 +247,87 @@ function diagnoseCategoryTrigger(el: HTMLElement): void {
   logger.info("[CATEGORY_TRIGGER_DIAGNOSTIC]", detail);
 }
 
+// instrumentCategoryOpening (2026-07-25, demande explicite -- "arreter de
+// deviner des cibles de clic, instrumenter l'ouverture reelle") : 2
+// hypotheses de clic synthetique deja testees en direct (trigger seul,
+// conteneur .c-input__content) et 1 hypothese de focus() combinee, toutes
+// en echec. Plutot qu'un 3e essai a l'aveugle, capture ce qui se passe
+// REELLEMENT quand l'utilisateur clique lui-meme (isTrusted:true, l'onglet
+// reste ouvert en cas d'echec -- mode diagnostic deja existant) : quel
+// element recoit precisement l'evenement, et quel changement DOM suit
+// (aria-expanded, apparition du panneau catalog-select-dropdown-content).
+// Purement de la lecture (listeners + MutationObserver), aucune interference
+// avec la tentative synthetique existante -- installee AVANT elle pour
+// capturer les deux en cas de succes inattendu, et rester active apres
+// l'echec pour un clic manuel ulterieur dans le meme onglet.
+function instrumentCategoryOpening(): void {
+  const relevantSelector = '[class*="c-input"], [data-testid*="catalog-select"]';
+  const report = (detail: Record<string, unknown>): void => {
+    console.log("[ResellOS][CATEGORY_OPEN_EVENT]", detail);
+    logger.info("[CATEGORY_OPEN_EVENT]", detail);
+  };
+  const onEvent = (eventName: string) => (e: Event) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const relevant = target.closest<HTMLElement>(relevantSelector);
+    if (!relevant) return;
+    report({
+      eventName,
+      isTrusted: e.isTrusted,
+      targetTag: target.tagName,
+      targetTestId: target.getAttribute("data-testid"),
+      targetClass: target.className,
+      relevantTag: relevant.tagName,
+      relevantTestId: relevant.getAttribute("data-testid"),
+      relevantClass: relevant.className,
+      relevantAriaExpanded: relevant.getAttribute("aria-expanded"),
+      atMs: Math.round(performance.now()),
+    });
+  };
+  (["pointerdown", "mousedown", "click", "focusin"] as const).forEach((name) => {
+    document.addEventListener(name, onEvent(name), { capture: true });
+  });
+
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === "attributes" && m.attributeName === "aria-expanded") {
+        const el = m.target as HTMLElement;
+        if (el.closest(relevantSelector)) {
+          report({
+            type: "aria-expanded_change",
+            newValue: el.getAttribute("aria-expanded"),
+            tag: el.tagName,
+            testId: el.getAttribute("data-testid"),
+            className: el.className,
+            atMs: Math.round(performance.now()),
+          });
+        }
+      }
+      if (m.type === "childList") {
+        m.addedNodes.forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          const match = node.matches(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR)
+            ? node
+            : node.querySelector<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
+          if (match) {
+            report({
+              type: "content_panel_inserted",
+              outerHTMLSnippet: match.outerHTML.slice(0, 300),
+              atMs: Math.round(performance.now()),
+            });
+          }
+        });
+      }
+    }
+  });
+  observer.observe(document.body, { attributes: true, attributeFilter: ["aria-expanded"], childList: true, subtree: true });
+  report({ type: "instrumentation_installed", atMs: Math.round(performance.now()) });
+}
+
 export async function resolveCategory(categoryText: string): Promise<void> {
   const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
   diagnoseCategoryTrigger(trigger);
+  instrumentCategoryOpening();
   // focus() (2026-07-25, 4e correctif reel) : le clic sur le trigger PUIS sur
   // son conteneur ".c-input__content" ont tous les deux echoue (2 tests live
   // consecutifs, aucun n'ouvre le panneau) -- preuve que ce n'est pas (que)
