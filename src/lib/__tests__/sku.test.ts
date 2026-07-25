@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractSkuFromTitle, formatTitleWithSku } from '../sku';
+import { buildEditSuccessSyncFields, extractSkuFromTitle, formatTitleWithSku } from '../sku';
 
 describe('formatTitleWithSku', () => {
   it('appends the sku to the title', () => {
@@ -30,5 +30,60 @@ describe('extractSkuFromTitle', () => {
 
   it('trims trailing whitespace left after stripping the sku', () => {
     expect(extractSkuFromTitle('Sweat Nike   #12')).toEqual({ title: 'Sweat Nike', sku: 12 });
+  });
+});
+
+describe('buildEditSuccessSyncFields', () => {
+  const baseEditPayload = {
+    description: 'Description mise a jour',
+    brand: 'Nike',
+    category: 'Sweats',
+    color: 'Bleu',
+    size: 'M',
+    material: 'Coton',
+    condition: 'Bon etat',
+    price: 25,
+  };
+
+  it('writes back the clean listing title, never the SKU-formatted payload title', () => {
+    // Non-regression du bug reel confirme le 2026-07-25 : l'ancienne
+    // ecriture reutilisait editPayload.title (deja formate via
+    // formatTitleWithSku pour Vinted) au lieu du titre propre.
+    const result = buildEditSuccessSyncFields('Sweat Nike', baseEditPayload);
+    expect(result.title).toBe('Sweat Nike');
+  });
+
+  it('never accumulates the SKU suffix after two consecutive edit_listing successes on an unchanged title', () => {
+    // Simule exactement le scenario du bug reel : deux modifications
+    // successives (ex. prix, puis description) sur la MEME annonce, sans
+    // jamais toucher au titre -- le titre stocke doit rester strictement
+    // identique, pas grossir d'un "#11" supplementaire a chaque cycle.
+    const sku = 11;
+    let storedTitle = 'Planche en bois test titre final';
+
+    for (let i = 0; i < 2; i++) {
+      // Ce que edit_listing envoie reellement a Vinted (voir
+      // buildEditPayload, StockPage.tsx) -- ne doit JAMAIS servir a
+      // reecrire le titre "propre" en base.
+      const editPayload = { ...baseEditPayload, price: 20 + i };
+      formatTitleWithSku(storedTitle, sku); // ce que Vinted reçoit, non utilise pour l'ecriture DB
+
+      const syncFields = buildEditSuccessSyncFields(storedTitle, editPayload);
+      storedTitle = syncFields.title; // simule l'ecriture reelle .update() en base
+    }
+
+    expect(storedTitle).toBe('Planche en bois test titre final');
+    expect(extractSkuFromTitle(storedTitle)).toEqual({ title: 'Planche en bois test titre final', sku: null });
+  });
+
+  it('normalizes null attribute fields to empty strings, same rule as the rest of the app', () => {
+    const result = buildEditSuccessSyncFields('Sweat Nike', {
+      ...baseEditPayload,
+      brand: null,
+      color: null,
+      size: null,
+      material: null,
+    });
+    expect(result).toMatchObject({ brand: '', color: '', size: '', material: '' });
   });
 });

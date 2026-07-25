@@ -18,3 +18,48 @@ export function extractSkuFromTitle(title: string): { title: string; sku: number
   if (!match) return { title, sku: null };
   return { title: title.slice(0, match.index).trimEnd(), sku: Number(match[1]) };
 }
+
+// Champs a ecrire en base sur un succes edit_listing (StockPage.tsx::runVintedAction).
+// `title` vient TOUJOURS du titre propre connu de ResellOS (listingTitle), jamais du
+// payload envoye a Vinted (deja SKU-formate via formatTitleWithSku) -- sinon chaque
+// succes reformate un titre deja suffixe et le SKU s'accumule indefiniment (#11 #11 #11...).
+// Bug reel confirme en test live le 2026-07-25 : un edit_listing description-only faisait
+// quand meme grossir le titre, car l'ancienne ecriture reutilisait le titre du payload
+// (deja suffixe) inconditionnellement, meme quand "title" n'etait pas dans changedFields.
+export interface EditSuccessSyncFields {
+  title: string;
+  description: string;
+  brand: string;
+  category: string;
+  color: string;
+  size: string;
+  material: string;
+  condition: string;
+  price: number;
+}
+
+export function buildEditSuccessSyncFields(
+  listingTitle: string,
+  editPayload: {
+    description: string;
+    brand: string | null;
+    category: string;
+    color: string | null;
+    size: string | null;
+    material: string | null;
+    condition: string;
+    price: number;
+  }
+): EditSuccessSyncFields {
+  return {
+    title: listingTitle,
+    description: editPayload.description,
+    brand: editPayload.brand ?? '',
+    category: editPayload.category,
+    color: editPayload.color ?? '',
+    size: editPayload.size ?? '',
+    material: editPayload.material ?? '',
+    condition: editPayload.condition,
+    price: editPayload.price,
+  };
+}

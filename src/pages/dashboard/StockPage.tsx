@@ -28,7 +28,7 @@ import { EDIT_STEP_ORDER, buildEditStepLabels, normalizeEditStepForDisplay } fro
 import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
 import type { EditableFieldName, EditListingPayload } from '../../lib/actions/handlers/editListing';
 import type { VintedAccount } from '../../lib/types';
-import { formatTitleWithSku } from '../../lib/sku';
+import { buildEditSuccessSyncFields, formatTitleWithSku } from '../../lib/sku';
 import { formatEUR } from '../../lib/currency';
 import type { ActionKind } from '../../lib/actions/types';
 
@@ -334,18 +334,13 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_success`, {
           price: editPayload.price,
         });
+        // title vient de listing.title (jamais editPayload.title, deja
+        // SKU-formate pour Vinted) -- voir buildEditSuccessSyncFields
+        // (sku.ts) pour la raison complete (bug reel confirme le 2026-07-25).
         const { error: statusError } = await supabase
           .from('listings')
           .update({
-            title: editPayload.title,
-            description: editPayload.description,
-            brand: editPayload.brand ?? '',
-            category: editPayload.category,
-            color: editPayload.color ?? '',
-            size: editPayload.size ?? '',
-            material: editPayload.material ?? '',
-            condition: editPayload.condition,
-            price: editPayload.price,
+            ...buildEditSuccessSyncFields(listing.title, editPayload),
             vinted_sync_status: 'sync_success' as const,
           })
           .eq('id', listing.id);
