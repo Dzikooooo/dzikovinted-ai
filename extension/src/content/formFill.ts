@@ -250,23 +250,21 @@ function diagnoseCategoryTrigger(el: HTMLElement): void {
 export async function resolveCategory(categoryText: string): Promise<void> {
   const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
   diagnoseCategoryTrigger(trigger);
-  // dispatchFullClick (pas trigger.click()) : timeout reel confirme en test
-  // live sur CATEGORY_DROPDOWN_CONTENT_SELECTOR (2026-07-25, test edition
-  // categorie), symptome identique a celui deja resolu pour la marque --
-  // meme famille de widget Vinted ("core"), meme mecanisme d'ouverture sur
-  // mousedown plutot que click (voir le commentaire de dispatchFullClick
-  // ci-dessus). Seule l'OUVERTURE du trigger est concernee ici -- les clics
-  // de navigation suivants dans l'arbre (optionEl.click() plus bas)
-  // restent des clics simples, comme pour la marque (selection d'un
-  // element dans un panneau deja ouvert, interaction differente de
-  // l'ouverture d'un widget ferme).
-  //
-  // CONFIRME NE PAS SUFFIRE SEUL (2026-07-25, 2e test live) : le timeout
-  // persiste malgre ce correctif sur la page d'EDITION -- voir
-  // diagnoseCategoryTrigger() ci-dessus, ajoute pour determiner si
-  // CATEGORY_DROPDOWN_TRIGGER_SELECTOR cible reellement le bon element
-  // interactif sur cette page precise avant d'aller plus loin.
-  dispatchFullClick(trigger);
+  // clickTarget (2026-07-25, 3e correctif reel, preuve directe du diagnostic
+  // ci-dessus) : le trigger reel sur la page d'EDITION est un <input readonly
+  // id="category">, SANS role/aria-expanded/aria-controls et SANS aucune prop
+  // React attachee directement (hasReactPropsKey:false) -- contrairement a la
+  // marque, ce noeud precis ne porte litteralement aucun handler, meme
+  // delegue par bubbling (dispatchFullClick dessus, confirme par 2 tests live
+  // consecutifs, n'a jamais ouvert le panneau). Le conteneur parent direct
+  // ".c-input__content" (confirme par le diagnostic : regroupe l'input ET
+  // l'icone ".c-input__icon"/"catalog-select-dropdown--loader") est le
+  // candidat le plus probable pour porter le vrai gestionnaire d'ouverture --
+  // pattern courant de ce design system, toute la "boite" cliquable plutot
+  // que le champ texte seul. Prochain candidat si celui-ci ne suffit pas non
+  // plus : l'icone elle-meme.
+  const clickTarget = trigger.closest<HTMLElement>(".c-input__content") ?? trigger.parentElement ?? trigger;
+  dispatchFullClick(clickTarget);
   await waitForElement(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
 
   const MAX_DEPTH = 6;
