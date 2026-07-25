@@ -68,9 +68,18 @@ export default defineManifest({
     },
     {
       // Modification d'une annonce existante (sprint V1, Partie 4).
+      //
+      // run_at: "document_start" (2026-07-25, diagnostic capture reseau) :
+      // en document_idle, le bundle JS de Vinted a deja charge et a
+      // vraisemblablement deja capture sa propre reference interne a
+      // window.fetch/XMLHttpRequest -- notre patch (installe trop tard)
+      // remplaçait bien la reference GLOBALE mais Vinted n'y touchait plus
+      // jamais, expliquant l'absence totale de NETWORK_FETCH_*/NETWORK_XHR_*
+      // malgre une sauvegarde reellement confirmee en test live. document_start
+      // garantit une execution avant tout script de la page.
       matches: ["https://www.vinted.fr/items/*/edit*"],
       js: ["src/content/vinted-edit.ts"],
-      run_at: "document_idle",
+      run_at: "document_start",
     },
   ],
 });

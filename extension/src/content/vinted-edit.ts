@@ -102,7 +102,30 @@ function parsePriceToNumber(raw: string | null): number | null {
 // d'un probleme "message jamais recu" (ou le script tourne mais
 // n'entend rien).
 console.log("[ResellOS][Edit] content script loaded", { url: location.href, at: new Date().toISOString() });
-stage(undefined, "content_script_injected (injection declarative document_idle)");
+stage(undefined, "content_script_injected (injection declarative document_start)");
+
+// historyId de l'action en cours, mis a jour par runEdit()/handleVerifyEditFields()
+// -- lu dynamiquement par installNetworkObserver() (installe avant que ces deux
+// fonctions existent meme, voir plus bas) pour taguer ses logs sans avoir a lui
+// passer un historyId qu'on ne connait pas encore au chargement du module.
+let currentHistoryId: string | undefined;
+
+// Installe le patch fetch/XHR IMMEDIATEMENT au chargement du module (2026-07-25,
+// diagnostic capture reseau -- voir aussi run_at:"document_start" dans
+// manifest.config.ts). Cause racine confirmee le run precedent : en document_idle,
+// le patch etait installe bien apres que le bundle JS de Vinted ait deja charge et
+// capture sa PROPRE reference interne a window.fetch/XMLHttpRequest -- notre wrapper
+// remplaçait la reference GLOBALE, mais Vinted n'y touchait plus jamais ensuite,
+// expliquant l'absence totale de NETWORK_FETCH_*/NETWORK_XHR_* malgre une sauvegarde
+// reellement confirmee. document_start garantit que ce module s'execute avant tout
+// script de la page -- installer le patch en tout premier, avant toute autre
+// logique (remplissage/attente DOM inchangee par ailleurs), maximise les chances que
+// Vinted capture ensuite NOTRE reference patchee plutot que la native.
+const networkPatchScope = window as unknown as { __resellosNetworkPatched?: boolean };
+if (!networkPatchScope.__resellosNetworkPatched) {
+  networkPatchScope.__resellosNetworkPatched = true;
+  installNetworkObserver();
+}
 
 // Garde d'idempotence (2026-07-15, cause racine #2) : handleEditListing.ts
 // peut desormais REINJECTER explicitement ce script via
@@ -254,10 +277,10 @@ function describeRequestBody(body: unknown): string | null {
   return `(corps non capture : ${(body as { constructor?: { name?: string } })?.constructor?.name ?? typeof body})`;
 }
 
-function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
+function installNetworkObserver(): void {
   // logger.info (pas seulement mark/console.log) : cet onglet tourne en
-  // arriere-plan (active:false), impossible d'y ouvrir DevTools au bon
-  // moment -- seule l'ecriture dans le ring buffer persiste
+  // arriere-plan (active:false) hors de ce diagnostic, impossible d'y ouvrir
+  // DevTools au bon moment -- seule l'ecriture dans le ring buffer persiste
   // (chrome.storage.local) rend ces evenements reellement consultables
   // apres coup, depuis le popup de l'extension.
   //
@@ -268,6 +291,10 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
   // que les en-tetes et le corps de la reponse (via response.clone(), qui ne
   // consomme pas le flux original -- Vinted continue de lire sa propre
   // reponse normalement).
+  //
+  // Installation permanente (2026-07-25) : plus de start/stop autour du clic
+  // -- voir le commentaire au point d'appel (chargement du module) pour la
+  // raison (timing d'injection document_start, pas une fenetre d'observation).
   const originalFetch = window.fetch.bind(window);
   window.fetch = ((...args: Parameters<typeof fetch>) => {
     const [input, init] = args;
@@ -276,7 +303,7 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
     const requestHeaders = headersToObject(init?.headers ?? (input instanceof Request ? input.headers : undefined));
     const requestBody = describeRequestBody(init?.body);
     const startedAt = performance.now();
-    logger.info(`[${historyId}] NETWORK_FETCH_SENT`, { method, url, requestHeaders, requestBody });
+    logger.info(`[${currentHistoryId}] NETWORK_FETCH_SENT`, { method, url, requestHeaders, requestBody });
     return originalFetch(...args).then(
       async (response) => {
         let responseBody: string | null = null;
@@ -285,7 +312,7 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
         } catch (err) {
           responseBody = `(lecture impossible : ${errorMessage(err)})`;
         }
-        logger.info(`[${historyId}] NETWORK_FETCH_RESPONSE`, {
+        logger.info(`[${currentHistoryId}] NETWORK_FETCH_RESPONSE`, {
           method,
           url,
           status: response.status,
@@ -297,7 +324,7 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
         return response;
       },
       (err) => {
-        logger.error(`[${historyId}] NETWORK_FETCH_ERROR`, { method, url, message: errorMessage(err) });
+        logger.error(`[${currentHistoryId}] NETWORK_FETCH_ERROR`, { method, url, message: errorMessage(err) });
         throw err;
       }
     );
@@ -324,7 +351,7 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
   OriginalXHR.prototype.send = function (this: XMLHttpRequest, ...args: unknown[]) {
     const tagged = this as TaggedXHR;
     const startedAt = performance.now();
-    logger.info(`[${historyId}] NETWORK_XHR_SENT`, {
+    logger.info(`[${currentHistoryId}] NETWORK_XHR_SENT`, {
       method: tagged.__resellosMethod,
       url: tagged.__resellosUrl,
       requestHeaders: tagged.__resellosHeaders ?? {},
@@ -337,7 +364,7 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
       } catch {
         responseBody = `(lecture impossible, responseType="${this.responseType}")`;
       }
-      logger.info(`[${historyId}] NETWORK_XHR_RESPONSE`, {
+      logger.info(`[${currentHistoryId}] NETWORK_XHR_RESPONSE`, {
         method: tagged.__resellosMethod,
         url: tagged.__resellosUrl,
         status: this.status,
@@ -354,13 +381,6 @@ function observeNetworkDuringSubmit(historyId: string | undefined): () => void {
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (sendOriginal as any).apply(this, args);
-  };
-
-  return () => {
-    window.fetch = originalFetch;
-    OriginalXHR.prototype.open = openOriginal;
-    OriginalXHR.prototype.send = sendOriginal;
-    OriginalXHR.prototype.setRequestHeader = setRequestHeaderOriginal;
   };
 }
 
@@ -438,10 +458,9 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
     disabledSurLElementFraisInterroge: freshButtonAtClickTime?.disabled ?? null,
   });
 
-  // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) --
-  // demarree juste AVANT le clic pour ne manquer aucune requete
-  // declenchee de facon synchrone par le handler de clic de Vinted.
-  const stopNetworkObserver = observeNetworkDuringSubmit(historyId);
+  // L'observateur reseau est desormais installe une seule fois au chargement
+  // du module (voir installNetworkObserver() plus haut) -- plus de start/stop
+  // ici. DOM/trusted restent scopes a la fenetre de clic, inchanges.
   const stopDomObserver = observeDomDuringSubmit(historyId, saveButton);
   const stopTrustedObserver = observeTrustedStateDuringSubmit(historyId);
 
@@ -509,12 +528,9 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
       }
     );
   } finally {
-    // Les observateurs temporaires doivent s'arreter ici, succes ou
-    // timeout confondus -- sinon fetch/XMLHttpRequest resteraient
-    // interceptes indefiniment sur ce document (jusqu'a sa navigation/
-    // fermeture reelle, ce qui arrive de toute facon, mais autant etre
-    // explicite plutot que de compter dessus).
-    stopNetworkObserver();
+    // DOM/trusted restent scopes a cette fenetre -- l'observateur reseau,
+    // lui, reste actif pour toute la duree de vie du document (voir
+    // installNetworkObserver()).
     stopDomObserver();
     stopTrustedObserver();
   }
@@ -531,6 +547,7 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
 
 async function runEdit(payload: EditListingPayload): Promise<void> {
   const historyId = payload.historyId;
+  currentHistoryId = historyId;
   runEditInvocationCount += 1;
   mark(historyId, "RUN_EDIT_INVOKED", { runEditInvocationCount, url: location.href });
   if (runEditInvocationCount > 1) {
@@ -829,6 +846,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
 // mecanisme de relecture fiable equivalent, limite explicitement
 // documentee, pas silencieusement ignoree.
 async function handleVerifyEditFields(historyId: string | undefined, payload: VerifyEditFieldsPayload): Promise<void> {
+  currentHistoryId = historyId;
   try {
     // BUG REEL demontre en test reel le 2026-07-16 : attendre INCONDITIONNELLEMENT
     // le titre pour detecter que la page est chargee echouait par timeout (8000ms
