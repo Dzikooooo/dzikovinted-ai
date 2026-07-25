@@ -30,6 +30,20 @@ const MAX_ENTRIES = 400;
 // d'eux n'ait ecrit, et seul le dernier set() a se resoudre survit — les autres entrees
 // disparaissent silencieusement. Une simple file d'attente sur une promesse partagee
 // force chaque persist() a attendre son tour.
+//
+// INSUFFISANT SEUL (2026-07-25, bug reel confirme en test edit_listing) : writeQueue
+// est une variable de MODULE -- chaque contexte JS (background, ET chaque content
+// script, qui a sa PROPRE instance de ce module) a sa PROPRE file d'attente,
+// totalement independante des autres. SAVE_BUTTON_FOUND/EVENT_REACHED_DOCUMENT
+// (content script) perdus alors que REACT_INSPECT/SUBMIT_CONTROL_INSPECT (meme bloc
+// synchrone) survivaient -- preuve d'une course ENTRE le writeQueue du content script
+// et celui du background (qui ecrit ses propres logs, ex. WEBREQUEST_*, au meme
+// instant), pas seulement au sein d'un seul contexte. Corrige en centralisant TOUTE
+// ecriture dans le SEUL contexte background (voir isBackgroundContext ci-dessous) :
+// un content script ne persiste plus jamais directement, il relaie son entree via
+// chrome.runtime.sendMessage (RELAY_LOG_ENTRY, voir messages.ts) et c'est le
+// background -- une seule instance de ce module, une seule writeQueue pour toute
+// l'extension -- qui appelle persistRelayedEntry().
 let writeQueue: Promise<void> = Promise.resolve();
 
 function persist(entry: LogEntry): Promise<void> {
@@ -43,6 +57,13 @@ function persist(entry: LogEntry): Promise<void> {
   return writeQueue;
 }
 
+// Appelee uniquement par le routeur de messages du background (index.ts) sur
+// reception d'un RELAY_LOG_ENTRY -- seul point d'entree pour persister une
+// entree provenant d'un content script.
+export function persistRelayedEntry(entry: LogEntry): Promise<void> {
+  return persist(entry);
+}
+
 function detailToString(detail: unknown): string | undefined {
   if (detail === undefined) return undefined;
   if (typeof detail === "string") return detail;
@@ -53,11 +74,24 @@ function detailToString(detail: unknown): string | undefined {
   }
 }
 
+// Le service worker MV3 n'a pas de `window` (ServiceWorkerGlobalScope) -- un
+// content script, lui, partage le `window` de la page ou il s'execute (isolated
+// world, mais meme objet window/document). Distinction standard et fiable entre
+// les deux contextes, utilisee ici pour decider qui a le droit d'ecrire
+// directement dans chrome.storage.local.
+const isBackgroundContext = typeof window === "undefined";
+
 function write(level: LogLevel, message: string, detail?: unknown): void {
   const entry: LogEntry = { level, message, detail: detailToString(detail), at: new Date().toISOString() };
   const consoleFn = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
   consoleFn("[ResellOS]", message, detail ?? "");
-  void persist(entry);
+  if (isBackgroundContext) {
+    void persist(entry);
+  } else {
+    // Fire-and-forget, comme l'ancien void persist(entry) direct -- un content
+    // script n'a jamais attendu la confirmation d'ecriture de son propre log.
+    chrome.runtime.sendMessage({ type: "RELAY_LOG_ENTRY", entry }).catch(() => {});
+  }
 }
 
 export const logger = {

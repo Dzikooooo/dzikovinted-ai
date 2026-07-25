@@ -16,7 +16,7 @@ import {
 import { pair, unpair, getStatus } from "./pairing";
 import { recordAccountDetected, recordListings, recordSingleItemImport, checkItemAlreadyLinked } from "./sync";
 import { runAction } from "./runAction";
-import { logger } from "./logger";
+import { logger, persistRelayedEntry } from "./logger";
 import { errorMessage } from "../lib/errorMessage";
 
 // Port de progression (Phase 3.1, publication) : l'app web l'ouvre juste
@@ -151,6 +151,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: false, error: errorMessage(err) } satisfies ImportItemResponse);
       });
     return true;
+  }
+
+  if (message.type === "RELAY_LOG_ENTRY") {
+    // Fire-and-forget (le content script n'attend pas de reponse, voir
+    // logger.ts::write()) -- seul point d'ecriture reelle dans
+    // chrome.storage.local pour une entree issue d'un content script.
+    void persistRelayedEntry(message.entry);
+    return false;
   }
 
   if (message.type === "CHECK_ITEM_LINKED_REQUESTED") {

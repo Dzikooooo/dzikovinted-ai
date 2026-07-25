@@ -2,6 +2,8 @@
 // Voir EXTENSION.md §4. Toute nouvelle valeur de "type" doit etre ajoutee ici,
 // jamais en dur dans un fichier de traitement.
 
+import type { LogEntry } from "../background/logger";
+
 // ActionKind duplique depuis src/lib/actions/types.ts (pas importe : extension/
 // est un paquet independant, sans tooling monorepo - meme convention deja
 // assumee pour ListingPayload ci-dessous, voir EXTENSION.md §9).
@@ -270,6 +272,14 @@ export type ImportItemResponse =
 // Supabase) si l'article est deja lie -- aucune ecriture declenchee.
 export type CheckItemLinkedResponse = { ok: true; linked: boolean } | { ok: false; error: string };
 
+// RELAY_LOG_ENTRY (2026-07-25, bug reel confirme en test edit_listing) : un
+// content script ne persiste plus jamais directement dans chrome.storage.local
+// (voir logger.ts) -- il relaie chaque entree ici, et seul le background
+// (persistRelayedEntry(), une seule writeQueue pour toute l'extension) ecrit
+// reellement, eliminant la course entre les writeQueue independantes de
+// chaque contexte JS.
+export type RelayLogEntryMessage = { type: "RELAY_LOG_ENTRY"; entry: LogEntry };
+
 // Popup et content scripts -> background, via chrome.runtime.sendMessage
 // (sans id, meme extension - capte par onMessage, pas onMessageExternal).
 export type InternalMessage =
@@ -279,6 +289,7 @@ export type InternalMessage =
   | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] }
   | { type: "IMPORT_ITEM_REQUESTED"; vintedUsername: string; item: SingleItemPayload }
   | { type: "CHECK_ITEM_LINKED_REQUESTED"; vintedUsername: string; vintedItemId: string }
+  | RelayLogEntryMessage
   | ContentReport;
 
 export interface StatusResponse {
@@ -306,6 +317,7 @@ export function isInternalMessage(msg: unknown): msg is InternalMessage {
     type === "LISTINGS_DETECTED" ||
     type === "IMPORT_ITEM_REQUESTED" ||
     type === "CHECK_ITEM_LINKED_REQUESTED" ||
+    type === "RELAY_LOG_ENTRY" ||
     isContentReport(msg)
   );
 }
