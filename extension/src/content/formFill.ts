@@ -9,6 +9,7 @@
 import { waitForElement, waitForCondition } from "./domWait";
 import { matchOption } from "./matchOption";
 import * as sel from "./publishSelectors";
+import { logger } from "../background/logger";
 
 export class PublishError extends Error {
   code: string;
@@ -201,8 +202,54 @@ function isLeafCategoryReached(): boolean {
 // verifie PAS que la categorie actuelle correspond a categoryText -- changer
 // reellement la categorie d'une annonce deja publiee (depuis une feuille
 // vers une autre) n'est pas gere par cette version, jamais teste en direct.
+// diagnoseCategoryTrigger (2026-07-25, demande explicite -- dispatchFullClick()
+// n'a PAS resolu le timeout sur CATEGORY_DROPDOWN_CONTENT_SELECTOR pour la
+// page d'EDITION, contrairement a la marque -- preuve que ce n'est pas (que)
+// le mecanisme de clic cette fois). CATEGORY_DROPDOWN_TRIGGER_SELECTOR n'a
+// jamais ete verifie en direct sur /items/{id}/edit, seulement sur
+// /items/new (voir l'en-tete de publishSelectors.ts) -- il matche bien QUELQUE
+// CHOSE (waitForElement le trouve, aucun timeout a cette etape), mais rien ne
+// garantit que c'est le VRAI element interactif plutot qu'un input/texte
+// passif a l'interieur d'un conteneur cliquable different. Journalise l'etat
+// reel du noeud cible AVANT toute tentative de clic, via le logger PERSISTE
+// (chrome.storage.local, meme mecanisme deja utilise dans vinted-edit.ts) --
+// relisible apres coup, sans exiger une inspection manuelle live dans la
+// fenetre etroite avant fermeture d'onglet (contrainte explicite de
+// l'utilisateur). Purement de la lecture, ne change aucun comportement.
+function diagnoseCategoryTrigger(el: HTMLElement): void {
+  const closestRoleButton = el.closest('[role="button"]');
+  const reactPropsKey = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+  const reactProps = reactPropsKey ? (el as unknown as Record<string, unknown>)[reactPropsKey] : undefined;
+  const hasOnClickProp = !!(reactProps && typeof reactProps === "object" && "onClick" in reactProps);
+  const parent = el.parentElement;
+  const iconSibling = parent?.querySelector('[class*="icon"], svg');
+  const detail = {
+    tagName: el.tagName,
+    role: el.getAttribute("role"),
+    ariaExpanded: el.getAttribute("aria-expanded"),
+    ariaControls: el.getAttribute("aria-controls"),
+    className: el.className,
+    disabled: (el as HTMLInputElement).disabled ?? null,
+    ariaDisabled: el.getAttribute("aria-disabled"),
+    closestRoleButton: closestRoleButton
+      ? { tagName: closestRoleButton.tagName, className: (closestRoleButton as HTMLElement).className }
+      : null,
+    parentTagName: parent?.tagName ?? null,
+    parentClassName: parent?.className ?? null,
+    iconSiblingFound: !!iconSibling,
+    iconSiblingTag: iconSibling?.tagName ?? null,
+    hasReactPropsKey: !!reactPropsKey,
+    hasOnClickProp,
+    outerHTMLSnippet: el.outerHTML.slice(0, 400),
+    parentOuterHTMLSnippet: parent?.outerHTML.slice(0, 400) ?? null,
+  };
+  console.log("[ResellOS][CATEGORY_TRIGGER_DIAGNOSTIC]", detail);
+  logger.info("[CATEGORY_TRIGGER_DIAGNOSTIC]", detail);
+}
+
 export async function resolveCategory(categoryText: string): Promise<void> {
   const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
+  diagnoseCategoryTrigger(trigger);
   // dispatchFullClick (pas trigger.click()) : timeout reel confirme en test
   // live sur CATEGORY_DROPDOWN_CONTENT_SELECTOR (2026-07-25, test edition
   // categorie), symptome identique a celui deja resolu pour la marque --
@@ -213,6 +260,12 @@ export async function resolveCategory(categoryText: string): Promise<void> {
   // restent des clics simples, comme pour la marque (selection d'un
   // element dans un panneau deja ouvert, interaction differente de
   // l'ouverture d'un widget ferme).
+  //
+  // CONFIRME NE PAS SUFFIRE SEUL (2026-07-25, 2e test live) : le timeout
+  // persiste malgre ce correctif sur la page d'EDITION -- voir
+  // diagnoseCategoryTrigger() ci-dessus, ajoute pour determiner si
+  // CATEGORY_DROPDOWN_TRIGGER_SELECTOR cible reellement le bon element
+  // interactif sur cette page precise avant d'aller plus loin.
   dispatchFullClick(trigger);
   await waitForElement(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
 
