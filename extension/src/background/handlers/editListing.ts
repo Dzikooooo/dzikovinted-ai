@@ -208,114 +208,6 @@ function findEditContentScriptFiles(): string[] {
   return entry?.js ?? [];
 }
 
-// INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-25) -- a
-// retirer une fois la vraie requete de sauvegarde identifiee. Le patch
-// fetch/XMLHttpRequest cote page (vinted-edit.ts, meme installe des
-// document_start) n'a capture aucune requete lors d'un clic manuel reel
-// pourtant confirme efficace (prix persiste sur Vinted) -- fort indice que
-// la sauvegarde passe par une navigation de document complete (POST de
-// formulaire classique), invisible pour toute interception cote page.
-// chrome.webRequest observe le trafic reseau au niveau du navigateur --
-// scope au seul onglet d'edition (filter.tabId), lecture seule (aucun
-// extraInfoSpec "blocking"), ne modifie ni les requetes ni leur resultat.
-function truncateForLog(value: string, max = 4000): string {
-  return value.length > max ? `${value.slice(0, max)}... (${value.length - max} caracteres tronques)` : value;
-}
-
-function headersArrayToObject(headers: chrome.webRequest.HttpHeader[] | undefined): Record<string, string> {
-  const obj: Record<string, string> = {};
-  for (const h of headers ?? []) {
-    if (h.name) obj[h.name] = h.value ?? (h.binaryValue ? "(valeur binaire)" : "");
-  }
-  return obj;
-}
-
-function decodeRequestBody(requestBody: chrome.webRequest.OnBeforeRequestDetails["requestBody"]): string | null {
-  if (!requestBody) return null;
-  if (requestBody.formData) return truncateForLog(JSON.stringify(requestBody.formData));
-  if (requestBody.raw) {
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    const text = requestBody.raw.map((chunk) => (chunk.bytes ? decoder.decode(chunk.bytes) : "")).join("");
-    return truncateForLog(text);
-  }
-  if (requestBody.error) return `(erreur de lecture du corps : ${requestBody.error})`;
-  return null;
-}
-
-function installWebRequestObserver(tabId: number, historyId: string | undefined): () => void {
-  // urls elargi a *.vinted.fr et types etendu a "ping"/"websocket" (2026-07-25) :
-  // le run precedent n'a capture aucune requete de sauvegarde -- seulement des
-  // appels de verification/tracking sur www.vinted.fr. "ping" est le type que
-  // Chrome attribue specifiquement a navigator.sendBeacon(), plausible ici
-  // (clic -> sauvegarde fiable -> navigation immediate, cas d'usage typique de
-  // sendBeacon) et exclu du filtre precedent ; *.vinted.fr couvre un eventuel
-  // sous-domaine d'API dedie, jusque-la invisible.
-  const filter: chrome.webRequest.RequestFilter = {
-    urls: ["https://*.vinted.fr/*"],
-    tabId,
-    types: ["main_frame", "sub_frame", "xmlhttprequest", "other", "ping", "websocket"],
-  };
-
-  const onBeforeRequest = (details: chrome.webRequest.OnBeforeRequestDetails): undefined => {
-    logger.info(`[${historyId}] WEBREQUEST_BEFORE_REQUEST`, {
-      requestId: details.requestId,
-      method: details.method,
-      url: details.url,
-      type: details.type,
-      requestBody: decodeRequestBody(details.requestBody),
-    });
-    return undefined;
-  };
-  const onBeforeSendHeaders = (details: chrome.webRequest.OnBeforeSendHeadersDetails): undefined => {
-    logger.info(`[${historyId}] WEBREQUEST_HEADERS_SENT`, {
-      requestId: details.requestId,
-      method: details.method,
-      url: details.url,
-      requestHeaders: headersArrayToObject(details.requestHeaders),
-    });
-    return undefined;
-  };
-  const onBeforeRedirect = (details: chrome.webRequest.OnBeforeRedirectDetails) => {
-    logger.info(`[${historyId}] WEBREQUEST_REDIRECT`, {
-      requestId: details.requestId,
-      url: details.url,
-      statusCode: details.statusCode,
-      redirectUrl: details.redirectUrl,
-    });
-  };
-  const onCompleted = (details: chrome.webRequest.OnCompletedDetails) => {
-    logger.info(`[${historyId}] WEBREQUEST_COMPLETED`, {
-      requestId: details.requestId,
-      method: details.method,
-      url: details.url,
-      statusCode: details.statusCode,
-      responseHeaders: headersArrayToObject(details.responseHeaders),
-    });
-  };
-  const onErrorOccurred = (details: chrome.webRequest.OnErrorOccurredDetails) => {
-    logger.error(`[${historyId}] WEBREQUEST_ERROR`, {
-      requestId: details.requestId,
-      method: details.method,
-      url: details.url,
-      error: details.error,
-    });
-  };
-
-  chrome.webRequest.onBeforeRequest.addListener(onBeforeRequest, filter, ["requestBody"]);
-  chrome.webRequest.onBeforeSendHeaders.addListener(onBeforeSendHeaders, filter, ["requestHeaders"]);
-  chrome.webRequest.onBeforeRedirect.addListener(onBeforeRedirect, filter);
-  chrome.webRequest.onCompleted.addListener(onCompleted, filter, ["responseHeaders"]);
-  chrome.webRequest.onErrorOccurred.addListener(onErrorOccurred, filter);
-
-  return () => {
-    chrome.webRequest.onBeforeRequest.removeListener(onBeforeRequest);
-    chrome.webRequest.onBeforeSendHeaders.removeListener(onBeforeSendHeaders);
-    chrome.webRequest.onBeforeRedirect.removeListener(onBeforeRedirect);
-    chrome.webRequest.onCompleted.removeListener(onCompleted);
-    chrome.webRequest.onErrorOccurred.removeListener(onErrorOccurred);
-  };
-}
-
 export async function handleEditListing(
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void
@@ -344,23 +236,11 @@ export async function handleEditListing(
 
   let tab: chrome.tabs.Tab;
   try {
-    // active: true TEMPORAIRE (2026-07-25, diagnostic clic manuel, demande
-    // explicite -- a remettre a false une fois la vraie requete de
-    // sauvegarde identifiee) : le clic synthetique n'a jamais declenche la
-    // moindre requete reseau malgre une sequence complete d'evenements ;
-    // ce test necessite que l'utilisateur clique lui-meme, reellement, sur
-    // "Valider" dans cet onglet -- impossible s'il reste en arriere-plan.
-    //
-    // active: false (2026-07-21, finition UX demandee) : cet onglet est
-    // purement technique -- le remplissage/soumission se fait par
-    // simulation DOM depuis le content script, aucune interaction humaine
-    // requise. Le laisser en arriere-plan evite de voler le focus a
-    // l'utilisateur pendant toute la duree du pipeline (jusqu'a ~15-20s) et,
-    // combine avec l'accalmie de navigation (cause racine #5), evite aussi
-    // qu'il voie passer une eventuelle page d'erreur transitoire de Vinted
-    // pendant la renavigation de verification -- l'onglet se ferme de
-    // lui-meme (settle()) sans jamais avoir ete visible. Meme choix deja
-    // fait pour publish_listing (publishListing.ts).
+    // active: true (2026-07-25, decision d'architecture -- voir le
+    // commentaire d'en-tete de vinted-edit.ts) : la sauvegarde exige un clic
+    // reel de l'utilisateur (route Vinted protegee par un anti-bot,
+    // confirme en test reel) -- l'onglet doit donc etre visible et au
+    // premier plan pour que l'utilisateur puisse cliquer sur "Valider".
     tab = await chrome.tabs.create({ url: editUrl, active: true });
     pipeline("tab_created", { editUrl, tabId: tab.id });
     logger.debug(`[${historyId}] handleEditListing: onglet ouvert`, { editUrl, tabId: tab.id });
@@ -373,7 +253,6 @@ export async function handleEditListing(
     return { status: "error", errorMessage: "Onglet Vinted invalide" };
   }
   const tabId: number = tab.id;
-  const stopWebRequestObserver = installWebRequestObserver(tabId, historyId);
 
   // Seuls title/description/price ont un mecanisme de relecture DOM fiable
   // (memes selecteurs, comparaison directe) -- voir commentaire cause
@@ -793,7 +672,6 @@ export async function handleEditListing(
       clearTimeout(tabReadyTimeout);
       if (navigationSettleTimer) clearTimeout(navigationSettleTimer);
       if (publicPageReadyListener) chrome.tabs.onUpdated.removeListener(publicPageReadyListener);
-      stopWebRequestObserver();
     }
 
     function settle(outcome: RunActionOutcome): void {

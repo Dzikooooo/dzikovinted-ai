@@ -15,6 +15,27 @@
 // reutilise les selecteurs de publishSelectors.ts par hypothese (meme
 // composant Vinted que la creation) -- a reconfirmer lors du premier test
 // live reel (voir EXTENSION.md).
+//
+// DECISION D'ARCHITECTURE (2026-07-25, validation reelle en conditions de
+// production, diagnostic complet -- voir EXTENSION.md pour le detail) : la
+// soumission reste un CLIC MANUEL de l'utilisateur, pas une automatisation
+// silencieuse. Preuves accumulees au fil du diagnostic :
+// - Un clic synthetique (element.click(), puis sequence complete pointerdown
+//   -> mousedown -> pointerup -> mouseup -> click) atteint bien document
+//   (confirme) mais ne declenche jamais la requete de sauvegarde.
+// - La vraie requete (PUT https://www.vinted.fr/api/v2/item_upload/items/{id})
+//   n'a ete capturee qu'apres un clic REEL (isTrusted:true) -- coherent avec
+//   un handler cote Vinted qui exige un evenement de confiance.
+//   Reponse retournee avec l'en-tete "x-datadome: protected" (le seul appel
+//   de toute la session a porter cet en-tete) -- cette route est
+//   explicitement protegee par un service anti-bot. Rejouer cette requete
+//   depuis l'extension reviendrait a tenter de contourner cette protection,
+//   ce que l'utilisateur a explicitement decide de ne pas faire pour
+//   l'instant. Un chantier dedie a l'automatisation silencieuse pourra
+//   rouvrir cette question une fois la beta stabilisee.
+// L'onglet d'edition s'ouvre donc au premier plan (voir handleEditListing.ts,
+// active:true) et le pipeline attend un clic reel de l'utilisateur sur
+// "Valider" (voir WAITING_FOR_MANUAL_CLICK dans submitEdit()).
 
 import { waitForElement, waitForCondition, WaitTimeoutError, describeTimeout } from "./domWait";
 import * as sel from "./publishSelectors";
@@ -102,30 +123,7 @@ function parsePriceToNumber(raw: string | null): number | null {
 // d'un probleme "message jamais recu" (ou le script tourne mais
 // n'entend rien).
 console.log("[ResellOS][Edit] content script loaded", { url: location.href, at: new Date().toISOString() });
-stage(undefined, "content_script_injected (injection declarative document_start)");
-
-// historyId de l'action en cours, mis a jour par runEdit()/handleVerifyEditFields()
-// -- lu dynamiquement par installNetworkObserver() (installe avant que ces deux
-// fonctions existent meme, voir plus bas) pour taguer ses logs sans avoir a lui
-// passer un historyId qu'on ne connait pas encore au chargement du module.
-let currentHistoryId: string | undefined;
-
-// Installe le patch fetch/XHR IMMEDIATEMENT au chargement du module (2026-07-25,
-// diagnostic capture reseau -- voir aussi run_at:"document_start" dans
-// manifest.config.ts). Cause racine confirmee le run precedent : en document_idle,
-// le patch etait installe bien apres que le bundle JS de Vinted ait deja charge et
-// capture sa PROPRE reference interne a window.fetch/XMLHttpRequest -- notre wrapper
-// remplaçait la reference GLOBALE, mais Vinted n'y touchait plus jamais ensuite,
-// expliquant l'absence totale de NETWORK_FETCH_*/NETWORK_XHR_* malgre une sauvegarde
-// reellement confirmee. document_start garantit que ce module s'execute avant tout
-// script de la page -- installer le patch en tout premier, avant toute autre
-// logique (remplissage/attente DOM inchangee par ailleurs), maximise les chances que
-// Vinted capture ensuite NOTRE reference patchee plutot que la native.
-const networkPatchScope = window as unknown as { __resellosNetworkPatched?: boolean };
-if (!networkPatchScope.__resellosNetworkPatched) {
-  networkPatchScope.__resellosNetworkPatched = true;
-  installNetworkObserver();
-}
+stage(undefined, "content_script_injected (injection declarative document_idle)");
 
 // Garde d'idempotence (2026-07-15, cause racine #2) : handleEditListing.ts
 // peut desormais REINJECTER explicitement ce script via
@@ -165,265 +163,6 @@ function reportResult(outcome: RunActionOutcome): void {
 // document deja navigue hors du formulaire).
 let runEditInvocationCount = 0;
 
-// INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) -- lit
-// les proprietes internes que React attache directement sur le noeud DOM
-// (cle prefixee __reactProps$/__reactEventHandlers$ selon la version,
-// __reactFiber$ pour l'instance de fibre) -- technique standard pour
-// inspecter depuis l'exterieur ce que React croit reellement savoir d'un
-// element controle, independamment de ce que le DOM affiche visuellement.
-// Objectif direct : verifier si react considere encore payload.price
-// comme "non modifie" malgre une valeur DOM a jour (hypothese "etat
-// interne jamais mis a jour"). Purement en lecture, aucun effet de bord.
-function inspectReactElement(historyId: string | undefined, label: string, el: Element): void {
-  const keys = Object.keys(el);
-  const propsKey = keys.find((k) => k.startsWith("__reactProps$") || k.startsWith("__reactEventHandlers$"));
-  const fiberKey = keys.find((k) => k.startsWith("__reactFiber$"));
-  const props = propsKey ? (el as unknown as Record<string, Record<string, unknown> | undefined>)[propsKey] : null;
-  const inputEl = el as HTMLInputElement;
-  logger.info(`[${historyId}] REACT_INSPECT (${label})`, {
-    tagName: el.tagName,
-    type: inputEl.type ?? null,
-    name: inputEl.name ?? null,
-    className: el.className,
-    domValue: inputEl.value ?? null,
-    hasReactProps: !!propsKey,
-    hasReactFiber: !!fiberKey,
-    reactPropsValue: props?.value ?? null,
-    reactPropsDefaultValue: props?.defaultValue ?? null,
-    reactPropsDisabled: props?.disabled ?? null,
-    reactPropsType: props?.type ?? null,
-    reactPropsHasOnChange: typeof props?.onChange === "function",
-    reactPropsHasOnClick: typeof props?.onClick === "function",
-    reactPropsHasOnPointerDown: typeof props?.onPointerDown === "function",
-    reactPropsHasOnMouseDown: typeof props?.onMouseDown === "function",
-  });
-}
-
-// INSTRUMENTATION TEMPORAIRE (meme raison) : le controle final de
-// soumission n'est peut-etre pas un <button type="submit"> classique dans
-// un <form> -- verifie son type reel, son formulaire proprietaire (via la
-// propriete .form, distincte de closest("form") si le bouton est rendu
-// via un portail React hors de l'arbre visuel du formulaire), et si ce
-// formulaire expose requestSubmit().
-function inspectSubmitControl(historyId: string | undefined, button: HTMLButtonElement): void {
-  const closestForm = button.closest("form");
-  logger.info(`[${historyId}] SUBMIT_CONTROL_INSPECT`, {
-    typeAttribute: button.getAttribute("type"),
-    domType: button.type,
-    ownerFormViaProperty: !!button.form,
-    ownerFormAction: button.form?.action ?? null,
-    ownerFormMethod: button.form?.method ?? null,
-    ownerFormHasRequestSubmit: typeof button.form?.requestSubmit === "function",
-    closestFormFound: !!closestForm,
-    closestFormIsSameAsOwnerForm: closestForm === button.form,
-  });
-}
-
-// INSTRUMENTATION TEMPORAIRE (meme raison) : confirme que nos evenements
-// synthetiques atteignent bien un ecouteur au niveau document (capture,
-// donc avant tout stopPropagation() eventuel d'un handler intermediaire),
-// et journalise leur isTrusted reel -- toujours false par specification
-// pour un evenement synthetique, confirme ici plutot que suppose. Ne peut
-// PAS prouver que Vinted filtre specifiquement sur isTrusted en interne
-// (invisible depuis l'exterieur), mais confirme au moins que la
-// propagation elle-meme n'est pas coupee avant document.
-function observeTrustedStateDuringSubmit(historyId: string | undefined): () => void {
-  const types = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"] as const;
-  const handler = (e: Event) => {
-    const target = e.target as HTMLElement | null;
-    logger.info(`[${historyId}] EVENT_REACHED_DOCUMENT (${e.type})`, {
-      isTrusted: e.isTrusted,
-      defaultPrevented: e.defaultPrevented,
-      targetTag: target?.tagName ?? null,
-      targetTestId: target?.getAttribute?.("data-testid") ?? null,
-    });
-  };
-  types.forEach((type) => document.addEventListener(type, handler, { capture: true }));
-  return () => types.forEach((type) => document.removeEventListener(type, handler, { capture: true }));
-}
-
-// INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) -- a
-// retirer une fois la cause racine du timeout de navigation confirmee.
-// L'onglet d'edition tourne en arriere-plan (chrome.tabs.create({active:
-// false}), voir handleEditListing.ts) -- l'utilisateur n'a donc AUCUN
-// moyen d'ouvrir manuellement l'onglet Network de cet onglet precis pour
-// verifier si une requete part reellement au clic sur Enregistrer, ni si
-// Vinted la refuse. Seul point d'observation possible : intercepter
-// fetch/XHR depuis CE content script, le temps de la fenetre de clic.
-// Purement en lecture (journalise puis relaie l'appel original a
-// l'identique) -- ne modifie ni les requetes ni leur resultat.
-// Tronque defensivement (2026-07-25, capture headers/payload/reponse
-// demandee explicitement) : chrome.storage.local reste partage avec 49
-// autres entrees du ring buffer -- un corps de reponse volumineux ne doit
-// jamais faire echouer la persistance des entrees suivantes.
-function truncateForLog(value: string, max = 4000): string {
-  return value.length > max ? `${value.slice(0, max)}... (${value.length - max} caracteres tronques)` : value;
-}
-
-function headersToObject(headers: HeadersInit | Headers | undefined | null): Record<string, string> {
-  if (!headers) return {};
-  const normalized = headers instanceof Headers ? headers : new Headers(headers);
-  const obj: Record<string, string> = {};
-  normalized.forEach((value, key) => {
-    obj[key] = value;
-  });
-  return obj;
-}
-
-function describeRequestBody(body: unknown): string | null {
-  if (body === undefined || body === null) return null;
-  if (typeof body === "string") return truncateForLog(body);
-  if (body instanceof URLSearchParams) return truncateForLog(body.toString());
-  return `(corps non capture : ${(body as { constructor?: { name?: string } })?.constructor?.name ?? typeof body})`;
-}
-
-function installNetworkObserver(): void {
-  // logger.info (pas seulement mark/console.log) : cet onglet tourne en
-  // arriere-plan (active:false) hors de ce diagnostic, impossible d'y ouvrir
-  // DevTools au bon moment -- seule l'ecriture dans le ring buffer persiste
-  // (chrome.storage.local) rend ces evenements reellement consultables
-  // apres coup, depuis le popup de l'extension.
-  //
-  // Capture headers/payload/reponse (2026-07-25, demande explicite -- test
-  // au clic MANUEL pour identifier avec certitude la vraie requete de
-  // sauvegarde de Vinted) : au-dela de method/url/status deja presents,
-  // journalise desormais aussi les en-tetes et le corps de la requete, ainsi
-  // que les en-tetes et le corps de la reponse (via response.clone(), qui ne
-  // consomme pas le flux original -- Vinted continue de lire sa propre
-  // reponse normalement).
-  //
-  // Installation permanente (2026-07-25) : plus de start/stop autour du clic
-  // -- voir le commentaire au point d'appel (chargement du module) pour la
-  // raison (timing d'injection document_start, pas une fenetre d'observation).
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = ((...args: Parameters<typeof fetch>) => {
-    const [input, init] = args;
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
-    const requestHeaders = headersToObject(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-    const requestBody = describeRequestBody(init?.body);
-    const startedAt = performance.now();
-    logger.info(`[${currentHistoryId}] NETWORK_FETCH_SENT`, { method, url, requestHeaders, requestBody });
-    return originalFetch(...args).then(
-      async (response) => {
-        let responseBody: string | null = null;
-        try {
-          responseBody = truncateForLog(await response.clone().text());
-        } catch (err) {
-          responseBody = `(lecture impossible : ${errorMessage(err)})`;
-        }
-        logger.info(`[${currentHistoryId}] NETWORK_FETCH_RESPONSE`, {
-          method,
-          url,
-          status: response.status,
-          ok: response.ok,
-          elapsedMs: Math.round(performance.now() - startedAt),
-          responseHeaders: headersToObject(response.headers),
-          responseBody,
-        });
-        return response;
-      },
-      (err) => {
-        logger.error(`[${currentHistoryId}] NETWORK_FETCH_ERROR`, { method, url, message: errorMessage(err) });
-        throw err;
-      }
-    );
-  }) as typeof fetch;
-
-  const OriginalXHR = window.XMLHttpRequest;
-  const openOriginal = OriginalXHR.prototype.open;
-  const sendOriginal = OriginalXHR.prototype.send;
-  const setRequestHeaderOriginal = OriginalXHR.prototype.setRequestHeader;
-  type TaggedXHR = XMLHttpRequest & { __resellosMethod?: string; __resellosUrl?: string; __resellosHeaders?: Record<string, string> };
-  OriginalXHR.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
-    const tagged = this as TaggedXHR;
-    tagged.__resellosMethod = method;
-    tagged.__resellosUrl = String(url);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (openOriginal as any).apply(this, [method, url, ...rest]);
-  };
-  OriginalXHR.prototype.setRequestHeader = function (this: XMLHttpRequest, name: string, value: string) {
-    const tagged = this as TaggedXHR;
-    tagged.__resellosHeaders = tagged.__resellosHeaders ?? {};
-    tagged.__resellosHeaders[name] = value;
-    return setRequestHeaderOriginal.apply(this, [name, value]);
-  };
-  OriginalXHR.prototype.send = function (this: XMLHttpRequest, ...args: unknown[]) {
-    const tagged = this as TaggedXHR;
-    const startedAt = performance.now();
-    logger.info(`[${currentHistoryId}] NETWORK_XHR_SENT`, {
-      method: tagged.__resellosMethod,
-      url: tagged.__resellosUrl,
-      requestHeaders: tagged.__resellosHeaders ?? {},
-      requestBody: describeRequestBody(args[0]),
-    });
-    this.addEventListener("loadend", () => {
-      let responseBody: string | null = null;
-      try {
-        responseBody = truncateForLog(this.responseText);
-      } catch {
-        responseBody = `(lecture impossible, responseType="${this.responseType}")`;
-      }
-      logger.info(`[${currentHistoryId}] NETWORK_XHR_RESPONSE`, {
-        method: tagged.__resellosMethod,
-        url: tagged.__resellosUrl,
-        status: this.status,
-        elapsedMs: Math.round(performance.now() - startedAt),
-        responseHeadersRaw: (() => {
-          try {
-            return this.getAllResponseHeaders();
-          } catch {
-            return null;
-          }
-        })(),
-        responseBody,
-      });
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (sendOriginal as any).apply(this, args);
-  };
-}
-
-// INSTRUMENTATION TEMPORAIRE (meme raison que ci-dessus) : snapshots
-// repetes (pas un sleep fixe -- de simples lectures DOM planifiees) de
-// l'etat du bouton/champ prix/pathname pendant toute la fenetre d'attente
-// de navigation, la ou l'ancien code n'en capturait qu'un seul a +500ms.
-// Capture aussi jusqu'a 300 caracteres de texte visible autour du bouton a
-// chaque instantane, pour attraper un eventuel message d'erreur Vinted
-// (validation, champ obligatoire...) dont le selecteur exact est inconnu.
-function observeDomDuringSubmit(historyId: string | undefined, saveButton: HTMLButtonElement): () => void {
-  // 4 instantanes seulement (pas plus) : le ring buffer persiste
-  // (chrome.storage.local, voir logger.ts) ne garde que les 50 dernieres
-  // entrees, partagees avec tout le reste du pipeline (background + ce
-  // content script) -- inutile de le saturer alors que 4 points repartis
-  // sur les 20s d'attente suffisent a situer un changement d'etat.
-  const timers = [500, 3000, 10000, 19000].map((delayMs) =>
-    setTimeout(() => {
-      const freshButton = document.querySelector<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
-      const priceField = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-      logger.info(`[${historyId}] DOM_SNAPSHOT (+${delayMs}ms)`, {
-        boutonCaptureEncoreAttache: document.body.contains(saveButton),
-        boutonFraisTrouve: !!freshButton,
-        boutonFraisDisabled: freshButton?.disabled ?? null,
-        boutonFraisAriaDisabled: freshButton?.getAttribute("aria-disabled") ?? null,
-        boutonFraisText: freshButton?.textContent?.trim() ?? null,
-        boutonParentTexteVisible: freshButton?.closest("form")?.textContent?.slice(0, 300) ?? freshButton?.parentElement?.textContent?.slice(0, 300) ?? null,
-        prixActuelDansLeDom: priceField?.value ?? null,
-        pathnameActuel: location.pathname,
-      });
-    }, delayMs)
-  );
-  return () => timers.forEach(clearTimeout);
-}
-
-// dispatchFullClick() (pointerdown -> mousedown -> pointerup -> mouseup ->
-// click, teste en conditions reelles le 2026-07-24) temporairement retiree
-// d'ici (2026-07-25, diagnostic clic manuel) : elle n'a jamais declenche la
-// moindre requete reseau malgre une sequence complete d'evenements --
-// hypothese invalidee, voir le commentaire au point d'appel ci-dessous
-// (WAITING_FOR_MANUAL_CLICK). Recuperable via l'historique git si un jour
-// necessaire.
-
 async function submitEdit(historyId: string | undefined, vintedItemId: string): Promise<{ vintedItemId: string; vintedUrl: string }> {
   // Hypothese : le formulaire d'edition partage le meme bouton de
   // sauvegarde que la creation -- a reconfirmer en test live (peut-etre
@@ -432,55 +171,23 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
   mark(historyId, "SAVE_BUTTON_FOUND", { disabled: saveButton.disabled, text: saveButton.textContent });
   logger.info(`[${historyId}] SAVE_BUTTON_FOUND`, { disabled: saveButton.disabled, text: saveButton.textContent });
   log(historyId, "bouton de sauvegarde trouve", { disabled: saveButton.disabled, text: saveButton.textContent });
-  inspectReactElement(historyId, "SAVE_BUTTON", saveButton);
-  inspectSubmitControl(historyId, saveButton);
   await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true", {
     description: "bouton de sauvegarde devient cliquable (non disabled)",
   });
-  log(historyId, "bouton de sauvegarde pret (non disabled), clic");
+  log(historyId, "bouton de sauvegarde pret (non disabled), en attente du clic utilisateur");
 
-  // INSTRUMENTATION (2026-07-21, audit demande explicite -- run 90 euros
-  // reste sur /edit apres l'etape publishing, aucune navigation) :
-  // waitForElement() renvoie une reference FIGEE (un seul querySelector,
-  // voir domWait.ts) -- si Vinted re-rend le bouton entre sa capture
-  // ci-dessus et ce clic (React remplace souvent le noeud plutot que muter
-  // son attribut disabled), `saveButton` devient un noeud DETACHE : .click()
-  // dessus est un no-op parfaitement silencieux (l'evenement synthetique ne
-  // remonte jamais a un listener delegue sur un conteneur qui, lui, est
-  // toujours attache) -- aucune erreur, aucun effet, et donc jamais la
-  // navigation attendue. Purement en lecture, ne change ni le delai ni la
-  // logique de decision.
-  const freshButtonAtClickTime = document.querySelector<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
-  mark(historyId, "PRE_CLICK_BUTTON_CHECK", {
-    memeElementQueLaCaptureInitiale: freshButtonAtClickTime === saveButton,
-    captureEncoreAttacheeAuDocument: document.body.contains(saveButton),
-    disabledSurLaCapture: saveButton.disabled,
-    disabledSurLElementFraisInterroge: freshButtonAtClickTime?.disabled ?? null,
-  });
-
-  // L'observateur reseau est desormais installe une seule fois au chargement
-  // du module (voir installNetworkObserver() plus haut) -- plus de start/stop
-  // ici. DOM/trusted restent scopes a la fenetre de clic, inchanges.
-  const stopDomObserver = observeDomDuringSubmit(historyId, saveButton);
-  const stopTrustedObserver = observeTrustedStateDuringSubmit(historyId);
-
-  // DIAGNOSTIC TEMPORAIRE (clic manuel, 2026-07-25, demande explicite) : le
-  // clic synthetique atteint bien document (EVENT_REACHED_DOCUMENT confirme
-  // en test reel) mais ne declenche jamais la moindre requete reseau --
-  // hypothese la plus probable : le handler de Vinted exige un evenement
-  // isTrusted:true, qu'aucun dispatchEvent() ne peut jamais produire.
-  // N'appelle plus dispatchFullClick() : cet onglet est desormais ouvert au
-  // premier plan (voir handleEditListing.ts, active:true temporaire) pour
-  // que l'utilisateur clique lui-meme, reellement, sur "Valider" pendant que
-  // les observateurs reseau/DOM restent actifs -- capture avec certitude
-  // l'URL/methode/en-tetes/payload/reponse de la vraie requete. A retirer
-  // (et remettre dispatchFullClick()) une fois cette requete identifiee.
+  // Soumission par clic MANUEL de l'utilisateur (decision d'architecture du
+  // 2026-07-25, voir commentaire d'en-tete du fichier) : un clic synthetique
+  // n'a jamais declenche la requete de sauvegarde de Vinted (route protegee
+  // par un service anti-bot, confirme en test reel) -- l'onglet est ouvert
+  // au premier plan (handleEditListing.ts, active:true) et ce pipeline
+  // attend simplement que l'utilisateur clique lui-meme sur "Valider".
   mark(historyId, "WAITING_FOR_MANUAL_CLICK");
   logger.info(`[${historyId}] WAITING_FOR_MANUAL_CLICK`, {
-    instruction: "Clique maintenant, reellement, sur le bouton Valider dans cet onglet (jusqu'a 60s)",
+    instruction: "Clique maintenant sur le bouton Valider dans cet onglet (jusqu'a 60s)",
   });
   stage(historyId, "waiting_for_manual_click");
-  log(historyId, "en attente d'un clic MANUEL reel sur Valider (jusqu'a 60s) -- l'automatisation ne clique plus pour ce diagnostic");
+  log(historyId, "en attente d'un clic utilisateur sur Valider (jusqu'a 60s)");
 
   // CAUSE RACINE demontree en test reel le 2026-07-16 ("faux succes",
   // ResellOS revenu a l'ancien prix apres coup) : l'ancien predicat
@@ -511,29 +218,21 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
   // verifyFieldsDispatchCount:0, finalPhase:"editing"). Corrige en
   // acceptant desormais aussi /member/\d+ comme preuve de navigation
   // reelle hors du formulaire.
-  try {
-    // timeoutMs porte a 60000ms (2026-07-25, diagnostic clic manuel
-    // temporaire uniquement) : l'ancien 20000ms etait dimensionne pour un
-    // clic automatique quasi instantane -- un humain a besoin de plus de
-    // temps pour remarquer l'onglet et cliquer reellement.
-    await waitForCondition(
-      () => {
-        const path = location.pathname;
-        return !path.includes("/edit") && (/\/items\/\d+/.test(path) || /\/member\/\d+/.test(path));
-      },
-      {
-        timeoutMs: 60000,
-        description:
-          "navigation hors de /edit apres un clic MANUEL reel sur Valider (vers l'article ou le profil vendeur -- PAS une preuve de sauvegarde reelle, juste que Vinted a redirige)",
-      }
-    );
-  } finally {
-    // DOM/trusted restent scopes a cette fenetre -- l'observateur reseau,
-    // lui, reste actif pour toute la duree de vie du document (voir
-    // installNetworkObserver()).
-    stopDomObserver();
-    stopTrustedObserver();
-  }
+  // timeoutMs porte a 60000ms (2026-07-25) : l'ancien 20000ms etait
+  // dimensionne pour un clic automatique quasi instantane -- avec un clic
+  // utilisateur reel, il faut laisser le temps de remarquer l'onglet et
+  // de cliquer.
+  await waitForCondition(
+    () => {
+      const path = location.pathname;
+      return !path.includes("/edit") && (/\/items\/\d+/.test(path) || /\/member\/\d+/.test(path));
+    },
+    {
+      timeoutMs: 60000,
+      description:
+        "navigation hors de /edit apres le clic utilisateur sur Valider (vers l'article ou le profil vendeur -- PAS une preuve de sauvegarde reelle, juste que Vinted a redirige)",
+    }
+  );
   stage(historyId, "navigation_away_from_edit_detected", { pathname: location.pathname });
   log(historyId, "navigation hors de /edit detectee (pas encore une preuve de sauvegarde reelle)", { pathname: location.pathname });
 
@@ -547,7 +246,6 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
 
 async function runEdit(payload: EditListingPayload): Promise<void> {
   const historyId = payload.historyId;
-  currentHistoryId = historyId;
   runEditInvocationCount += 1;
   mark(historyId, "RUN_EDIT_INVOKED", { runEditInvocationCount, url: location.href });
   if (runEditInvocationCount > 1) {
@@ -662,7 +360,6 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
         valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
         ecritureConfirmee,
       });
-      if (priceInputAfterWrite) inspectReactElement(historyId, "PRICE_AFTER_TYPE", priceInputAfterWrite);
     } else {
       skip("price");
     }
@@ -846,7 +543,6 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
 // mecanisme de relecture fiable equivalent, limite explicitement
 // documentee, pas silencieusement ignoree.
 async function handleVerifyEditFields(historyId: string | undefined, payload: VerifyEditFieldsPayload): Promise<void> {
-  currentHistoryId = historyId;
   try {
     // BUG REEL demontre en test reel le 2026-07-16 : attendre INCONDITIONNELLEMENT
     // le titre pour detecter que la page est chargee echouait par timeout (8000ms
