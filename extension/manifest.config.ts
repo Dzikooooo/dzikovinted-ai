@@ -40,7 +40,17 @@ export default defineManifest({
   // aucun code de l'extension (grep exhaustif de chrome.alarms/alarms.* sur
   // extension/src/, aucun resultat) -- une permission Chrome non justifiee
   // est un risque et une confusion pour rien.
-  permissions: ["storage", "tabs", "scripting"],
+  //
+  // "webRequest" ajoutee (2026-07-25, diagnostic edit_listing) : le patch
+  // fetch/XMLHttpRequest (page-level, meme installe en document_start) n'a
+  // capture aucune requete lors du clic manuel sur "Valider" -- fort indice
+  // que la sauvegarde passe par une navigation de document complete (POST de
+  // formulaire classique), invisible pour toute interception cote page.
+  // webRequest observe le trafic reseau au niveau du navigateur, y compris
+  // les navigations -- utilisee ici en lecture seule (aucun extraInfoSpec
+  // "blocking"), scopee au seul onglet d'edition ouvert par
+  // handleEditListing.ts (voir son commentaire).
+  permissions: ["storage", "tabs", "scripting", "webRequest"],
   host_permissions: ["https://www.vinted.fr/*"],
   externally_connectable: {
     matches: ["http://localhost:5173/*", "https://dzikovinted-ai.vercel.app/*"],
