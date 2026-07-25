@@ -12,7 +12,17 @@ export interface LogEntry {
 }
 
 const STORAGE_KEY = "resellos_log";
-const MAX_ENTRIES = 50;
+// Porte de 50 a 400 (2026-07-25, bug reel confirme en test edit_listing) :
+// la seule phase de verification d'un run edit_listing (retries EDIT_TAB_READY,
+// tab_updated, keepalives) genere a elle seule ~46 entrees -- largement de
+// quoi evincer du tampon de 50 les entrees de la phase precedente (dont
+// NETWORK_FETCH_SENT/RESPONSE, la donnee la plus recherchee) avant meme que
+// l'utilisateur ait pu les recuperer. Chaque entree reste bornee (voir
+// truncateForLog dans vinted-edit.ts, ~4000 caracteres max pour les corps de
+// requete/reponse) -- 400 entrees restent tres largement sous le quota par
+// defaut de chrome.storage.local (5 Mo, aucune permission "unlimitedStorage"
+// declaree).
+const MAX_ENTRIES = 400;
 
 // chrome.storage.local n'offre aucune primitive de transaction : persist() fait un
 // read-modify-write. Sans serialisation, plusieurs logger.info() declenches en rafale
