@@ -18,6 +18,39 @@ export class PublishError extends Error {
   }
 }
 
+// dispatchFullClick (2026-07-25, correctif reel apres echec confirme du
+// champ marque) : element.click() natif ne dispatch QUE l'evenement "click"
+// -- jamais pointerdown/mousedown/pointerup/mouseup. Preuve disponible sans
+// nouveau diagnostic : sur le DOM reel inspecte par l'utilisateur,
+// __reactEvents$... du <input> "brand-select-dropdown-input" ne liste aucun
+// handler click/mousedown directement sur ce noeud (seulement
+// "invalid_bubble", la validation HTML native) -- le vrai gestionnaire
+// d'ouverture vit ailleurs dans l'arbre (icone soeur role="button", ou
+// delegation au conteneur parent), et de nombreux composants de ce type
+// (non natifs, ici visiblement le design system "core" de Vinted) ouvrent
+// sur mousedown plutot que click, precisement pour gerer proprement le clic
+// exterieur qui referme le menu. bubbles:true pour atteindre un eventuel
+// handler delegue plus haut dans l'arbre.
+function dispatchFullClick(el: HTMLElement): void {
+  const pointerInit: PointerEventInit = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+  };
+  const mouseInit: MouseEventInit = { bubbles: true, cancelable: true, composed: true, button: 0, buttons: 1 };
+
+  el.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+  el.dispatchEvent(new MouseEvent("mousedown", mouseInit));
+  el.dispatchEvent(new PointerEvent("pointerup", { ...pointerInit, buttons: 0 }));
+  el.dispatchEvent(new MouseEvent("mouseup", { ...mouseInit, buttons: 0 }));
+  el.dispatchEvent(new MouseEvent("click", { ...mouseInit, buttons: 0 }));
+}
+
 // Positionne la valeur d'un champ controle React : passer par le setter
 // natif puis emettre "input" bouillonnant, seule methode fiable pour qu'un
 // input controle par React detecte le changement (assigner .value
@@ -218,7 +251,11 @@ export async function resolveCategory(categoryText: string): Promise<void> {
 // appelant a etre explicite plutot que de deviner silencieusement.
 async function readOptionTexts(triggerSelector: string, contentSelector: string) {
   const trigger = await waitForElement<HTMLElement>(triggerSelector);
-  trigger.click();
+  // dispatchFullClick (pas trigger.click()) : voir le commentaire de la
+  // fonction -- un simple .click() natif n'a jamais ouvert le dropdown
+  // marque en test reel (timeout confirme sur son contenu, pourtant
+  // correctement cible par son selecteur).
+  dispatchFullClick(trigger);
   const content = await waitForElement(contentSelector);
   const items = Array.from(content.querySelectorAll("li"));
   return { trigger, content, items, texts: items.map((li) => (li.textContent ?? "").trim()) };
