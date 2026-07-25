@@ -142,6 +142,83 @@ function reportResult(outcome: RunActionOutcome): void {
 // document deja navigue hors du formulaire).
 let runEditInvocationCount = 0;
 
+// INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) -- lit
+// les proprietes internes que React attache directement sur le noeud DOM
+// (cle prefixee __reactProps$/__reactEventHandlers$ selon la version,
+// __reactFiber$ pour l'instance de fibre) -- technique standard pour
+// inspecter depuis l'exterieur ce que React croit reellement savoir d'un
+// element controle, independamment de ce que le DOM affiche visuellement.
+// Objectif direct : verifier si react considere encore payload.price
+// comme "non modifie" malgre une valeur DOM a jour (hypothese "etat
+// interne jamais mis a jour"). Purement en lecture, aucun effet de bord.
+function inspectReactElement(historyId: string | undefined, label: string, el: Element): void {
+  const keys = Object.keys(el);
+  const propsKey = keys.find((k) => k.startsWith("__reactProps$") || k.startsWith("__reactEventHandlers$"));
+  const fiberKey = keys.find((k) => k.startsWith("__reactFiber$"));
+  const props = propsKey ? (el as unknown as Record<string, Record<string, unknown> | undefined>)[propsKey] : null;
+  const inputEl = el as HTMLInputElement;
+  logger.info(`[${historyId}] REACT_INSPECT (${label})`, {
+    tagName: el.tagName,
+    type: inputEl.type ?? null,
+    name: inputEl.name ?? null,
+    className: el.className,
+    domValue: inputEl.value ?? null,
+    hasReactProps: !!propsKey,
+    hasReactFiber: !!fiberKey,
+    reactPropsValue: props?.value ?? null,
+    reactPropsDefaultValue: props?.defaultValue ?? null,
+    reactPropsDisabled: props?.disabled ?? null,
+    reactPropsType: props?.type ?? null,
+    reactPropsHasOnChange: typeof props?.onChange === "function",
+    reactPropsHasOnClick: typeof props?.onClick === "function",
+    reactPropsHasOnPointerDown: typeof props?.onPointerDown === "function",
+    reactPropsHasOnMouseDown: typeof props?.onMouseDown === "function",
+  });
+}
+
+// INSTRUMENTATION TEMPORAIRE (meme raison) : le controle final de
+// soumission n'est peut-etre pas un <button type="submit"> classique dans
+// un <form> -- verifie son type reel, son formulaire proprietaire (via la
+// propriete .form, distincte de closest("form") si le bouton est rendu
+// via un portail React hors de l'arbre visuel du formulaire), et si ce
+// formulaire expose requestSubmit().
+function inspectSubmitControl(historyId: string | undefined, button: HTMLButtonElement): void {
+  const closestForm = button.closest("form");
+  logger.info(`[${historyId}] SUBMIT_CONTROL_INSPECT`, {
+    typeAttribute: button.getAttribute("type"),
+    domType: button.type,
+    ownerFormViaProperty: !!button.form,
+    ownerFormAction: button.form?.action ?? null,
+    ownerFormMethod: button.form?.method ?? null,
+    ownerFormHasRequestSubmit: typeof button.form?.requestSubmit === "function",
+    closestFormFound: !!closestForm,
+    closestFormIsSameAsOwnerForm: closestForm === button.form,
+  });
+}
+
+// INSTRUMENTATION TEMPORAIRE (meme raison) : confirme que nos evenements
+// synthetiques atteignent bien un ecouteur au niveau document (capture,
+// donc avant tout stopPropagation() eventuel d'un handler intermediaire),
+// et journalise leur isTrusted reel -- toujours false par specification
+// pour un evenement synthetique, confirme ici plutot que suppose. Ne peut
+// PAS prouver que Vinted filtre specifiquement sur isTrusted en interne
+// (invisible depuis l'exterieur), mais confirme au moins que la
+// propagation elle-meme n'est pas coupee avant document.
+function observeTrustedStateDuringSubmit(historyId: string | undefined): () => void {
+  const types = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"] as const;
+  const handler = (e: Event) => {
+    const target = e.target as HTMLElement | null;
+    logger.info(`[${historyId}] EVENT_REACHED_DOCUMENT (${e.type})`, {
+      isTrusted: e.isTrusted,
+      defaultPrevented: e.defaultPrevented,
+      targetTag: target?.tagName ?? null,
+      targetTestId: target?.getAttribute?.("data-testid") ?? null,
+    });
+  };
+  types.forEach((type) => document.addEventListener(type, handler, { capture: true }));
+  return () => types.forEach((type) => document.removeEventListener(type, handler, { capture: true }));
+}
+
 // INSTRUMENTATION TEMPORAIRE (diagnostic edit_listing, 2026-07-24) -- a
 // retirer une fois la cause racine du timeout de navigation confirmee.
 // L'onglet d'edition tourne en arriere-plan (chrome.tabs.create({active:
@@ -247,6 +324,38 @@ function observeDomDuringSubmit(historyId: string | undefined, saveButton: HTMLB
   return () => timers.forEach(clearTimeout);
 }
 
+// CORRECTIF (diagnostic edit_listing, 2026-07-24 -- teste en conditions
+// reelles avant tout autre changement) : element.click() natif ne dispatch
+// QUE l'evenement "click" lui-meme -- contrairement a un vrai clic
+// utilisateur, il ne simule jamais la sequence pointerdown -> mousedown ->
+// pointerup -> mouseup qui le precede normalement. Si le composant
+// "Valider" de Vinted ecoute pointerdown/mousedown (frequent sur un bouton
+// anime/stylise) plutot que uniquement onClick, un .click() seul n'atteint
+// jamais ce handler, quel que soit l'etat du formulaire -- explique une
+// absence totale d'effet observable (aucune requete, aucun changement
+// d'etat) malgre un bouton trouve, attache et non-disabled. Remplace le
+// .click() brut par la sequence complete, bubbles:true (delegation React)
+// et composed:true (traverse une eventuelle frontiere shadow DOM).
+function dispatchFullClick(el: HTMLElement): void {
+  const pointerInit: PointerEventInit = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    pointerId: 1,
+    pointerType: "mouse",
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+  };
+  const mouseInit: MouseEventInit = { bubbles: true, cancelable: true, composed: true, button: 0, buttons: 1 };
+
+  el.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+  el.dispatchEvent(new MouseEvent("mousedown", mouseInit));
+  el.dispatchEvent(new PointerEvent("pointerup", { ...pointerInit, buttons: 0 }));
+  el.dispatchEvent(new MouseEvent("mouseup", { ...mouseInit, buttons: 0 }));
+  el.dispatchEvent(new MouseEvent("click", { ...mouseInit, buttons: 0 }));
+}
+
 async function submitEdit(historyId: string | undefined, vintedItemId: string): Promise<{ vintedItemId: string; vintedUrl: string }> {
   // Hypothese : le formulaire d'edition partage le meme bouton de
   // sauvegarde que la creation -- a reconfirmer en test live (peut-etre
@@ -255,6 +364,8 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
   mark(historyId, "SAVE_BUTTON_FOUND", { disabled: saveButton.disabled, text: saveButton.textContent });
   logger.info(`[${historyId}] SAVE_BUTTON_FOUND`, { disabled: saveButton.disabled, text: saveButton.textContent });
   log(historyId, "bouton de sauvegarde trouve", { disabled: saveButton.disabled, text: saveButton.textContent });
+  inspectReactElement(historyId, "SAVE_BUTTON", saveButton);
+  inspectSubmitControl(historyId, saveButton);
   await waitForCondition(() => !saveButton.disabled && saveButton.getAttribute("aria-disabled") !== "true", {
     description: "bouton de sauvegarde devient cliquable (non disabled)",
   });
@@ -284,8 +395,9 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
   // declenchee de facon synchrone par le handler de clic de Vinted.
   const stopNetworkObserver = observeNetworkDuringSubmit(historyId);
   const stopDomObserver = observeDomDuringSubmit(historyId, saveButton);
+  const stopTrustedObserver = observeTrustedStateDuringSubmit(historyId);
 
-  saveButton.click();
+  dispatchFullClick(saveButton);
   mark(historyId, "SAVE_CLICKED");
   logger.info(`[${historyId}] SAVE_CLICKED`, {
     memeElementQueLaCaptureInitiale: freshButtonAtClickTime === saveButton,
@@ -343,6 +455,7 @@ async function submitEdit(historyId: string | undefined, vintedItemId: string): 
     // explicite plutot que de compter dessus).
     stopNetworkObserver();
     stopDomObserver();
+    stopTrustedObserver();
   }
   stage(historyId, "navigation_away_from_edit_detected", { pathname: location.pathname });
   log(historyId, "navigation hors de /edit detectee (pas encore une preuve de sauvegarde reelle)", { pathname: location.pathname });
@@ -471,6 +584,7 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
         valeurLueDansLeDom: priceInputAfterWrite?.value ?? "(champ introuvable)",
         ecritureConfirmee,
       });
+      if (priceInputAfterWrite) inspectReactElement(historyId, "PRICE_AFTER_TYPE", priceInputAfterWrite);
     } else {
       skip("price");
     }
