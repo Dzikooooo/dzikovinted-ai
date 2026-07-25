@@ -105,6 +105,25 @@ function mark(historyId: string | undefined, tag: string, detail?: unknown): voi
 // parfaitement reussie. Normalise les deux cotes en nombre avant de
 // comparer (utilise a la fois pour la confirmation d'ecriture juste apres
 // la frappe, et pour la verification post-sauvegarde reelle).
+// isBrandLocked (2026-07-25, cause racine reelle du 2e echec confirme sur le
+// champ marque) : Vinted affiche le bandeau natif "Certaines marques ne
+// peuvent être modifiées qu'en supprimant et en ajoutant à nouveau
+// l'article." sur CETTE annonce -- observe directement par l'utilisateur
+// dans l'onglet reel apres le correctif dispatchFullClick (qui reste
+// correct pour le MECANISME d'ouverture, voir formFill.ts, mais un champ
+// verrouille cote Vinted ne reagit a aucune sequence de clic). Deux signaux
+// redondants, aucun ne necessitant un nouveau releve manuel de data-testid :
+// l'etat disabled/aria-disabled du trigger, et la presence litterale du
+// texte d'avertissement Vinted (normalise pour tolerer apostrophe courbe vs
+// droite) n'importe ou dans la page.
+function isBrandLocked(): boolean {
+  const trigger = document.querySelector<HTMLInputElement>(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR);
+  const triggerDisabled = !!trigger && (trigger.disabled === true || trigger.getAttribute("aria-disabled") === "true");
+  const bodyText = (document.body.textContent ?? "").replace(/[‘’]/g, "'");
+  const noticeVisible = bodyText.includes("peuvent être modifiées qu'en supprimant");
+  return triggerDisabled || noticeVisible;
+}
+
 function parsePriceToNumber(raw: string | null): number | null {
   if (!raw) return null;
   const normalized = raw
@@ -452,6 +471,18 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
       skip("size");
     }
     if (isChanged("brand")) {
+      if (isBrandLocked()) {
+        // Ne tente jamais le clic sur un champ verrouille par Vinted -- voir
+        // isBrandLocked() ci-dessus pour la preuve. Leve directement une
+        // PublishError dediee, interceptee plus bas dans le catch(fillErr)
+        // pour ne PAS emprunter le chemin EDIT_FIELD_FILL_FAILED (ce n'est
+        // pas un echec de remplissage a diagnostiquer, c'est une restriction
+        // Vinted connue et attendue).
+        throw new PublishError(
+          "brand_locked",
+          "Vinted ne permet pas de modifier la marque de cet article directement : il faut supprimer l'annonce puis la republier avec la nouvelle marque."
+        );
+      }
       log(historyId, "selection marque", { marque: payload.brand });
       // BRAND_DROPDOWN_CONTENT_SELECTOR verifie en direct le 2026-07-25
       // (cause racine du timeout reel sur ce champ, voir publishSelectors.ts).
@@ -474,6 +505,18 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
       skip("material");
     }
     } catch (fillErr) {
+      // brand_locked (2026-07-25) : PAS un echec de remplissage a
+      // diagnostiquer -- une restriction Vinted connue et attendue pour
+      // cette annonce precise (voir isBrandLocked() plus haut). Chemin
+      // d'erreur normal (PUBLISH_RESULT/settle, onglet ferme normalement),
+      // distinct du mode diagnostic EDIT_FIELD_FILL_FAILED ci-dessous qui
+      // reste reserve aux echecs de remplissage reellement inexpliques.
+      if (fillErr instanceof PublishError && fillErr.code === "brand_locked") {
+        mark(historyId, "ECHEC : marque verrouillee par Vinted pour cette annonce (suppression + republication requises)");
+        log(historyId, "marque verrouillee par Vinted -- pas un echec de remplissage, onglet ferme normalement", { message: fillErr.message });
+        reportResult({ status: "error", errorMessage: fillErr.message });
+        return;
+      }
       const message =
         fillErr instanceof WaitTimeoutError
           ? describeTimeout(fillErr)
