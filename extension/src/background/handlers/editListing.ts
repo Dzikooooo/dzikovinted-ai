@@ -718,13 +718,21 @@ export async function handleEditListing(
     function onTabReadyTimeout(): void {
       pipeline(`ECHEC : aucune commande acquittee sous ${TAB_READY_TIMEOUT_MS}ms (phase ${phase})`);
       logger.error(`[${historyId}] handleEditListing: aucune commande acquittee sous ${TAB_READY_TIMEOUT_MS}ms`, { phase });
-      settle({
-        status: "error",
-        errorMessage:
-          phase === "editing"
-            ? "La page d'édition Vinted n'a pas confirmé être prête à temps (le script d'automatisation n'a jamais pu recevoir la commande). Réessaie -- si le problème persiste, la page Vinted a peut-être changé de structure."
-            : "Impossible de relire la page Vinted après sauvegarde pour confirmer la modification (délai dépassé). Vinted n'a pas confirmé la modification.",
-      });
+      if (phase === "editing") {
+        settle({
+          status: "error",
+          errorMessage:
+            "La page d'édition Vinted n'a pas confirmé être prête à temps (le script d'automatisation n'a jamais pu recevoir la commande). Réessaie -- si le problème persiste, la page Vinted a peut-être changé de structure.",
+        });
+        return;
+      }
+      // phase === "verifying" : le content script n'a jamais pu s'injecter/
+      // signaler pret sur /edit dans les temps -- meme classe de probleme
+      // que le cas "_error" deja gere (cause racine #6, /edit invalide par
+      // Vinted apres un changement de titre, page carrement inaccessible
+      // plutot qu'un simple champ introuvable). Tente le meme repli page
+      // publique au lieu de clore directement en echec.
+      attemptPublicPageFallback();
     }
     let tabReadyTimeout = setTimeout(onTabReadyTimeout, TAB_READY_TIMEOUT_MS);
 
