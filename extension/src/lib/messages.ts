@@ -174,12 +174,22 @@ export type ContentCommand =
 // enregistre la nouvelle valeur. Le pipeline edit_listing ne se termine
 // plus sur ce signal -- seul EDIT_VERIFICATION_RESULT (apres relecture
 // reelle) determine success/error.
+// EDIT_FIELD_FILL_FAILED (2026-07-25, mode diagnostic minimal -- demande
+// explicite) : distinct de PUBLISH_RESULT{status:"error"}. Envoye
+// UNIQUEMENT si un champ echoue a se remplir AVANT le clic sur "Valider"
+// (ex. selectMatchingOption ne trouve jamais le conteneur d'options d'un
+// picker marque/taille/etat/couleur/matiere) -- jamais pour un echec
+// pendant/apres submitEdit() (clic + attente de navigation), qui continue
+// de rapporter PUBLISH_RESULT normalement. Seul ce signal precis indique a
+// handleEditListing.ts de laisser l'onglet Vinted ouvert au lieu de le
+// fermer, pour permettre l'inspection manuelle du DOM reel qui a echoue.
 export type ContentReport =
   | { type: "PUBLISH_PROGRESS"; step: PublishStep }
   | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome }
   | { type: "EDIT_TAB_READY" }
   | { type: "EDIT_SAVE_SUBMITTED"; vintedItemId: string; vintedUrl: string }
-  | { type: "EDIT_VERIFICATION_RESULT"; matches: boolean; details: Record<string, { expected: string; actual: string | null }> };
+  | { type: "EDIT_VERIFICATION_RESULT"; matches: boolean; details: Record<string, { expected: string; actual: string | null }> }
+  | { type: "EDIT_FIELD_FILL_FAILED"; errorMessage: string };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
@@ -195,7 +205,8 @@ export function isContentReport(msg: unknown): msg is ContentReport {
     type === "PUBLISH_RESULT" ||
     type === "EDIT_TAB_READY" ||
     type === "EDIT_SAVE_SUBMITTED" ||
-    type === "EDIT_VERIFICATION_RESULT"
+    type === "EDIT_VERIFICATION_RESULT" ||
+    type === "EDIT_FIELD_FILL_FAILED"
   );
 }
 

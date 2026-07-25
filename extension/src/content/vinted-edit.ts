@@ -327,7 +327,17 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
     // champ est desormais traite UNIQUEMENT s'il figure dans
     // payload.changedFields ; sinon aucune attente DOM n'est declenchee du
     // tout pour ce champ (juste un log explicite).
-
+    //
+    // try/catch DEDIE au remplissage (2026-07-25, mode diagnostic minimal --
+    // demande explicite suite a l'echec du champ marque) : distinct du
+    // catch englobant plus bas, qui continue de couvrir FORM_FOUND/
+    // verifyLoggedInAccount et submitEdit() sans aucun changement. Un echec
+    // ICI precis (avant tout clic sur "Valider") ne rapporte plus
+    // PUBLISH_RESULT -- il envoie EDIT_FIELD_FILL_FAILED, le seul signal qui
+    // indique a handleEditListing.ts de laisser l'onglet Vinted ouvert
+    // plutot que de le fermer, pour permettre l'inspection manuelle du DOM
+    // reel (ex. le vrai data-testid du conteneur d'options d'un picker).
+    try {
     if (isChanged("price")) {
       const priceInputBeforeWrite = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
       mark(historyId, "PRICE_FIELD_FOUND", { trouve: !!priceInputBeforeWrite, ancienneValeur: priceInputBeforeWrite?.value ?? null });
@@ -454,6 +464,22 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
       await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
     } else {
       skip("material");
+    }
+    } catch (fillErr) {
+      const message =
+        fillErr instanceof WaitTimeoutError
+          ? describeTimeout(fillErr)
+          : fillErr instanceof PublishError
+            ? fillErr.message
+            : errorMessage(fillErr);
+      logger.error(`[${historyId}] EDIT_FIELD_FILL_FAILED`, {
+        errorType: fillErr instanceof WaitTimeoutError ? "WaitTimeoutError" : fillErr instanceof PublishError ? "PublishError" : "inattendue",
+        message,
+      });
+      mark(historyId, "ECHEC : remplissage d'un champ avant soumission (onglet laisse ouvert pour diagnostic)", { message });
+      log(historyId, "echec de remplissage avant soumission -- onglet Vinted laisse ouvert pour diagnostic", { message });
+      chrome.runtime.sendMessage({ type: "EDIT_FIELD_FILL_FAILED", errorMessage: message });
+      return;
     }
 
     // Relecture finale juste avant soumission : confirme que rien

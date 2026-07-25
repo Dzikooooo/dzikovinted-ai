@@ -531,6 +531,25 @@ export async function handleEditListing(
         logger.info(`[${historyId}] handleEditListing: EDIT_SAVE_SUBMITTED recu, demarrage de la verification`, { ...message, senderUrl: sender.url });
         confirmedVintedUrl = message.vintedUrl;
         beginVerificationPhase(message.vintedUrl);
+      } else if (message.type === "EDIT_FIELD_FILL_FAILED") {
+        // Mode diagnostic minimal (2026-07-25, demande explicite -- echec du
+        // champ marque, pipeline ferme l'onglet avant qu'un data-testid
+        // puisse etre inspecte manuellement). Signal precis et distinct de
+        // PUBLISH_RESULT : le remplissage a echoue AVANT tout clic sur
+        // "Valider" -- l'onglet Vinted reste ouvert au premier plan
+        // (keepTabOpen) pour permettre l'inspection manuelle du DOM reel qui
+        // a fait echouer le remplissage. N'affecte que ce chemin precis --
+        // tous les autres appels a settle() (submitEdit, verification,
+        // timeouts) continuent de fermer l'onglet normalement.
+        pipeline("edit_field_fill_failed (onglet laisse ouvert pour diagnostic)", message);
+        logger.error(`[${historyId}] handleEditListing: echec de remplissage avant soumission, onglet laisse ouvert`, message);
+        settle(
+          {
+            status: "error",
+            errorMessage: `Le champ n'a pas pu être rempli. L'onglet Vinted reste ouvert pour diagnostic. (${message.errorMessage})`,
+          },
+          { keepTabOpen: true }
+        );
       } else if (message.type === "EDIT_VERIFICATION_RESULT") {
         pipeline("verification_result_received", { ...message, senderUrl: sender.url });
         logger.info(`[${historyId}] handleEditListing: resultat de verification recu`, { ...message, senderUrl: sender.url });
@@ -674,12 +693,18 @@ export async function handleEditListing(
       if (publicPageReadyListener) chrome.tabs.onUpdated.removeListener(publicPageReadyListener);
     }
 
-    function settle(outcome: RunActionOutcome): void {
+    function settle(outcome: RunActionOutcome, options?: { keepTabOpen?: boolean }): void {
       if (settled) return;
       settled = true;
       cleanup();
-      tabClosedByHandler = true;
-      chrome.tabs.remove(tabId).catch(() => {});
+      // keepTabOpen (2026-07-25, mode diagnostic minimal) : uniquement
+      // utilise par le chemin EDIT_FIELD_FILL_FAILED ci-dessus -- tous les
+      // autres appels a settle() (succes, verification, timeouts...)
+      // continuent de fermer l'onglet exactement comme avant.
+      if (!options?.keepTabOpen) {
+        tabClosedByHandler = true;
+        chrome.tabs.remove(tabId).catch(() => {});
+      }
       // Recapitulatif final UNIQUE (demande explicite 2026-07-18) : une
       // seule ligne grep-able "PIPELINE_SUMMARY" reunissant tous les
       // compteurs de cycle de vie de messagerie. editTabReadyCount > 2
