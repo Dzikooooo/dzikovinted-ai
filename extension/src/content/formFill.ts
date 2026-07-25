@@ -250,19 +250,25 @@ function diagnoseCategoryTrigger(el: HTMLElement): void {
 export async function resolveCategory(categoryText: string): Promise<void> {
   const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
   diagnoseCategoryTrigger(trigger);
-  // clickTarget (2026-07-25, 3e correctif reel, preuve directe du diagnostic
-  // ci-dessus) : le trigger reel sur la page d'EDITION est un <input readonly
-  // id="category">, SANS role/aria-expanded/aria-controls et SANS aucune prop
-  // React attachee directement (hasReactPropsKey:false) -- contrairement a la
-  // marque, ce noeud precis ne porte litteralement aucun handler, meme
-  // delegue par bubbling (dispatchFullClick dessus, confirme par 2 tests live
-  // consecutifs, n'a jamais ouvert le panneau). Le conteneur parent direct
-  // ".c-input__content" (confirme par le diagnostic : regroupe l'input ET
-  // l'icone ".c-input__icon"/"catalog-select-dropdown--loader") est le
-  // candidat le plus probable pour porter le vrai gestionnaire d'ouverture --
-  // pattern courant de ce design system, toute la "boite" cliquable plutot
-  // que le champ texte seul. Prochain candidat si celui-ci ne suffit pas non
-  // plus : l'icone elle-meme.
+  // focus() (2026-07-25, 4e correctif reel) : le clic sur le trigger PUIS sur
+  // son conteneur ".c-input__content" ont tous les deux echoue (2 tests live
+  // consecutifs, aucun n'ouvre le panneau) -- preuve que ce n'est pas (que)
+  // une question de NOEUD cible, mais potentiellement de TYPE d'evenement.
+  // L'input est "readonly", PAS "disabled" : delibermement garde focusable,
+  // pattern courant d'un combobox accessible qui ouvre sa liste sur le
+  // FOCUS plutot que sur un clic. L'icone soeur
+  // ("catalog-select-dropdown--loader") contient "loader" dans son nom --
+  // probablement un spinner de chargement, pas un bouton bascule, ce qui
+  // ecarte "l'icone" comme prochain candidat plausible. dispatchFullClick()
+  // dispatche des evenements synthetiques (isTrusted:false) : les listeners
+  // JS s'executent toujours dessus, mais le deplacement du focus sur
+  // mousedown est une ACTION PAR DEFAUT du navigateur, frequemment
+  // supprimee pour un evenement non fiable -- si le widget Vinted ecoute
+  // focus/focusin (pas mousedown/click), aucune sequence de clic ne peut
+  // jamais le declencher, quel que soit le noeud cible. element.focus() est
+  // une vraie API native (pas un evenement synthetique) : deplace
+  // reellement le focus et declenche de vrais evenements focus/focusin.
+  trigger.focus();
   const clickTarget = trigger.closest<HTMLElement>(".c-input__content") ?? trigger.parentElement ?? trigger;
   dispatchFullClick(clickTarget);
   await waitForElement(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);

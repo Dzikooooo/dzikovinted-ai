@@ -387,15 +387,37 @@ export async function handleEditListing(
     // pour pouvoir etre appelee depuis DEUX declencheurs desormais (le
     // message ET onTabUpdated, voir plus bas).
     let verificationStarted = false;
-    function beginVerificationPhase(vintedUrl: string): void {
+    function beginVerificationPhase(): void {
       if (verificationStarted) return;
       verificationStarted = true;
       if (verifiableFields.length === 0) {
-        pipeline("verification_ignoree (aucun champ texte verifiable dans changedFields)", { changedFields: payload.changedFields });
-        logger.info(`[${historyId}] handleEditListing: aucun champ verifiable, succes declare sans relecture reelle`, {
+        // CORRIGE (2026-07-25, bug reel confirme en test live categorie) :
+        // declarait "succes" des que Vinted redirigeait apres le clic
+        // utilisateur, sans jamais relire le champ attribut modifie -- vrai
+        // pour brand/category/size/condition/color/material, aucun n'a de
+        // mecanisme de verification fiable (voir commentaire cause racine #3
+        // en tete de fichier). Preuve directe : un test categorie ou le
+        // picker ne s'ouvrait meme pas (categorie jamais changee sur Vinted,
+        // confirme visuellement par l'utilisateur) a quand meme produit
+        // "Terminé" -- qui a ensuite ecrit la nouvelle valeur en base
+        // ResellOS (buildEditSuccessSyncFields, src/lib/sku.ts) alors que
+        // Vinted n'avait jamais confirme quoi que ce soit. Un succes non
+        // verifie ici etait un FAUX succes, pas une simplification honnete --
+        // desormais un echec explicite, qui n'ecrit jamais les champs Vinted
+        // en base (seul vinted_sync_status="sync_failed" l'est, voir
+        // StockPage.tsx::runVintedAction) : empeche structurellement
+        // ResellOS de diverger silencieusement de Vinted pour un champ
+        // jamais reellement confirme.
+        pipeline("verification_impossible (aucun champ verifiable dans changedFields -- echec explicite, plus de faux succes)", {
           changedFields: payload.changedFields,
         });
-        settle({ status: "success", resultPayload: { vintedItemId: payload.vintedItemId, vintedUrl } });
+        logger.warn(`[${historyId}] handleEditListing: aucun champ verifiable, echec explicite (plus de succes non confirme)`, {
+          changedFields: payload.changedFields,
+        });
+        settle({
+          status: "error",
+          errorMessage: `Impossible de confirmer automatiquement que Vinted a bien appliqué la modification (${payload.changedFields.join(", ")}) — ce type de champ n'a pas de mécanisme de vérification fiable pour l'instant. Vérifie manuellement sur Vinted, puis mets à jour ResellOS si besoin.`,
+        });
         return;
       }
 
@@ -530,7 +552,7 @@ export async function handleEditListing(
         pipeline("edit_save_submitted (clic + navigation detectes, pas encore une preuve)", { ...message, senderUrl: sender.url });
         logger.info(`[${historyId}] handleEditListing: EDIT_SAVE_SUBMITTED recu, demarrage de la verification`, { ...message, senderUrl: sender.url });
         confirmedVintedUrl = message.vintedUrl;
-        beginVerificationPhase(message.vintedUrl);
+        beginVerificationPhase();
       } else if (message.type === "EDIT_FIELD_FILL_FAILED") {
         // Mode diagnostic minimal (2026-07-25, demande explicite -- echec du
         // champ marque, pipeline ferme l'onglet avant qu'un data-testid
@@ -645,7 +667,7 @@ export async function handleEditListing(
               tabUrl: updatedTab.url,
             });
             confirmedVintedUrl = `https://www.vinted.fr/items/${payload.vintedItemId}`;
-            beginVerificationPhase(confirmedVintedUrl);
+            beginVerificationPhase();
           }, NAVIGATION_SETTLE_DEBOUNCE_MS);
         }
       }
