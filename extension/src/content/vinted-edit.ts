@@ -437,31 +437,39 @@ async function runEdit(payload: EditListingPayload): Promise<void> {
     }
     if (isChanged("condition")) {
       log(historyId, "selection etat", { etat: payload.condition });
-      await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, payload.condition, { required: true });
+      // contentSelector non verifie pour l'etat (reutilise celui de la
+      // categorie, comportement inchange par rapport a avant le 2026-07-25 --
+      // a corriger avec le vrai data-testid quand ce champ sera teste).
+      await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.condition, { required: true });
     } else {
       skip("condition");
     }
     if (isChanged("size")) {
       log(historyId, "selection taille", { taille: payload.size });
-      await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, payload.size, { required: false });
+      // contentSelector non verifie pour la taille (idem etat ci-dessus).
+      await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.size, { required: false });
     } else {
       skip("size");
     }
     if (isChanged("brand")) {
       log(historyId, "selection marque", { marque: payload.brand });
-      await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, payload.brand, { required: false });
+      // BRAND_DROPDOWN_CONTENT_SELECTOR verifie en direct le 2026-07-25
+      // (cause racine du timeout reel sur ce champ, voir publishSelectors.ts).
+      await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, sel.BRAND_DROPDOWN_CONTENT_SELECTOR, payload.brand, { required: false });
     } else {
       skip("brand");
     }
     if (isChanged("color")) {
       log(historyId, "selection couleur", { couleur: payload.color });
-      await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, payload.color, { required: false });
+      // contentSelector non verifie pour la couleur (idem etat/taille ci-dessus).
+      await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.color, { required: false });
     } else {
       skip("color");
     }
     if (isChanged("material")) {
       log(historyId, "selection matiere", { matiere: payload.material });
-      await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
+      // contentSelector non verifie pour la matiere (idem etat/taille/couleur ci-dessus).
+      await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.material, { required: false });
     } else {
       skip("material");
     }

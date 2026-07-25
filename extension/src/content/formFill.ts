@@ -207,7 +207,16 @@ export async function resolveCategory(categoryText: string): Promise<void> {
   }
 }
 
-async function readOptionTexts(triggerSelector: string, contentSelector = sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR) {
+// contentSelector n'a plus de valeur par defaut (2026-07-25, bug reel
+// confirme en test live sur le champ marque) : un defaut implicite sur
+// CATEGORY_DROPDOWN_CONTENT_SELECTOR etait silencieusement reutilise pour
+// TOUS les pickers (marque/taille/etat/couleur/matiere) par
+// selectMatchingOption, qui ne le passait jamais explicitement -- alors que
+// chaque champ a son propre conteneur avec son propre data-testid (verifie
+// en direct pour la marque : "brand-select-dropdown-content", distinct de
+// celui de la categorie). Rendre ce parametre obligatoire force chaque
+// appelant a etre explicite plutot que de deviner silencieusement.
+async function readOptionTexts(triggerSelector: string, contentSelector: string) {
   const trigger = await waitForElement<HTMLElement>(triggerSelector);
   trigger.click();
   const content = await waitForElement(contentSelector);
@@ -220,6 +229,7 @@ async function readOptionTexts(triggerSelector: string, contentSelector = sel.CA
 // (jamais une liste codee en dur, qui pourrait diverger du DOM reel).
 export async function selectMatchingOption(
   triggerSelector: string,
+  contentSelector: string,
   freeText: string | null,
   { required }: { required: boolean }
 ): Promise<void> {
@@ -228,7 +238,7 @@ export async function selectMatchingOption(
     return;
   }
 
-  const { items, texts } = await readOptionTexts(triggerSelector);
+  const { items, texts } = await readOptionTexts(triggerSelector, contentSelector);
   const match = matchOption(freeText, texts);
   if (!match) {
     if (required) {

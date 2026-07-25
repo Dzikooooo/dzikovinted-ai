@@ -51,6 +51,11 @@ export const CATEGORY_ITEM_ID_PREFIX = "catalog-"; // + id numerique Vinted
 // feuille a ete atteinte - preferer waitForElement() sur brand/size/
 // condition plutot que de compter les clics de navigation.
 export const BRAND_DROPDOWN_TRIGGER_SELECTOR = '[data-testid="brand-select-dropdown-input"]';
+// Verifie en direct le 2026-07-25 (inspection manuelle du DOM reel, mode
+// diagnostic dedie) : PAS le meme conteneur que CATEGORY_DROPDOWN_CONTENT_SELECTOR
+// -- cause racine confirmee d'un echec reel (selectMatchingOption utilisait par
+// defaut le selecteur de la categorie pour tous les pickers, y compris marque).
+export const BRAND_DROPDOWN_CONTENT_SELECTOR = '[data-testid="brand-select-dropdown-content"]';
 export const SIZE_GRID_TRIGGER_SELECTOR = '[data-testid="category-size-single-grid-input"]';
 // Liste verifiee en direct (les 2 premieres options + debut de la 3e,
 // visible au scroll) : "Neuf avec etiquette", "Neuf sans etiquette",

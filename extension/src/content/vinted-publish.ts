@@ -100,11 +100,15 @@ async function runPublish(payload: PublishListingPayload): Promise<void> {
     reportProgress("filling_form");
     await fillTextFields(payload);
     await resolveCategory(payload.category);
-    await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, payload.condition, { required: true });
-    await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, payload.size, { required: false });
-    await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, payload.brand, { required: false });
-    await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, payload.color, { required: false });
-    await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, payload.material, { required: false });
+    // BRAND_DROPDOWN_CONTENT_SELECTOR verifie en direct le 2026-07-25 (voir
+    // publishSelectors.ts) -- les autres contentSelector ci-dessous
+    // reutilisent celui de la categorie, comportement inchange, non encore
+    // verifie individuellement pour ces champs.
+    await selectMatchingOption(sel.CONDITION_LIST_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.condition, { required: true });
+    await selectMatchingOption(sel.SIZE_GRID_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.size, { required: false });
+    await selectMatchingOption(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR, sel.BRAND_DROPDOWN_CONTENT_SELECTOR, payload.brand, { required: false });
+    await selectMatchingOption(sel.COLOR_DROPDOWN_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.color, { required: false });
+    await selectMatchingOption(sel.MATERIAL_LIST_TRIGGER_SELECTOR, sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, payload.material, { required: false });
     await selectPackageSize(payload.packageSize);
 
     reportProgress("uploading_photos");
