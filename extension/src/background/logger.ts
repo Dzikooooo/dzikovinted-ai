@@ -14,12 +14,23 @@ export interface LogEntry {
 const STORAGE_KEY = "resellos_log";
 const MAX_ENTRIES = 50;
 
-async function persist(entry: LogEntry): Promise<void> {
-  const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as
-    | LogEntry[]
-    | undefined;
-  const next = [...(stored ?? []), entry].slice(-MAX_ENTRIES);
-  await chrome.storage.local.set({ [STORAGE_KEY]: next });
+// chrome.storage.local n'offre aucune primitive de transaction : persist() fait un
+// read-modify-write. Sans serialisation, plusieurs logger.info() declenches en rafale
+// (ex. juste avant/apres un clic synthetique) lisent le meme tableau avant que l'un
+// d'eux n'ait ecrit, et seul le dernier set() a se resoudre survit — les autres entrees
+// disparaissent silencieusement. Une simple file d'attente sur une promesse partagee
+// force chaque persist() a attendre son tour.
+let writeQueue: Promise<void> = Promise.resolve();
+
+function persist(entry: LogEntry): Promise<void> {
+  writeQueue = writeQueue.then(async () => {
+    const stored = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] as
+      | LogEntry[]
+      | undefined;
+    const next = [...(stored ?? []), entry].slice(-MAX_ENTRIES);
+    await chrome.storage.local.set({ [STORAGE_KEY]: next });
+  });
+  return writeQueue;
 }
 
 function detailToString(detail: unknown): string | undefined {
