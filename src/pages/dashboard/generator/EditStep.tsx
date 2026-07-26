@@ -52,11 +52,11 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
 
       <div className="bg-surface border border-white/5 rounded-2xl p-5 sm:p-7 space-y-5">
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-wider text-neon-500/60 block mb-2">Titre SEO</label>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Titre SEO</label>
           <input type="text" className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={editForm.title} onChange={(e) => updateField('title', e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-wider text-neon-500/60 block mb-2">Description</label>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Description</label>
           <textarea className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[120px] resize-y" value={editForm.description} onChange={(e) => updateField('description', e.target.value)} />
         </div>
         <div className="grid grid-cols-3 gap-4">
@@ -86,7 +86,7 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
           </div>
         </div>
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-wider text-neon-500/60 block mb-2">Mots-cles / Hashtags</label>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Mots-cles / Hashtags</label>
           <div className="flex flex-wrap gap-2 mb-2">
             {editForm.keywords.map((kw, i) => (
               <span key={i} className="flex items-center gap-1.5 px-3 py-1 text-xs font-mono bg-neon-500/10 text-neon-500 rounded-full border border-neon-500/20">

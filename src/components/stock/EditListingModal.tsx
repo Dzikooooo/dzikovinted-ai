@@ -339,7 +339,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
         </div>
 
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-wider text-neon-500/60 block mb-2">Titre</label>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Titre</label>
           <input
             type="text"
             className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
@@ -348,7 +348,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           />
         </div>
         <div>
-          <label className="text-[10px] font-mono uppercase tracking-wider text-neon-500/60 block mb-2">Description</label>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Description</label>
           <textarea
             className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
             value={form.description}
