@@ -5,6 +5,7 @@ import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContex
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
+import { ProgressBarRow } from '../../components/ui/ProgressBar';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { toLocalDateString } from '../../lib/date';
@@ -140,16 +141,7 @@ export default function AccountingPage() {
               ) : (
                 <div className="space-y-3">
                   {stats.sortedExpenses.map(([cat, amount]) => (
-                    <div key={cat} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-300 w-28 truncate flex-shrink-0 font-medium">{cat}</span>
-                      <div className="flex-1 h-2.5 bg-white/5 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-neon-500/40 to-neon-500/80 transition-all duration-700"
-                          style={{ width: `${(amount / maxExpense) * 100}%` }}
-                        />
-                      </div>
-                      <span className="text-xs font-mono text-gray-400 w-16 flex-shrink-0 text-right">{formatEUR(amount)}</span>
-                    </div>
+                    <ProgressBarRow key={cat} label={cat} value={formatEUR(amount)} fraction={amount / maxExpense} />
                   ))}
                 </div>
               )}
