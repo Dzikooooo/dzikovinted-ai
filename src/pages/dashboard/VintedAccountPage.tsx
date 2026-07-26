@@ -115,7 +115,7 @@ export default function VintedAccountPage() {
   const hasAnyAccount = accounts.length > 0;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-black mb-1">Compte Vinted</h1>
         <p className="text-gray-400 text-sm">

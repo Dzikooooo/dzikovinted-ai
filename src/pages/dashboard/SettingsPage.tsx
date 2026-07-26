@@ -66,7 +66,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
   ] as const;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-black mb-2">Parametres</h1>
         <p className="text-gray-400 text-sm">Gere ton profil et tes preferences.</p>
@@ -82,7 +82,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       </div>
 
       {activeTab === 'profile' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Informations du profil</h2>
           {profileMsg && (
             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
@@ -116,7 +116,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       )}
 
       {activeTab === 'security' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Changer le mot de passe</h2>
           {secMsg && (
             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${secMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
@@ -150,8 +150,13 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       {activeTab === 'accounts' && <AccountsManager />}
 
       {activeTab === 'notifications' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-4">
+        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-4">
           <h2 className="font-bold text-sm mb-2">Preferences de notifications</h2>
+          {/* defaultChecked retire (Design Freeze, Lot 8) : rien ne branche
+              ces toggles a un vrai etat cote serveur -- les afficher coches
+              par defaut laissait croire a une preference deja active et
+              sauvegardee, qui n'existe pas. Neutres/off jusqu'a ce qu'un
+              vrai systeme de preferences soit construit. */}
           {[
             { label: 'Resume hebdomadaire', desc: 'Recois un resume de tes annonces chaque semaine.' },
             { label: 'Nouvelles fonctionnalites', desc: 'Sois informe des mises a jour de Resell OS.' },
@@ -163,7 +168,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
                 <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <input type="checkbox" className="sr-only peer" />
                 <div className="w-10 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-neon-500" />
               </label>
             </div>
@@ -172,17 +177,17 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       )}
 
       {activeTab === 'api' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Cles API</h2>
           <div className="bg-dark-400 border border-neon-500/20 rounded-xl p-4">
-            <p className="text-xs text-neon-500/70 font-mono mb-1">OpenAI API Key</p>
-            <p className="text-xs text-gray-500">Connecte ton compte OpenAI pour des analyses IA reelles. Sans cle, le mode mock est utilise (ou la cle serveur si configuree).</p>
+            <p className="text-xs text-neon-500/70 font-mono mb-1">Cle API Gemini</p>
+            <p className="text-xs text-gray-500">Connecte ta propre cle Gemini pour tes analyses IA. Sans cle personnelle, ResellOS utilise sa cle par defaut, soumise aux memes limites d'utilisation.</p>
           </div>
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">OpenAI API Key</label>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Cle API Gemini</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="sk-..." className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
+              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="Colle ta cle ici" className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
             </div>
           </div>
           <button
@@ -196,7 +201,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       )}
 
       {activeTab === 'danger' && (
-        <div className="bg-surface border border-red-500/20 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl bg-surface border border-red-500/20 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm text-red-400">Zone de danger</h2>
           <div className="border border-red-500/10 rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Supprimer mon compte</p>
