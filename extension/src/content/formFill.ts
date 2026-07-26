@@ -6,10 +6,9 @@
 // identiques), donc la meme logique de remplissage doit rester en un seul
 // endroit plutot que d'etre dupliquee et risquer de diverger.
 
-import { waitForElement, waitForCondition } from "./domWait";
+import { waitForElement } from "./domWait";
 import { matchOption } from "./matchOption";
 import * as sel from "./publishSelectors";
-import { logger } from "../background/logger";
 
 export class PublishError extends Error {
   code: string;
@@ -174,215 +173,27 @@ export async function fillTextFields(fields: { title: string; description: strin
   setNativeValue(priceInput, fields.price.toString());
 }
 
-function getCategoryOptions(): { id: string; text: string; el: HTMLElement }[] {
-  const content = document.querySelector(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
-  if (!content) return [];
-  return Array.from(content.querySelectorAll<HTMLElement>(`[id^="${sel.CATEGORY_ITEM_ID_PREFIX}"]`))
-    .filter((el) => el.id !== "catalog-search-input")
-    .map((el) => ({ id: el.id, text: (el.textContent ?? "").trim(), el }));
-}
-
-function isLeafCategoryReached(): boolean {
-  return !!document.querySelector(sel.BRAND_DROPDOWN_TRIGGER_SELECTOR);
-}
-
-// Navigue l'arbre de categories Vinted en cliquant, a chaque niveau, sur
-// l'option dont le texte correspond le mieux a categoryText, jusqu'a
-// atteindre une categorie feuille (apparition de Marque/Taille/Etat) - ne
-// devine jamais une branche sans correspondance texte.
-//
-// Cas edition (vinted-edit.ts) : contrairement a la creation (categorie
-// toujours vide au depart), une annonce en cours d'edition a deja une
-// categorie -- feuille (marque/taille/etat) deja presents dans le DOM AVANT
-// toute navigation. Le premier controle isLeafCategoryReached() peut donc
-// etre vrai immediatement, sans qu'aucun clic de navigation n'ait eu lieu :
-// dans ce cas le panneau qu'on vient d'ouvrir (trigger.click() ci-dessus)
-// doit etre explicitement referme plutot que laisse ouvert (risque
-// d'interference avec les selecteurs suivants). Limite honnete : ceci ne
-// verifie PAS que la categorie actuelle correspond a categoryText -- changer
-// reellement la categorie d'une annonce deja publiee (depuis une feuille
-// vers une autre) n'est pas gere par cette version, jamais teste en direct.
-// diagnoseCategoryTrigger (2026-07-25, demande explicite -- dispatchFullClick()
-// n'a PAS resolu le timeout sur CATEGORY_DROPDOWN_CONTENT_SELECTOR pour la
-// page d'EDITION, contrairement a la marque -- preuve que ce n'est pas (que)
-// le mecanisme de clic cette fois). CATEGORY_DROPDOWN_TRIGGER_SELECTOR n'a
-// jamais ete verifie en direct sur /items/{id}/edit, seulement sur
-// /items/new (voir l'en-tete de publishSelectors.ts) -- il matche bien QUELQUE
-// CHOSE (waitForElement le trouve, aucun timeout a cette etape), mais rien ne
-// garantit que c'est le VRAI element interactif plutot qu'un input/texte
-// passif a l'interieur d'un conteneur cliquable different. Journalise l'etat
-// reel du noeud cible AVANT toute tentative de clic, via le logger PERSISTE
-// (chrome.storage.local, meme mecanisme deja utilise dans vinted-edit.ts) --
-// relisible apres coup, sans exiger une inspection manuelle live dans la
-// fenetre etroite avant fermeture d'onglet (contrainte explicite de
-// l'utilisateur). Purement de la lecture, ne change aucun comportement.
-function diagnoseCategoryTrigger(el: HTMLElement): void {
-  const closestRoleButton = el.closest('[role="button"]');
-  const reactPropsKey = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
-  const reactProps = reactPropsKey ? (el as unknown as Record<string, unknown>)[reactPropsKey] : undefined;
-  const hasOnClickProp = !!(reactProps && typeof reactProps === "object" && "onClick" in reactProps);
-  const parent = el.parentElement;
-  const iconSibling = parent?.querySelector('[class*="icon"], svg');
-  const detail = {
-    tagName: el.tagName,
-    role: el.getAttribute("role"),
-    ariaExpanded: el.getAttribute("aria-expanded"),
-    ariaControls: el.getAttribute("aria-controls"),
-    className: el.className,
-    disabled: (el as HTMLInputElement).disabled ?? null,
-    ariaDisabled: el.getAttribute("aria-disabled"),
-    closestRoleButton: closestRoleButton
-      ? { tagName: closestRoleButton.tagName, className: (closestRoleButton as HTMLElement).className }
-      : null,
-    parentTagName: parent?.tagName ?? null,
-    parentClassName: parent?.className ?? null,
-    iconSiblingFound: !!iconSibling,
-    iconSiblingTag: iconSibling?.tagName ?? null,
-    hasReactPropsKey: !!reactPropsKey,
-    hasOnClickProp,
-    outerHTMLSnippet: el.outerHTML.slice(0, 400),
-    parentOuterHTMLSnippet: parent?.outerHTML.slice(0, 400) ?? null,
-  };
-  console.log("[ResellOS][CATEGORY_TRIGGER_DIAGNOSTIC]", detail);
-  logger.info("[CATEGORY_TRIGGER_DIAGNOSTIC]", detail);
-}
-
-// instrumentCategoryOpening (2026-07-25, demande explicite -- "arreter de
-// deviner des cibles de clic, instrumenter l'ouverture reelle") : 2
-// hypotheses de clic synthetique deja testees en direct (trigger seul,
-// conteneur .c-input__content) et 1 hypothese de focus() combinee, toutes
-// en echec. Plutot qu'un 3e essai a l'aveugle, capture ce qui se passe
-// REELLEMENT quand l'utilisateur clique lui-meme (isTrusted:true, l'onglet
-// reste ouvert en cas d'echec -- mode diagnostic deja existant) : quel
-// element recoit precisement l'evenement, et quel changement DOM suit
-// (aria-expanded, apparition du panneau catalog-select-dropdown-content).
-// Purement de la lecture (listeners + MutationObserver), aucune interference
-// avec la tentative synthetique existante -- installee AVANT elle pour
-// capturer les deux en cas de succes inattendu, et rester active apres
-// l'echec pour un clic manuel ulterieur dans le meme onglet.
-function instrumentCategoryOpening(): void {
-  const relevantSelector = '[class*="c-input"], [data-testid*="catalog-select"]';
-  const report = (detail: Record<string, unknown>): void => {
-    console.log("[ResellOS][CATEGORY_OPEN_EVENT]", detail);
-    logger.info("[CATEGORY_OPEN_EVENT]", detail);
-  };
-  const onEvent = (eventName: string) => (e: Event) => {
-    const target = e.target as HTMLElement | null;
-    if (!target) return;
-    const relevant = target.closest<HTMLElement>(relevantSelector);
-    if (!relevant) return;
-    report({
-      eventName,
-      isTrusted: e.isTrusted,
-      targetTag: target.tagName,
-      targetTestId: target.getAttribute("data-testid"),
-      targetClass: target.className,
-      relevantTag: relevant.tagName,
-      relevantTestId: relevant.getAttribute("data-testid"),
-      relevantClass: relevant.className,
-      relevantAriaExpanded: relevant.getAttribute("aria-expanded"),
-      atMs: Math.round(performance.now()),
-    });
-  };
-  (["pointerdown", "mousedown", "click", "focusin"] as const).forEach((name) => {
-    document.addEventListener(name, onEvent(name), { capture: true });
-  });
-
-  const observer = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      if (m.type === "attributes" && m.attributeName === "aria-expanded") {
-        const el = m.target as HTMLElement;
-        if (el.closest(relevantSelector)) {
-          report({
-            type: "aria-expanded_change",
-            newValue: el.getAttribute("aria-expanded"),
-            tag: el.tagName,
-            testId: el.getAttribute("data-testid"),
-            className: el.className,
-            atMs: Math.round(performance.now()),
-          });
-        }
-      }
-      if (m.type === "childList") {
-        m.addedNodes.forEach((node) => {
-          if (!(node instanceof HTMLElement)) return;
-          const match = node.matches(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR)
-            ? node
-            : node.querySelector<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
-          if (match) {
-            report({
-              type: "content_panel_inserted",
-              outerHTMLSnippet: match.outerHTML.slice(0, 300),
-              atMs: Math.round(performance.now()),
-            });
-          }
-        });
-      }
-    }
-  });
-  observer.observe(document.body, { attributes: true, attributeFilter: ["aria-expanded"], childList: true, subtree: true });
-  report({ type: "instrumentation_installed", atMs: Math.round(performance.now()) });
-}
-
+// Automatisation abandonnee (2026-07-26, preuve directe en test live,
+// instrumentation dediee) : l'ouverture de ce picker exige un evenement
+// isTrusted:true (un vrai clic utilisateur). Log reel compare cote a cote --
+// sequence synthetique (dispatchFullClick, focus(), sur le trigger ou son
+// conteneur .c-input__content) : isTrusted:false, panneau jamais ouvert (3
+// tests consecutifs). Clic REEL de l'utilisateur sur ce MEME trigger :
+// isTrusted:true, panneau catalog-select-dropdown-content insere ~75ms
+// apres. isTrusted est une propriete calculee nativement par le navigateur,
+// jamais modifiable depuis du JavaScript -- dispatchEvent() et .click()
+// produisent tous deux isTrusted:false, sans exception, quel que soit
+// l'element cible ou la sequence d'evenements. Aucune automatisation ne
+// peut donc jamais ouvrir ce picker precis -- meme contrainte, deja
+// rencontree et documentee, que le bouton "Valider" (voir le commentaire
+// d'en-tete de vinted-edit.ts). Ancienne logique de navigation dans l'arbre
+// (getCategoryOptions/isLeafCategoryReached/boucle MAX_DEPTH) retiree :
+// jamais atteignable puisque le panneau ne s'ouvre jamais automatiquement.
 export async function resolveCategory(categoryText: string): Promise<void> {
-  const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
-  diagnoseCategoryTrigger(trigger);
-  instrumentCategoryOpening();
-  // focus() (2026-07-25, 4e correctif reel) : le clic sur le trigger PUIS sur
-  // son conteneur ".c-input__content" ont tous les deux echoue (2 tests live
-  // consecutifs, aucun n'ouvre le panneau) -- preuve que ce n'est pas (que)
-  // une question de NOEUD cible, mais potentiellement de TYPE d'evenement.
-  // L'input est "readonly", PAS "disabled" : delibermement garde focusable,
-  // pattern courant d'un combobox accessible qui ouvre sa liste sur le
-  // FOCUS plutot que sur un clic. L'icone soeur
-  // ("catalog-select-dropdown--loader") contient "loader" dans son nom --
-  // probablement un spinner de chargement, pas un bouton bascule, ce qui
-  // ecarte "l'icone" comme prochain candidat plausible. dispatchFullClick()
-  // dispatche des evenements synthetiques (isTrusted:false) : les listeners
-  // JS s'executent toujours dessus, mais le deplacement du focus sur
-  // mousedown est une ACTION PAR DEFAUT du navigateur, frequemment
-  // supprimee pour un evenement non fiable -- si le widget Vinted ecoute
-  // focus/focusin (pas mousedown/click), aucune sequence de clic ne peut
-  // jamais le declencher, quel que soit le noeud cible. element.focus() est
-  // une vraie API native (pas un evenement synthetique) : deplace
-  // reellement le focus et declenche de vrais evenements focus/focusin.
-  trigger.focus();
-  const clickTarget = trigger.closest<HTMLElement>(".c-input__content") ?? trigger.parentElement ?? trigger;
-  dispatchFullClick(clickTarget);
-  await waitForElement(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
-
-  const MAX_DEPTH = 6;
-  for (let depth = 0; depth < MAX_DEPTH; depth++) {
-    if (isLeafCategoryReached()) {
-      if (depth === 0) document.body.click(); // panneau ouvert pour rien : le refermer
-      return;
-    }
-
-    const options = getCategoryOptions();
-    const match = matchOption(
-      categoryText,
-      options.map((o) => o.text)
-    );
-    if (!match) {
-      throw new PublishError(
-        "category_not_resolved",
-        `Aucune catégorie Vinted ne correspond à "${categoryText}"`
-      );
-    }
-    const optionEl = options.find((o) => o.text === match)!.el;
-    optionEl.click();
-
-    // Soit une nouvelle liste d'options apparait (niveau suivant), soit les
-    // champs feuille apparaissent - attendre l'un ou l'autre plutot qu'un
-    // delai fixe.
-    await waitForCondition(() => isLeafCategoryReached() || getCategoryOptions().length > 0, {
-      description: `resolveCategory: niveau suivant ou feuille apres clic sur "${categoryText}"`,
-    });
-  }
-
-  if (!isLeafCategoryReached()) {
-    throw new PublishError("category_not_resolved", `Catégorie "${categoryText}" trop profonde ou ambiguë`);
-  }
+  throw new PublishError(
+    "category_requires_manual_selection",
+    `Vinted exige un clic réel pour ouvrir le sélecteur de catégorie (même contrainte que le bouton Valider) : impossible à automatiser. Sélectionne toi-même la catégorie "${categoryText}" dans l'onglet Vinted, puis clique sur Valider.`
+  );
 }
 
 // contentSelector n'a plus de valeur par defaut (2026-07-25, bug reel
