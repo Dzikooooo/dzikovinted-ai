@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { analyzeWithAI } from '../../lib/aiService';
 import { uploadListingPhotos } from '../../lib/storage';
+import { stripSkuSuffix } from '../../lib/sku';
 import { translateGeneratorError } from '../../lib/errorMessages';
 import type { DashboardPage, GeneratedListing } from '../../lib/types';
 import { PLAN_LIMITS, PLAN_PHOTO_LIMITS } from '../../lib/types';
@@ -123,7 +124,11 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
       if (!durableImageUrls) setDurableImageUrls(imageUrls);
 
       const fields = {
-        title: editForm.title,
+        // stripSkuSuffix (2026-07-26, garde-fou saisie manuelle) : rien
+        // n'empeche l'utilisateur de taper lui-meme un "#N" dans ce champ --
+        // le titre stocke doit rester propre, le sku vient toujours de
+        // listings.sku, jamais du texte (voir src/lib/sku.ts).
+        title: stripSkuSuffix(editForm.title),
         description: editForm.description,
         brand: editForm.brand,
         category: editForm.category,

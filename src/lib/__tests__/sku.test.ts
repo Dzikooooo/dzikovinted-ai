@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEditSuccessSyncFields, extractSkuFromTitle, formatTitleWithSku } from '../sku';
+import { buildEditSuccessSyncFields, extractSkuFromTitle, formatTitleWithSku, stripSkuSuffix } from '../sku';
 
 describe('formatTitleWithSku', () => {
   it('appends the sku to the title', () => {
@@ -30,6 +30,26 @@ describe('extractSkuFromTitle', () => {
 
   it('trims trailing whitespace left after stripping the sku', () => {
     expect(extractSkuFromTitle('Sweat Nike   #12')).toEqual({ title: 'Sweat Nike', sku: 12 });
+  });
+});
+
+describe('stripSkuSuffix', () => {
+  it('leaves an already-clean title untouched', () => {
+    expect(stripSkuSuffix('Sweat Nike')).toBe('Sweat Nike');
+  });
+
+  it('strips a single manually-typed suffix', () => {
+    expect(stripSkuSuffix('Sweat Nike #17')).toBe('Sweat Nike');
+  });
+
+  it('strips a doubled suffix in one call -- exact "#11 #11" regression case', () => {
+    // Reproduit precisement le motif reel trouve en audit production
+    // (2026-07-26) sur les articles de test edit_listing de cette session.
+    expect(stripSkuSuffix('Planche en bois test titre final #11 #11')).toBe('Planche en bois test titre final');
+  });
+
+  it('strips more than two accumulated suffixes', () => {
+    expect(stripSkuSuffix('Article #1 #2 #3')).toBe('Article');
   });
 });
 

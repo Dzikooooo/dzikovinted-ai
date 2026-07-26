@@ -4,6 +4,7 @@ import { Modal } from '../ui/Modal';
 import { supabase } from '../../lib/supabase';
 import { analyzeWithAI } from '../../lib/aiService';
 import { uploadListingPhotos } from '../../lib/storage';
+import { stripSkuSuffix } from '../../lib/sku';
 import type { Listing, VintedFilter } from '../../lib/types';
 import type { EditableFieldName } from '../../lib/actions/handlers/editListing';
 
@@ -176,7 +177,14 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
       // Vinted ne les connait pas.
       const lastEditedAt = new Date().toISOString();
       const vintedPushedFields = {
-        title: form.title,
+        // stripSkuSuffix (2026-07-26, garde-fou saisie manuelle) : applique
+        // AVANT le calcul de changedFields plus bas -- sinon un utilisateur
+        // tapant lui-meme un "#N" verrait ce texte compare tel quel au titre
+        // d'origine (deja propre), et le sku reel serait ensuite ajoute PAR
+        // DESSUS ce faux suffixe au prochain envoi vers Vinted (meme motif
+        // "#11 #11" que le bug deja corrige le 2026-07-25, par un chemin
+        // different).
+        title: stripSkuSuffix(form.title),
         description: form.description,
         brand: form.brand,
         category: form.category,

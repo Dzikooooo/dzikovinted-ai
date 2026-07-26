@@ -19,6 +19,27 @@ export function extractSkuFromTitle(title: string): { title: string; sku: number
   return { title: title.slice(0, match.index).trimEnd(), sku: Number(match[1]) };
 }
 
+// stripSkuSuffix (2026-07-26, garde-fou saisie manuelle -- audit complet du
+// systeme SKU) : rien n'empechait jusqu'ici un utilisateur de taper lui-meme
+// un "#N" dans le champ titre (Generateur ou modale d'edition) -- au
+// prochain envoi vers Vinted, formatTitleWithSku y ajoute le VRAI sku par
+// dessus, reproduisant exactement le motif "#11 #11" deja rencontre par un
+// autre chemin (corrige le 2026-07-25). Applique extractSkuFromTitle en
+// boucle (pas une seule passe) pour retirer aussi un eventuel double
+// suffixe deja present. Le nombre extrait est toujours jete : jamais
+// repris comme sku (meme regle que l'import, voir extension/src/background/
+// sync.ts) -- uniquement utilise pour garder le titre propre avant
+// sauvegarde.
+export function stripSkuSuffix(title: string): string {
+  let current = title;
+  let extracted = extractSkuFromTitle(current);
+  while (extracted.sku !== null) {
+    current = extracted.title;
+    extracted = extractSkuFromTitle(current);
+  }
+  return current;
+}
+
 // Champs a ecrire en base sur un succes edit_listing (StockPage.tsx::runVintedAction).
 // `title` vient TOUJOURS du titre propre connu de ResellOS (listingTitle), jamais du
 // payload envoye a Vinted (deja SKU-formate via formatTitleWithSku) -- sinon chaque

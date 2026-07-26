@@ -169,11 +169,24 @@ export async function recordListings(
       const existing = existingByItemId.get(l.vintedItemId);
 
       if (!existing) {
+        // extractSkuFromTitle (2026-07-26, bug reel confirme par audit
+        // direct de production) : cette branche inserait l.title BRUT,
+        // sans jamais retirer un ancien "#N" tape manuellement par
+        // l'utilisateur sur Vinted avant l'existence du systeme SKU --
+        // contrairement a recordSingleItemImport, qui l'a toujours fait.
+        // Resultat observe en audit : des dizaines d'annonces avec un
+        // sku correctement alloue par le trigger MAIS un titre encore
+        // suffixe d'un ancien numero manuel sans rapport. Seul le titre
+        // est nettoye ici -- le nombre extrait n'est PLUS jamais repris
+        // comme sku (decision explicite 2026-07-26, "le systeme ne doit
+        // plus deviner les SKU a partir des titres") : le sku vient
+        // toujours du trigger d'allocation, jamais du texte.
+        const { title: cleanTitle } = extractSkuFromTitle(l.title);
         toInsert.push({
           user_id: valid.userId,
           vinted_account_id: vintedAccountId,
           vinted_item_id: l.vintedItemId,
-          title: l.title,
+          title: cleanTitle,
           brand: l.brand,
           size: l.size,
           price: l.price,
@@ -491,7 +504,14 @@ export async function recordSingleItemImport(
   }
 
   const syncedAt = new Date().toISOString();
-  const { title: cleanTitle, sku: skuFromTitle } = extractSkuFromTitle(item.title);
+  // Le nombre extrait ne sert plus qu'a nettoyer le titre (decision
+  // explicite 2026-07-26, "le systeme ne doit plus deviner les SKU a
+  // partir des titres") -- avant, ce nombre etait repris comme sku
+  // explicite au premier import ; desormais le sku vient TOUJOURS du
+  // trigger d'allocation (assign_sku_before_insert), jamais du texte du
+  // titre, meme au tout premier import d'un article portant encore un
+  // ancien numero manuel.
+  const { title: cleanTitle } = extractSkuFromTitle(item.title);
 
   const vintedFields = {
     title: cleanTitle,
@@ -562,11 +582,9 @@ export async function recordSingleItemImport(
     vinted_status: null,
     favourites: null,
     views: null,
-    // Reprend le numero deja present dans le titre Vinted si l'article en
-    // portait un manuellement -- sinon laisse null pour que le trigger DB
-    // (assign_sku_before_insert) alloue automatiquement le prochain numero
-    // libre.
-    sku: skuFromTitle,
+    // sku volontairement absent : laisse toujours le trigger DB
+    // (assign_sku_before_insert) allouer automatiquement le prochain
+    // numero libre, jamais une valeur devinee depuis le titre.
   });
 
   logger.info("Article Vinted importe", { vintedItemId: item.vintedItemId });
