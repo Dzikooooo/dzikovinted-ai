@@ -28,7 +28,7 @@ import { EDIT_STEP_ORDER, buildEditStepLabels, normalizeEditStepForDisplay } fro
 import type { PublishListingPayload } from '../../lib/actions/handlers/publishListing';
 import type { EditableFieldName, EditListingPayload } from '../../lib/actions/handlers/editListing';
 import type { VintedAccount } from '../../lib/types';
-import { buildEditSuccessSyncFields, formatTitleWithSku } from '../../lib/sku';
+import { buildEditSuccessSyncFields, formatTitleWithSku, runSkuRepair } from '../../lib/sku';
 import { formatEUR } from '../../lib/currency';
 import type { ActionKind } from '../../lib/actions/types';
 
@@ -373,6 +373,19 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     }
 
     if (result.outcome.status === 'success') {
+      // Auto-reparation SKU (2026-07-27, chantier separe -- voir la
+      // conversation) : best-effort strict, jamais bloquant, jamais de
+      // rollback de l'action qui vient de reussir -- couvre a la fois
+      // publish_listing et edit_listing (kind-agnostique, ce bloc gere deja
+      // les deux). Uniquement journalise pour l'instant, contrat normalise
+      // deja stable (runSkuRepair, lib/sku.ts) pour un futur Centre des
+      // Actions/badge/metrique.
+      if (user) {
+        void runSkuRepair(supabase, user.id)
+          .then((r) => console.log(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind})`, r))
+          .catch(() => console.warn(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind}) : echec ignore (best-effort)`));
+      }
+
       setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields });
       console.log(`[ResellOS][action][${historyId}] mise a jour locale : relecture de confirmation (load())`);
       await load();

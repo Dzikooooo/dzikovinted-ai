@@ -25,6 +25,7 @@ import AccountAvatar from '../../components/ui/AccountAvatar';
 import AccountSwitcher from '../../components/ui/AccountSwitcher';
 import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
 import { supabase } from '../../lib/supabase';
+import { runSkuRepair } from '../../lib/sku';
 import type { DashboardPage, AppPage, SettingsTab } from '../../lib/types';
 
 const DashboardHome = lazy(() => import('./DashboardHome'));
@@ -144,6 +145,27 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       }
     })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  // Auto-reparation SKU au demarrage (2026-07-27, chantier separe -- voir
+  // la conversation) : une fois par session (memes conditions de
+  // declenchement que le re-appairage ci-dessus, effet independant --
+  // aucun rapport fonctionnel entre les deux). Best-effort strict, jamais
+  // bloquant, uniquement journalise -- aucune UI, aucune notification.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    void runSkuRepair(supabase, session.user.id).then((result) => {
+      if (cancelled) return;
+      if (!result.success) {
+        console.warn('[ResellOS][sku] Auto-reparation SKU (demarrage) : appel RPC echoue, ignore (best-effort).');
+      } else {
+        console.log('[ResellOS][sku] Auto-reparation SKU (demarrage)', result);
+      }
+    });
     return () => {
       cancelled = true;
     };

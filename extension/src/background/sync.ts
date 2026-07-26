@@ -3,8 +3,29 @@ import { logger } from "./logger";
 import { withRetry } from "./retry";
 import { getValidAccessToken } from "./session";
 import { toLocalDateString } from "../lib/date";
-import { extractSkuFromTitle } from "../lib/sku";
+import { extractSkuFromTitle, runSkuRepair } from "../lib/sku";
 import type { ListingPayload, SingleItemPayload } from "../lib/messages";
+
+// reportSkuRepair (2026-07-27, chantier "auto-reparation SKU" -- separe de
+// la fondation du registre central, voir la conversation) : wrapper
+// best-effort strict autour de runSkuRepair -- ne leve jamais, ne bloque
+// jamais et n'annule jamais l'action principale (synchro/import) qui vient
+// de reussir juste avant cet appel. Pour l'instant uniquement journalise
+// (aucune UI, aucune notification, aucun blocage) -- le contrat normalise
+// (runSkuRepair, src/lib/sku.ts) est deja stable pour un futur Centre des
+// Actions/badge/metrique sans avoir a le changer.
+async function reportSkuRepair(
+  client: ReturnType<typeof supabaseWithToken>,
+  userId: string,
+  context: string = "post-action"
+): Promise<void> {
+  const result = await runSkuRepair(client, userId).catch(() => null);
+  if (!result || !result.success) {
+    logger.warn(`Auto-reparation SKU (${context}) : appel RPC echoue, ignore (best-effort)`);
+    return;
+  }
+  logger.info(`Auto-reparation SKU (${context})`, result);
+}
 
 // Ecritures declenchees par les content scripts (lecture automatique du
 // compte/des annonces Vinted - voir EXTENSION.md §8 : lecture automatique
@@ -349,6 +370,11 @@ export async function recordListings(
     }
   });
 
+  // Auto-reparation SKU (2026-07-27, chantier separe -- voir la conversation) :
+  // best-effort strict, jamais bloquant, jamais de rollback de la synchro qui
+  // vient de reussir.
+  await reportSkuRepair(client, valid.userId, "post-synchro");
+
   logger.info("Annonces synchronisees", { count: listings.length });
 }
 
@@ -560,6 +586,7 @@ export async function recordSingleItemImport(
       throw updateError;
     }
     logger.info("Article Vinted reimporte (mis a jour, reconciliation complete)", { vintedItemId: item.vintedItemId });
+    await reportSkuRepair(client, valid.userId, "post-import");
     return { created: false, draftProtected: false };
   }
 
@@ -588,5 +615,6 @@ export async function recordSingleItemImport(
   });
 
   logger.info("Article Vinted importe", { vintedItemId: item.vintedItemId });
+  await reportSkuRepair(client, valid.userId, "post-import");
   return { created: true, draftProtected: false };
 }
