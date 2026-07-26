@@ -138,6 +138,34 @@
     border-color: rgba(255,196,0,.45);
     box-shadow: 0 0 0 1px rgba(255,196,0,.15);
   }
+
+  /* Entree des modales (Modal.tsx) -- Design Freeze Lot 1 : jusqu'ici
+     aucune animation d'ouverture ni ombre portee sur les 5+ modales du
+     produit qui heritent toutes de cette coquille. */
+  .modal-overlay-enter {
+    animation: modal-overlay-in .15s ease-out;
+  }
+
+  .modal-panel-enter {
+    animation: modal-panel-in .18s ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-overlay-enter,
+    .modal-panel-enter {
+      animation: none;
+    }
+  }
+}
+
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-panel-in {
+  from { opacity: 0; transform: scale(.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 /* ========================= */
