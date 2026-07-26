@@ -228,7 +228,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 group ${
                 isActive
-                  ? 'bg-neon-500/10 text-neon-500 font-medium'
+                  ? 'bg-neon-500/10 text-neon-500 font-medium shadow-[0_0_16px_rgba(255,196,0,0.08)]'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
               }`}
             >
@@ -290,7 +290,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               onClick={() => setSidebarOpen(false)}
             />
 
-            <aside className="relative z-10 w-64 bg-[#0D0D0D] border-r border-white/5 flex flex-col">
+            <aside className="relative z-10 w-64 bg-dark-400 border-r border-white/5 flex flex-col">
               <button
                 onClick={() => setSidebarOpen(false)}
                 aria-label="Fermer le menu"

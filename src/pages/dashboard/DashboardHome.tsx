@@ -283,11 +283,10 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
               <div className="flex-1 max-w-xs">
                 <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-all duration-700 ease-out"
-                    style={{
-                      width: `${Math.min((credits / limit) * 100, 100)}%`,
-                      background: credits > 3 ? '#FFC400' : credits > 0 ? '#f59e0b' : '#ef4444',
-                    }}
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${
+                      credits > 3 ? 'bg-neon-500' : credits > 0 ? 'bg-amber-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${Math.min((credits / limit) * 100, 100)}%` }}
                   />
                 </div>
                 {credits <= 0 && (
