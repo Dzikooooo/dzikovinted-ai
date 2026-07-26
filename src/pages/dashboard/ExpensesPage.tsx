@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X, Package, Truck, Percent, Wrench, Car, Warehouse, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { useExpenses } from '../../hooks/useExpenses';
 import { StatCard } from '../../components/ui/StatCard';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -16,6 +16,21 @@ const CATEGORIES = [
   'Stockage',
   'Autre',
 ];
+
+// Icone par categorie (Design Freeze, Lot 4) : les lignes de depense etaient
+// jusqu'ici visuellement indifferenciables au scan rapide (texte seul, pas
+// d'ancrage visuel comme les vignettes de StockPage). CATEGORY_ICONS est
+// derive de CATEGORIES ci-dessus -- toute nouvelle categorie sans icone
+// dediee retombe sur MoreHorizontal plutot que de planter.
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  Emballage: Package,
+  'Frais de port': Truck,
+  'Frais Vinted': Percent,
+  Materiel: Wrench,
+  Deplacement: Car,
+  Stockage: Warehouse,
+  Autre: MoreHorizontal,
+};
 
 export default function ExpensesPage() {
   const { expenses, loading, addExpense, deleteExpense } = useExpenses();
@@ -90,15 +105,22 @@ export default function ExpensesPage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-3">
-          {expenses.map((expense) => (
+          {expenses.map((expense) => {
+            const CategoryIcon = CATEGORY_ICONS[expense.category] ?? MoreHorizontal;
+            return (
             <div
               key={expense.id}
-              className="bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all flex items-center justify-between gap-4"
+              className="bg-surface border border-white/5 rounded-2xl p-4 transition-all hover:border-white/10 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)] flex items-center justify-between gap-4"
             >
-              <div>
-                <p className="font-semibold text-sm text-gray-100">{expense.category}</p>
-                {expense.note && <p className="text-xs text-gray-500 mt-1">{expense.note}</p>}
-                <p className="text-[10px] text-gray-600 mt-1">{expense.expenseDate}</p>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-neon-500/10 flex items-center justify-center flex-shrink-0">
+                  <CategoryIcon className="w-4 h-4 text-neon-500/70" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-gray-100">{expense.category}</p>
+                  {expense.note && <p className="text-xs text-gray-500 mt-1">{expense.note}</p>}
+                  <p className="text-[10px] text-gray-600 mt-1">{expense.expenseDate}</p>
+                </div>
               </div>
 
               <div className="flex items-center gap-4">
@@ -112,7 +134,8 @@ export default function ExpensesPage() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Eye, ChevronDown, Search, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, ChevronDown, Search, Info, Tag } from 'lucide-react';
 import { useWatchlist } from '../../hooks/useWatchlist';
 import { OPPORTUNITY_CATEGORIES } from '../../lib/opportunityCategories';
 import type { DashboardPage, WatchlistEntry } from '../../lib/types';
@@ -156,9 +156,12 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
           {myEntries.map((entry) => (
             <div
               key={entry.id}
-              className="bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all flex items-center justify-between gap-4"
+              className="bg-surface border border-white/5 rounded-2xl p-4 transition-all hover:border-white/10 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)] flex items-center justify-between gap-4"
             >
               <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-neon-500/10 flex items-center justify-center flex-shrink-0">
+                  <Tag className="w-4 h-4 text-neon-500/70" />
+                </div>
                 <button
                   onClick={() => toggleActive(entry.id, !entry.active)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition flex-shrink-0 ${
@@ -209,13 +212,18 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
             {platformEntries.map((entry) => (
               <div
                 key={entry.id}
-                className="bg-surface border border-white/5 rounded-2xl p-4 flex items-center justify-between gap-4"
+                className="bg-dark-400/40 border border-dashed border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4"
               >
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm text-gray-300 truncate">
-                    {entry.brand} {entry.model}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-0.5">{entry.category}</p>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
+                    <Tag className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-gray-300 truncate">
+                      {entry.brand} {entry.model}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-0.5">{entry.category}</p>
+                  </div>
                 </div>
                 <span className="text-[10px] uppercase tracking-wider text-gray-600 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 flex-shrink-0">
                   Recommandé

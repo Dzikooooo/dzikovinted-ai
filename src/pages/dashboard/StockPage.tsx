@@ -667,7 +667,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
             return (
               <div
                 key={item.id}
-                className="bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all"
+                className="bg-surface border border-white/5 rounded-2xl p-4 transition-all hover:border-white/10 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)]"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
@@ -770,7 +770,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
                             setSoldPrice(String(item.price ?? ''));
                             setFees('0');
                           }}
-                          className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 transition-all"
+                          className="text-xs font-semibold bg-neon-500 text-black px-3 py-2 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_18px_rgba(255,196,0,0.3)] transition-all"
                         >
                           Marquer vendu
                         </button>
