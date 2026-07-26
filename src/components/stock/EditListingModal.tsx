@@ -7,6 +7,7 @@ import { uploadListingPhotos } from '../../lib/storage';
 import { stripSkuSuffix } from '../../lib/sku';
 import type { Listing, VintedFilter } from '../../lib/types';
 import type { EditableFieldName } from '../../lib/actions/handlers/editListing';
+import { devLog } from '../../lib/devLog';
 
 interface EditForm {
   title: string;
@@ -260,7 +261,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
       });
 
       if (intent === 'update') {
-        console.log(
+        devLog(
           '[ResellOS][action] enregistrement local (champs non pousses vers Vinted uniquement) -- titre/prix/description restent en attente de confirmation Vinted',
           { listingId: listing.id, price: form.price, title: form.title, changedFields }
         );
@@ -478,7 +479,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           {isLinkedToVinted && canUpdateOnVinted && (
             <button
               onClick={() => {
-                console.log('[ResellOS][action] clic "Enregistrer et mettre a jour sur Vinted" (etape 1)', {
+                devLog('[ResellOS][action] clic "Enregistrer et mettre a jour sur Vinted" (etape 1)', {
                   listingId: listing.id,
                   price: form.price,
                 });

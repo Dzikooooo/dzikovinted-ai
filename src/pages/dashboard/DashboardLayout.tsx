@@ -27,6 +27,7 @@ import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/e
 import { supabase } from '../../lib/supabase';
 import { runSkuRepair } from '../../lib/sku';
 import type { DashboardPage, AppPage, SettingsTab } from '../../lib/types';
+import { devLog, devWarn } from '../../lib/devLog';
 
 const DashboardHome = lazy(() => import('./DashboardHome'));
 const GeneratorPage = lazy(() => import('./GeneratorPage'));
@@ -116,7 +117,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   useEffect(() => {
     if (!session) return;
     if (!isExtensionConfigured()) {
-      console.warn('[ResellOS][pairing] Ré-appairage automatique ignoré : VITE_RESELLOS_EXTENSION_ID absent de cette build.');
+      devWarn('[ResellOS][pairing] Ré-appairage automatique ignoré : VITE_RESELLOS_EXTENSION_ID absent de cette build.');
       return;
     }
 
@@ -125,23 +126,23 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       const installed = await pingExtension();
       if (cancelled) return;
       if (!installed) {
-        console.log('[ResellOS][pairing] Ré-appairage automatique ignoré : extension non détectée (ping échoué).');
+        devLog('[ResellOS][pairing] Ré-appairage automatique ignoré : extension non détectée (ping échoué).');
         return;
       }
 
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (cancelled) return;
       if (sessionError || !data.session) {
-        console.warn('[ResellOS][pairing] Ré-appairage automatique ignoré : session Supabase fraîche indisponible.', sessionError?.message);
+        devWarn('[ResellOS][pairing] Ré-appairage automatique ignoré : session Supabase fraîche indisponible.', sessionError?.message);
         return;
       }
 
       const result = await pairExtension(data.session.access_token, data.session.refresh_token);
       if (cancelled) return;
       if (!result.ok) {
-        console.warn('[ResellOS][pairing] Ré-appairage automatique échoué :', result.error);
+        devWarn('[ResellOS][pairing] Ré-appairage automatique échoué :', result.error);
       } else {
-        console.log('[ResellOS][pairing] Ré-appairage automatique réussi.');
+        devLog('[ResellOS][pairing] Ré-appairage automatique réussi.');
       }
     })();
 
@@ -161,9 +162,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     void runSkuRepair(supabase, session.user.id).then((result) => {
       if (cancelled) return;
       if (!result.success) {
-        console.warn('[ResellOS][sku] Auto-reparation SKU (demarrage) : appel RPC echoue, ignore (best-effort).');
+        devWarn('[ResellOS][sku] Auto-reparation SKU (demarrage) : appel RPC echoue, ignore (best-effort).');
       } else {
-        console.log('[ResellOS][sku] Auto-reparation SKU (demarrage)', result);
+        devLog('[ResellOS][sku] Auto-reparation SKU (demarrage)', result);
       }
     });
     return () => {

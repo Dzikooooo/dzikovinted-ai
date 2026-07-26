@@ -4,6 +4,7 @@
 
 import type { ActionOutcome, ActionRequest } from './actions/types';
 import { translateExtensionError } from './errorMessages';
+import { devLog, devWarn, devError } from './devLog';
 
 interface ExtensionPort {
   onMessage: { addListener: (callback: (message: unknown) => void) => void };
@@ -58,9 +59,9 @@ export function getConfiguredExtensionId(): string | null {
 // 'not-configured' et extension/README.md).
 function logExtensionIdStatus(): void {
   if (!EXTENSION_ID) {
-    console.warn('[ResellOS][pairing] EXTENSION_ID: absent (VITE_RESELLOS_EXTENSION_ID non definie sur cette build)');
+    devWarn('[ResellOS][pairing] EXTENSION_ID: absent (VITE_RESELLOS_EXTENSION_ID non definie sur cette build)');
   } else {
-    console.log(`[ResellOS][pairing] EXTENSION_ID: present (${EXTENSION_ID.slice(0, 6)}...)`);
+    devLog(`[ResellOS][pairing] EXTENSION_ID: present (${EXTENSION_ID.slice(0, 6)}...)`);
   }
 }
 
@@ -71,7 +72,7 @@ function logExtensionIdStatus(): void {
 export async function pingExtension(timeoutMs = 400): Promise<boolean> {
   const runtime = getRuntime();
   if (!EXTENSION_ID || !runtime) {
-    console.warn('[ResellOS][pairing] pingExtension() abandonne : EXTENSION_ID ou chrome.runtime absent', {
+    devWarn('[ResellOS][pairing] pingExtension() abandonne : EXTENSION_ID ou chrome.runtime absent', {
       hasExtensionId: !!EXTENSION_ID,
       hasRuntime: !!runtime,
     });
@@ -106,7 +107,7 @@ export async function pingExtension(timeoutMs = 400): Promise<boolean> {
 }
 
 export async function pairExtension(accessToken: string, refreshToken: string): Promise<PairResult> {
-  console.log('[ResellOS][pairing] pairExtension() appelee', {
+  devLog('[ResellOS][pairing] pairExtension() appelee', {
     hasAccessToken: !!accessToken,
     hasRefreshToken: !!refreshToken,
   });
@@ -115,12 +116,12 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
   const runtime = getRuntime();
   if (!EXTENSION_ID) {
     const result = { ok: false, error: "Extension non configurée (VITE_RESELLOS_EXTENSION_ID absent)" };
-    console.error('[ResellOS][pairing] pairExtension() abandonnee :', result.error);
+    devError('[ResellOS][pairing] pairExtension() abandonnee :', result.error);
     return result;
   }
   if (!runtime) {
     const result = { ok: false, error: "chrome.runtime indisponible (navigateur non-Chrome, ou page hors contexte d'extension)" };
-    console.error('[ResellOS][pairing] pairExtension() abandonnee :', result.error);
+    devError('[ResellOS][pairing] pairExtension() abandonnee :', result.error);
     return result;
   }
 
@@ -132,18 +133,18 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
         (response) => {
           if (runtime.lastError) {
             const raw = runtime.lastError.message ?? "Échec de la connexion à l'extension";
-            console.error('[ResellOS][pairing] pairExtension() chrome.runtime.lastError :', raw);
+            devError('[ResellOS][pairing] pairExtension() chrome.runtime.lastError :', raw);
             resolve({ ok: false, error: translateExtensionError(raw) });
             return;
           }
           const result = (response as PairResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" };
-          console.log('[ResellOS][pairing] pairExtension() reponse :', result);
+          devLog('[ResellOS][pairing] pairExtension() reponse :', result);
           resolve(result);
         }
       );
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
-      console.error('[ResellOS][pairing] pairExtension() exception :', raw);
+      devError('[ResellOS][pairing] pairExtension() exception :', raw);
       resolve({ ok: false, error: translateExtensionError(raw) });
     }
   });
@@ -217,14 +218,14 @@ export async function runAction(
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        console.warn(`[ResellOS][action][${historyId}] runAction() : delai depasse (${timeoutMs}ms) sans reponse de l'extension`);
+        devWarn(`[ResellOS][action][${historyId}] runAction() : delai depasse (${timeoutMs}ms) sans reponse de l'extension`);
         port?.disconnect();
         resolve({ ok: false, error: RUN_ACTION_TIMEOUT_ERROR, timedOut: true });
       }
     }, timeoutMs);
 
     try {
-      console.log(`[ResellOS][action][${historyId}] envoi RUN_ACTION vers l'extension (etape 2 : creation/envoi de l'action)`, {
+      devLog(`[ResellOS][action][${historyId}] envoi RUN_ACTION vers l'extension (etape 2 : creation/envoi de l'action)`, {
         kind: request.kind,
         vintedAccountId: request.vintedAccountId,
         listingId: request.listingId,

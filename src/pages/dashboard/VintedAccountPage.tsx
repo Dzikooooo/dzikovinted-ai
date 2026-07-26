@@ -8,6 +8,7 @@ import { getConfiguredExtensionId, isExtensionConfigured, pingExtension, pairExt
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 import { formatEUR } from '../../lib/currency';
+import { devLog, devWarn } from '../../lib/devLog';
 
 const UPCOMING = [
   { icon: MessageSquare, label: 'Messages et reponses rapides' },
@@ -41,7 +42,7 @@ export default function VintedAccountPage() {
   useEffect(() => {
     (async () => {
       if (!isExtensionConfigured()) {
-        console.warn(
+        devWarn(
           '[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build -- ' +
             "l'app ne peut adresser aucun message a l'extension (voir extension/README.md §appairage)."
         );
@@ -49,12 +50,12 @@ export default function VintedAccountPage() {
         return;
       }
       const expectedId = getConfiguredExtensionId();
-      console.log('[ResellOS][pairing] ID attendu :', expectedId);
+      devLog('[ResellOS][pairing] ID attendu :', expectedId);
       const installed = await pingExtension();
       // Chrome ne renvoie aucune information exploitable en cas d'echec
       // (pas de "mauvais id" distinct de "extension absente") -- on ne peut
       // journaliser que le resultat binaire du ping, jamais un "ID reçu".
-      console.log('[ResellOS][pairing] pingExtension ->', installed, installed ? '(confirme : le pseudo-handshake a atteint exactement cet id)' : '(aucune reponse)');
+      devLog('[ResellOS][pairing] pingExtension ->', installed, installed ? '(confirme : le pseudo-handshake a atteint exactement cet id)' : '(aucune reponse)');
       setExtensionState(installed ? 'ready' : 'not-installed');
     })();
   }, []);

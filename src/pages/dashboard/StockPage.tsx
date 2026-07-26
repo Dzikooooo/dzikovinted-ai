@@ -31,6 +31,7 @@ import type { VintedAccount } from '../../lib/types';
 import { buildEditSuccessSyncFields, formatTitleWithSku, runSkuRepair } from '../../lib/sku';
 import { formatEUR } from '../../lib/currency';
 import type { ActionKind } from '../../lib/actions/types';
+import { devLog, devWarn, devError } from '../../lib/devLog';
 
 // description/category/condition sont ici garantis non-vides par
 // checkListingHasRequiredVintedFields (checks.ts) avant que publish_listing
@@ -169,12 +170,12 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   useEffect(() => {
     (async () => {
       if (!isExtensionConfigured()) {
-        console.warn('[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build.');
+        devWarn('[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build.');
         setExtensionState('not-installed');
         return;
       }
       const installed = await pingExtension();
-      console.log('[ResellOS][pairing] pingExtension ->', installed);
+      devLog('[ResellOS][pairing] pingExtension ->', installed);
       setExtensionState(installed ? 'ready' : 'not-installed');
     })();
   }, []);
@@ -263,7 +264,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     // de 'done' et sans erreur signifie qu'une action est REELLEMENT en
     // cours.
     if (publishState && publishState.step !== 'done' && !publishState.error) {
-      console.warn('[ResellOS][action] runVintedAction ignore : une action est deja en cours', {
+      devWarn('[ResellOS][action] runVintedAction ignore : une action est deja en cours', {
         kind,
         listingId: listing.id,
         etapeEnCours: publishState.step,
@@ -276,7 +277,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     // action -- null pour publish_listing, qui garde l'ecran original.
     const changedFields = kind === 'edit_listing' ? (payload as EditListingPayload).changedFields : null;
     setPublishState({ step: 'preparing', error: null, historyId: null, kind, changedFields });
-    console.log(`[ResellOS][action] prepareAction('${kind}')`, { listingId: listing.id, payload });
+    devLog(`[ResellOS][action] prepareAction('${kind}')`, { listingId: listing.id, payload });
 
     // Reconciliation immediate du badge (demande explicite 2026-07-17) :
     // "sync_failed" (d'une eventuelle tentative precedente) resterait
@@ -291,7 +292,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         .update({ vinted_sync_status: 'sync_pending' as const })
         .eq('id', listing.id);
       if (pendingError) {
-        console.warn("[ResellOS][action] echec de l'ecriture de sync_pending (non bloquant)", pendingError.message);
+        devWarn("[ResellOS][action] echec de l'ecriture de sync_pending (non bloquant)", pendingError.message);
       } else {
         setItems((prev) => prev.map((i) => (i.id === listing.id ? { ...i, vinted_sync_status: 'sync_pending' } : i)));
       }
@@ -299,15 +300,15 @@ export default function StockPage({ onViewAction }: StockPageProps) {
 
     const prepared = await prepareAction(kind, payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
-      console.warn('[ResellOS][action] prepare() refuse par les checks :', prepared.failure);
+      devWarn('[ResellOS][action] prepare() refuse par les checks :', prepared.failure);
       setPublishState({ step: null, error: prepared.failure.message, historyId: null, kind, changedFields });
       return;
     }
     const historyId = prepared.prepared.id;
-    console.log(`[ResellOS][action][${historyId}] prepare() ok, confirmAction() lance`);
+    devLog(`[ResellOS][action][${historyId}] prepare() ok, confirmAction() lance`);
 
     const result = await confirmAction(prepared.prepared, (step) => {
-      console.log(`[ResellOS][action][${historyId}] progression :`, step);
+      devLog(`[ResellOS][action][${historyId}] progression :`, step);
       if (!isPublishStep(step)) return;
       // filling_form/publishing fusionnes en une seule ligne visible pour
       // edit_listing (voir editListingSteps.ts) -- normalisation purement
@@ -317,7 +318,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     });
     // "retour dans ResellOS" : le content script Vinted a rapporte un
     // resultat terminal (succes ou echec) jusqu'ici, via le background.
-    console.log(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
+    devLog(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
 
     // Etape 13 (mise a jour du statut dans ResellOS) : "la base ResellOS ne
     // doit jamais diverger de Vinted" (demande explicite 2026-07-15).
@@ -331,7 +332,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     if (kind === 'edit_listing') {
       const editPayload = payload as EditListingPayload;
       if (result.outcome.status === 'success') {
-        console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_success`, {
+        devLog(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_success`, {
           price: editPayload.price,
         });
         // title vient de listing.title (jamais editPayload.title, deja
@@ -345,7 +346,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           })
           .eq('id', listing.id);
         if (statusError) {
-          console.error(`[ResellOS][action][${historyId}] echec de l'ecriture de la confirmation Vinted`, statusError);
+          devError(`[ResellOS][action][${historyId}] echec de l'ecriture de la confirmation Vinted`, statusError);
         }
       } else if (result.outcome.status === 'error' && result.outcome.errorMessage === RUN_ACTION_TIMEOUT_ERROR) {
         // Bug reel demontre le 2026-07-17 (audit direct de action_log) : un
@@ -357,17 +358,17 @@ export default function StockPage({ onViewAction }: StockPageProps) {
         // silencieusement un succes qui arrive plus tard sans jamais pouvoir
         // etre observe. Laisse le statut a sync_pending (deja ecrit au
         // clic) -- ni succes ni echec confirmes, honnete sur l'incertitude.
-        console.warn(
+        devWarn(
           `[ResellOS][action][${historyId}] delai local depasse -- statut laisse a sync_pending (l'extension continue peut-etre en arriere-plan)`
         );
       } else {
-        console.log(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_failed (aucun champ modifie)`);
+        devLog(`[ResellOS][action][${historyId}] mise a jour du statut de synchronisation : sync_failed (aucun champ modifie)`);
         const { error: statusError } = await supabase
           .from('listings')
           .update({ vinted_sync_status: 'sync_failed' as const })
           .eq('id', listing.id);
         if (statusError) {
-          console.error(`[ResellOS][action][${historyId}] echec de l'ecriture du statut de synchronisation`, statusError);
+          devError(`[ResellOS][action][${historyId}] echec de l'ecriture du statut de synchronisation`, statusError);
         }
       }
     }
@@ -382,14 +383,14 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       // Actions/badge/metrique.
       if (user) {
         void runSkuRepair(supabase, user.id)
-          .then((r) => console.log(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind})`, r))
-          .catch(() => console.warn(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind}) : echec ignore (best-effort)`));
+          .then((r) => devLog(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind})`, r))
+          .catch(() => devWarn(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind}) : echec ignore (best-effort)`));
       }
 
       setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields });
-      console.log(`[ResellOS][action][${historyId}] mise a jour locale : relecture de confirmation (load())`);
+      devLog(`[ResellOS][action][${historyId}] mise a jour locale : relecture de confirmation (load())`);
       await load();
-      console.log(`[ResellOS][action][${historyId}] mise a jour locale terminee`);
+      devLog(`[ResellOS][action][${historyId}] mise a jour locale terminee`);
       setPublishState({ step: 'done', error: null, historyId, kind, changedFields });
     } else if (result.outcome.status === 'error') {
       await load();
@@ -414,14 +415,14 @@ export default function StockPage({ onViewAction }: StockPageProps) {
   // (bouton d'import, erreurs [object Object]). Desormais loggue et
   // affiche une erreur visible plutot que de disparaitre.
   const handleConfirmUpdate = async (listing: Listing, changedFields: EditableFieldName[]) => {
-    console.log('[ResellOS][action] handleConfirmUpdate demarre (etape 1: clic confirme)', {
+    devLog('[ResellOS][action] handleConfirmUpdate demarre (etape 1: clic confirme)', {
       listingId: listing.id,
       vintedAccountId: listing.vinted_account_id,
       selectedAccountId: selectedAccount?.id ?? null,
       changedFields,
     });
     if (!selectedAccount) {
-      console.warn('[ResellOS][action] handleConfirmUpdate annule : aucun compte selectionne dans le filtre');
+      devWarn('[ResellOS][action] handleConfirmUpdate annule : aucun compte selectionne dans le filtre');
       setPublishState({
         step: null,
         error: "Aucun compte Vinted sélectionné dans le filtre en haut de page. Sélectionne le compte de cette annonce avant de réessayer.",
@@ -887,7 +888,7 @@ export default function StockPage({ onViewAction }: StockPageProps) {
           canUpdateOnVinted={!!selectedAccount && selectedAccount.id === editingItem.vinted_account_id}
           photoLimit={photoLimit}
           onSaved={(updated, intent, changedFields) => {
-            console.log('[ResellOS][action] onSaved (modal) : sauvegarde locale confirmee', {
+            devLog('[ResellOS][action] onSaved (modal) : sauvegarde locale confirmee', {
               listingId: updated.id,
               intent,
               changedFields,
