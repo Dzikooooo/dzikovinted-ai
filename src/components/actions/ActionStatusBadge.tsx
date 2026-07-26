@@ -14,7 +14,7 @@ export default function ActionStatusBadge({ status }: { status: ActionHistorySta
   const style = STATUS_STYLES[status];
   if (!style) return null;
   return (
-    <span className={`text-[10px] font-bold ${style.text} ${style.bg} px-1.5 py-0.5 rounded-md flex-shrink-0`}>
+    <span className={`text-[10px] font-bold ${style.text} ${style.bg} px-1.5 py-0.5 rounded-lg flex-shrink-0`}>
       {style.label}
     </span>
   );

@@ -24,7 +24,7 @@ export function OneScoreBar({ score, size = 'sm', className = '' }: OneScoreBarP
       </div>
       <div className={`${barHeight} bg-white/10 rounded-full overflow-hidden`}>
         <div
-          className="h-full bg-neon-500 rounded-full transition-all duration-500"
+          className="h-full bg-neon-500 rounded-full shadow-[0_0_8px_rgba(255,196,0,0.6)] transition-all duration-500"
           style={{ width: `${clamped}%` }}
         />
       </div>
