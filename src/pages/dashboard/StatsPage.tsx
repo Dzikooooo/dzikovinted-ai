@@ -5,6 +5,8 @@ import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContex
 import { supabase } from '../../lib/supabase';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { StatCard } from '../../components/ui/StatCard';
+import { ProgressBarRow } from '../../components/ui/ProgressBar';
 import type { Listing } from '../../lib/types';
 import { formatEUR } from '../../lib/currency';
 
@@ -92,23 +94,15 @@ export default function StatsPage() {
 
       {loadError && <ErrorBanner message={loadError} className="mb-6" />}
 
-      {/* KPI cards */}
+      {/* KPI cards -- palette neon-500 uniforme (Design Freeze, Lot 7) : les
+          4 couleurs hors systeme (blue/yellow/teal) casaient l'identite
+          mono-accent du reste du produit. */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-        {[
-          { icon: Sparkles, label: 'Annonces', value: listings.length.toString(), color: 'text-neon-500', bg: 'bg-neon-500/10' },
-          { icon: DollarSign, label: 'Prix moyen', value: formatEUR(avgPrice), color: 'text-blue-400', bg: 'bg-blue-400/10' },
-          { icon: TrendingUp, label: 'Valeur du catalogue', value: formatEUR(catalogValue), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-          { icon: BarChart2, label: 'Ce mois-ci', value: thisMonthCount.toString(), color: 'text-teal-400', bg: 'bg-teal-400/10' },
-          { icon: Star, label: 'Favoris', value: favCount.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-        ].map(({ icon: Icon, label, value, color, bg }) => (
-          <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
-            <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-              <Icon className={`w-4 h-4 ${color}`} />
-            </div>
-            <p className={`text-xl font-black ${color} mb-1`}>{value}</p>
-            <p className="text-[11px] text-gray-500">{label}</p>
-          </div>
-        ))}
+        <StatCard icon={Sparkles} label="Annonces" value={listings.length} />
+        <StatCard icon={DollarSign} label="Prix moyen" value={formatEUR(avgPrice)} />
+        <StatCard icon={TrendingUp} label="Valeur du catalogue" value={formatEUR(catalogValue)} highlight />
+        <StatCard icon={BarChart2} label="Ce mois-ci" value={thisMonthCount} />
+        <StatCard icon={Star} label="Favoris" value={favCount} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -124,7 +118,7 @@ export default function StatsPage() {
             <div className="flex items-end gap-3 h-40">
               {last6Months.map(({ key, label, count }) => (
                 <div key={key} className="flex-1 flex flex-col items-center gap-2">
-                  <span className="text-xs font-mono text-neon-500">{count > 0 ? count : ''}</span>
+                  <span className="text-xs font-mono text-neon-500 tabular-nums">{count > 0 ? count : ''}</span>
                   <div
                     className="w-full rounded-t-lg transition-all duration-700 bg-gradient-to-t from-neon-500/30 to-neon-500/60 hover:from-neon-500/40 hover:to-neon-500/80"
                     style={{ height: `${(count / maxMonthCount) * 100}%`, minHeight: count > 0 ? '8px' : '2px' }}
@@ -134,6 +128,7 @@ export default function StatsPage() {
               ))}
             </div>
           )}
+          {listings.length > 0 && <div className="mt-2 border-t border-white/5" />}
         </div>
 
         {/* Top brands */}
@@ -147,20 +142,14 @@ export default function StatsPage() {
           ) : (
             <div className="space-y-3">
               {topBrands.map(([brand, count], i) => (
-                <div key={brand} className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono text-gray-600 w-4 flex-shrink-0">{i + 1}.</span>
-                  <span className="text-xs text-gray-300 w-28 truncate flex-shrink-0 font-medium">{brand}</span>
-                  <div className="flex-1 h-2.5 bg-white/5 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${(count / maxBrandCount) * 100}%`,
-                        background: `linear-gradient(90deg, rgba(255,196,0,0.4), rgba(255,196,0,0.8))`,
-                      }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono text-neon-500 w-6 flex-shrink-0 text-right">{count}</span>
-                </div>
+                <ProgressBarRow
+                  key={brand}
+                  rank={i + 1}
+                  label={brand}
+                  value={String(count)}
+                  fraction={count / maxBrandCount}
+                  valueClassName="w-6 text-neon-500"
+                />
               ))}
             </div>
           )}
@@ -169,7 +158,7 @@ export default function StatsPage() {
         {/* Categories */}
         <div className="bg-surface border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <Layers className="w-4 h-4 text-blue-400" />
+            <Layers className="w-4 h-4 text-neon-500" />
             Categories
           </h2>
           {topCats.length === 0 ? (
@@ -177,8 +166,8 @@ export default function StatsPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {topCats.map(([cat, count]) => (
-                <div key={cat} className="bg-dark-400 rounded-xl p-3 border border-white/5 hover:border-blue-400/20 transition-colors">
-                  <p className="text-lg font-black text-blue-400 mb-1">{count}</p>
+                <div key={cat} className="bg-dark-400 rounded-xl p-3 border border-white/5 hover:border-neon-500/20 transition-colors">
+                  <p className="text-lg font-black text-neon-500 mb-1">{count}</p>
                   <p className="text-xs text-gray-500 truncate">{cat}</p>
                 </div>
               ))}
@@ -189,7 +178,7 @@ export default function StatsPage() {
         {/* Price distribution */}
         <div className="bg-surface border border-white/5 rounded-2xl p-6">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-yellow-400" />
+            <DollarSign className="w-4 h-4 text-neon-500" />
             Distribution des prix
           </h2>
           {listings.length === 0 ? (
@@ -197,18 +186,19 @@ export default function StatsPage() {
           ) : (
             <div className="space-y-3">
               {[
-                { label: '< 30 €', count: listings.filter((l) => l.price < 30).length, color: 'from-gray-500/40 to-gray-500/60' },
-                { label: '30 - 75 €', count: listings.filter((l) => l.price >= 30 && l.price < 75).length, color: 'from-neon-500/40 to-neon-500/70' },
-                { label: '75 - 150 €', count: listings.filter((l) => l.price >= 75 && l.price < 150).length, color: 'from-yellow-400/40 to-yellow-400/70' },
-                { label: '150+ €', count: listings.filter((l) => l.price >= 150).length, color: 'from-blue-400/40 to-blue-400/70' },
-              ].map(({ label, count, color }) => (
-                <div key={label} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400 w-20 flex-shrink-0">{label}</span>
-                  <div className="flex-1 h-2.5 bg-white/5 rounded-full overflow-hidden">
-                    <div className={`h-full bg-gradient-to-r ${color} rounded-full transition-all duration-700`} style={{ width: listings.length > 0 ? `${(count / listings.length) * 100}%` : '0%' }} />
-                  </div>
-                  <span className="text-xs font-mono text-gray-500 w-6 text-right">{count}</span>
-                </div>
+                { label: '< 30 €', count: listings.filter((l) => l.price < 30).length },
+                { label: '30 - 75 €', count: listings.filter((l) => l.price >= 30 && l.price < 75).length },
+                { label: '75 - 150 €', count: listings.filter((l) => l.price >= 75 && l.price < 150).length },
+                { label: '150+ €', count: listings.filter((l) => l.price >= 150).length },
+              ].map(({ label, count }) => (
+                <ProgressBarRow
+                  key={label}
+                  label={label}
+                  value={String(count)}
+                  fraction={listings.length > 0 ? count / listings.length : 0}
+                  labelClassName="w-20"
+                  valueClassName="w-6"
+                />
               ))}
             </div>
           )}
@@ -217,7 +207,7 @@ export default function StatsPage() {
         {/* Condition breakdown */}
         <div className="bg-surface border border-white/5 rounded-2xl p-6 lg:col-span-2">
           <h2 className="font-bold text-sm mb-6 flex items-center gap-2">
-            <Star className="w-4 h-4 text-teal-400" />
+            <Star className="w-4 h-4 text-neon-500" />
             Etat des articles
           </h2>
           {conditions.length === 0 ? (
@@ -227,9 +217,9 @@ export default function StatsPage() {
               {conditions.map(([condition, count]) => {
                 const pct = ((count / listings.length) * 100).toFixed(0);
                 return (
-                  <div key={condition} className="bg-dark-400 rounded-xl px-4 py-3 border border-white/5 flex items-center gap-3 hover:border-teal-400/20 transition-colors">
+                  <div key={condition} className="bg-dark-400 rounded-xl px-4 py-3 border border-white/5 flex items-center gap-3 hover:border-neon-500/20 transition-colors">
                     <div className="text-center">
-                      <p className="text-lg font-black text-teal-400">{pct}%</p>
+                      <p className="text-lg font-black text-neon-500">{pct}%</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-300 font-medium">{condition}</p>
