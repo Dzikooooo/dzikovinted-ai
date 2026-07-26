@@ -1,4 +1,4 @@
-import { Zap } from 'lucide-react';
+import { Logo } from '../../components/ui/Logo';
 
 export function ProductPreview() {
   return (
@@ -48,9 +48,7 @@ export function ProductPreview() {
             <div className="grid lg:grid-cols-[240px_1fr] min-h-[520px]">
               <aside className="hidden lg:block border-r border-white/10 p-6">
                 <div className="flex items-center gap-3 mb-10">
-                  <div className="w-9 h-9 rounded-xl bg-neon-500 flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-black" />
-                  </div>
+                  <Logo size={36} />
                   <div className="font-black">
                     <span>Resell</span>
                     <span className="text-neon-500 ml-1">OS</span>

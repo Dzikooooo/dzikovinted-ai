@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
-  Zap,
   LayoutDashboard,
   Sparkles,
   History,
@@ -23,6 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import AccountSwitcher from '../../components/ui/AccountSwitcher';
+import { Logo } from '../../components/ui/Logo';
 import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
 import { supabase } from '../../lib/supabase';
 import { runSkuRepair } from '../../lib/sku';
@@ -202,9 +202,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       {/* Logo */}
       <div className="p-5 border-b border-white/5">
         <button onClick={() => { if (confirmLeaveGenerator()) onNavigate('landing'); }} className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-neon-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Zap className="w-5 h-5 text-black" />
-          </div>
+          <Logo size={32} />
           <span className="text-lg font-black">
             <span className="text-white">Resell</span>
             <span className="text-neon-500">OS</span>

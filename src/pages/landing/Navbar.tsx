@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Zap, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
+import { Logo } from '../../components/ui/Logo';
 
 export function Navbar({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
   const [open, setOpen] = useState(false);
@@ -22,12 +23,7 @@ export function Navbar({ onNavigate }: { onNavigate: (page: AppPage) => void }) 
             }
             className="flex items-center gap-4"
           >
-            <div className="w-11 h-11 rounded-2xl
-transition-all duration-300
-hover:scale-[1.02]
-active:scale-[0.98] bg-neon-500 flex items-center justify-center shadow-[0_0_30px_rgba(255,196,0,0.25)]">
-              <Zap className="w-5 h-5 text-black" />
-            </div>
+            <Logo size={44} className="transition-transform duration-300 hover:scale-[1.02]" />
 
             <div className="flex items-end">
               <span className="text-[1.65rem] font-black tracking-tight text-white leading-none">

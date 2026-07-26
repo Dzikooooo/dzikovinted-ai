@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { StatusResponse } from "../lib/messages";
 import { logger, type LogEntry } from "../background/logger";
+import logoGlyph from "./assets/logo-glyph.png";
 
 // Popup volontairement en styles inline plutot qu'avec Tailwind : pas besoin
 // d'un second pipeline Tailwind pour un ecran aussi simple. Couleurs reprises
@@ -41,9 +42,7 @@ export default function Popup() {
   return (
     <div style={{ width: 320, padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#0a0a0a", color: "#e5e5e5" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <div style={{ width: 24, height: 24, borderRadius: 6, background: "#FFC400", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, color: "#000", fontSize: 13 }}>
-          R
-        </div>
+        <img src={logoGlyph} alt="ResellOS" width={24} height={24} style={{ objectFit: "contain", flexShrink: 0 }} />
         <strong>ResellOS</strong>
       </div>
 

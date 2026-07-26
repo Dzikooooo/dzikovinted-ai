@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Zap, Eye, EyeOff, ArrowLeft, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import type { AuthMode, AppPage } from '../lib/types';
+import { Logo } from '../components/ui/Logo';
 
 interface AuthPageProps {
   onNavigate: (page: AppPage) => void;
@@ -75,9 +76,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
         </button>
 
         <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-neon-500 rounded-lg flex items-center justify-center">
-            <Zap className="w-5 h-5 text-black" />
-          </div>
+          <Logo size={32} />
           <span className="text-xl font-black">Resell<span className="text-neon-500">OS</span></span>
         </div>
 

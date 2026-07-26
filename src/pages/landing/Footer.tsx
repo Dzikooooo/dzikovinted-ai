@@ -1,5 +1,6 @@
-import { Zap, Mail, Twitter, Github, Instagram } from 'lucide-react';
+import { Mail, Twitter, Github, Instagram } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
+import { Logo } from '../../components/ui/Logo';
 
 export function Footer({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
   return (
@@ -8,7 +9,7 @@ export function Footer({ onNavigate }: { onNavigate: (page: AppPage) => void }) 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 bg-neon-500 rounded-lg flex items-center justify-center"><Zap className="w-4 h-4 text-black" /></div>
+              <Logo size={28} />
               <span className="font-black">Resell<span className="text-neon-500">OS</span></span>
             </div>
             <p className="text-sm text-gray-500 leading-relaxed">Tout ce dont un revendeur a besoin, dans un seul système.</p>
