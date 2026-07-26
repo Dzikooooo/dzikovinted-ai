@@ -33,16 +33,17 @@ export function ProductPreview() {
 
             <div className="h-12 border-b border-white/10 flex items-center justify-between px-5">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500/80" />
-                <span className="w-3 h-3 rounded-full bg-yellow-400/80" />
-                <span className="w-3 h-3 rounded-full bg-neon-500/80" />
+                <Logo size={18} />
+                <span className="text-xs font-bold text-gray-300">Resell<span className="text-neon-500">OS</span></span>
               </div>
 
-              <div className="text-xs text-gray-500">
-                app.resellos.com/dashboard
+              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-gray-500">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-neon-500" />
+                </span>
+                Aperçu en direct
               </div>
-
-              <div className="w-16" />
             </div>
 
             <div className="grid lg:grid-cols-[240px_1fr] min-h-[520px]">

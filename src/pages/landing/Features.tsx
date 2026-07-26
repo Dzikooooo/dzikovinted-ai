@@ -43,16 +43,16 @@ export function Features() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map(({ icon: Icon, title, desc }) => (
+          {features.map(({ icon: Icon, title, desc }, i) => (
           <div
             key={title}
              className="group relative overflow-hidden rounded-3xl bg-[#151515] border border-white/5 p-8 transition-all duration-500 hover:-translate-y-2 hover:border-neon-500/30 hover:shadow-[0_25px_70px_rgba(255,196,0,.08)]"
           >
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-neon-500/5 via-transparent to-transparent" />
-              <div className="w-12 h-12 bg-neon-500/8 rounded-2xl
-transition-all duration-300
-hover:scale-[1.02]
-active:scale-[0.98] flex items-center justify-center mb-4 group-hover:bg-neon-500/15 transition-colors">
+              <span className="absolute top-6 right-7 text-[11px] font-mono text-gray-700 group-hover:text-neon-500/50 transition-colors">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <div className="w-12 h-12 bg-neon-500/8 rounded-2xl transition-all duration-300 flex items-center justify-center mb-4 group-hover:bg-neon-500/15 group-hover:shadow-[0_0_20px_rgba(255,196,0,0.15)]">
                 <Icon className="w-5 h-5 text-neon-500" />
               </div>
               <h3 className="font-bold mb-2">{title}</h3>
