@@ -146,7 +146,7 @@ export function UploadStep({
       >
         {images.length === 0 ? (
           <label className="flex flex-col items-center justify-center py-20 sm:py-24 cursor-pointer group">
-            <div className="w-20 h-20 rounded-2xl bg-dark-400 border-2 border-dashed border-gray-700 flex items-center justify-center mb-6 group-hover:border-neon-500/40 group-hover:bg-neon-500/5 transition-all duration-300">
+            <div className="w-20 h-20 rounded-2xl bg-dark-400 border-2 border-dashed border-gray-700 flex items-center justify-center mb-6 transition-all duration-300 group-hover:border-neon-500/40 group-hover:bg-neon-500/5 group-hover:scale-105 group-hover:shadow-[0_0_25px_rgba(255,196,0,0.12)]">
               <Upload className="w-8 h-8 text-gray-600 group-hover:text-neon-500 transition-colors" />
             </div>
             <p className="text-base font-semibold mb-1">Glisse tes photos ici</p>
@@ -169,7 +169,7 @@ export function UploadStep({
                     dragOverIdx === i ? 'border-neon-500 shadow-[0_0_15px_rgba(255,196,0,0.2)]' : i === 0 ? 'border-neon-500/40 ring-1 ring-neon-500/20' : 'border-white/5'
                   } ${dragIdx === i ? 'opacity-50 scale-95' : ''}`}
                 >
-                  <img src={src} alt="" className="w-full h-full object-cover" />
+                  <img src={src} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all" />
 
                   <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-all">

@@ -114,7 +114,7 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
             neutres que les FieldCard d'attributs ci-dessous plutot que
             trois accents concurrents de poids visuel egal (audit Brand
             Book, 2026-07-23). */}
-        <div className="bg-neon-500/5 border border-neon-500/20 rounded-xl p-5">
+        <div className="bg-neon-500/5 border border-neon-500/20 rounded-xl p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_25px_rgba(255,196,0,0.12)]">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-neon-500" />

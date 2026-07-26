@@ -43,7 +43,7 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
           <button
             onClick={onSaveAndReturn}
             disabled={saving}
-            className="flex items-center gap-2 bg-neon-500 text-black font-bold px-4 py-2 rounded-xl hover:bg-neon-600 transition-all text-sm disabled:opacity-50"
+            className="flex items-center gap-2 bg-neon-500 text-black font-bold px-4 py-2 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all text-sm disabled:opacity-50 disabled:hover:shadow-none"
           >
             <Save className="w-4 h-4" /> {saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </button>
