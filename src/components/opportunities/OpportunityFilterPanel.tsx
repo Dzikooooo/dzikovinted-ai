@@ -29,7 +29,7 @@ function NumberField({
   return (
     <label className="flex flex-col gap-1 text-xs">
       <span className="text-gray-500 font-semibold">{label}</span>
-      <div className="flex items-center gap-1 bg-dark-400 border border-white/10 rounded-lg px-2.5 py-2">
+      <div className="flex items-center gap-1 bg-dark-400 border border-white/10 rounded-lg px-2.5 py-2 transition-all focus-within:border-neon-500/40 focus-within:ring-2 focus-within:ring-neon-500/20">
         <input
           type="number"
           value={value ?? ""}

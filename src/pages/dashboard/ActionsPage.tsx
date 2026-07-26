@@ -108,33 +108,44 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
         />
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-2">
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          {PERIOD_FILTERS.map(({ key: k, label }) => (
-            <button
-              key={k}
-              onClick={() => setPeriod(k)}
-              className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
-                period === k ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="flex gap-1 mb-2 overflow-x-auto pb-1">
+        {PERIOD_FILTERS.map(({ key: k, label }) => (
+          <button
+            key={k}
+            onClick={() => setPeriod(k)}
+            className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
+              period === k ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-        <select
-          value={kind}
-          onChange={(e) => setKind(e.target.value as ActionKind | 'all')}
-          className="bg-dark-400 border border-white/10 rounded-xl px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-neon-500/30"
+      {/* Boutons segmentes plutot qu'un <select> natif -- meme pattern que
+          les filtres periode/resultat ci-dessus et que tous les autres
+          filtres a choix du produit (Stock, Opportunites, Watchlist,
+          Comptabilite), seul endroit qui utilisait encore un select brut. */}
+      <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
+        <button
+          onClick={() => setKind('all')}
+          className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
+            kind === 'all' ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+          }`}
         >
-          <option value="all">Tous les types</option>
-          {(Object.keys(ACTION_KIND_LABELS) as ActionKind[]).map((k) => (
-            <option key={k} value={k}>
-              {ACTION_KIND_LABELS[k]}
-            </option>
-          ))}
-        </select>
+          Tous les types
+        </button>
+        {(Object.keys(ACTION_KIND_LABELS) as ActionKind[]).map((k) => (
+          <button
+            key={k}
+            onClick={() => setKind(k)}
+            className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
+              kind === k ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+            }`}
+          >
+            {ACTION_KIND_LABELS[k]}
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
