@@ -78,6 +78,40 @@ export interface RoadmapItem {
   updated_at: string;
 }
 
+// Type des lignes polls/poll_options/poll_votes (supabase/migrations/20260727130000_add_polls.sql).
+// poll_options.votes_count est denormalise (maintenu par trigger), jamais
+// calcule cote client -- poll_votes n'est jamais lu en liste (RLS ne
+// l'autorise que pour son propre vote), voir myVoteOptionId dans usePolls.
+export type PollStatus = 'open' | 'closed';
+
+export interface Poll {
+  id: string;
+  question: string;
+  description: string | null;
+  status: PollStatus;
+  author_id: string;
+  min_plan: Plan | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PollOption {
+  id: string;
+  poll_id: string;
+  label: string;
+  sort_order: number;
+  votes_count: number;
+  created_at: string;
+}
+
+export interface PollVote {
+  id: string;
+  poll_id: string;
+  option_id: string;
+  user_id: string;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   email: string;

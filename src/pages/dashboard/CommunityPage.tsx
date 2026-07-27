@@ -20,6 +20,7 @@ import { GuidesTab } from './community/GuidesTab';
 import { ResourcesTab } from './community/ResourcesTab';
 import { FaqTab } from './community/FaqTab';
 import { RoadmapTab } from './community/RoadmapTab';
+import { PollsTab } from './community/PollsTab';
 import { DiscordTab } from './community/DiscordTab';
 
 interface CommunityPageProps {
@@ -43,7 +44,6 @@ const TABS: { key: CommunityTab; label: string; icon: LucideIcon }[] = [
 // le plan) -- EmptyState honnete plutot qu'un lien mort ou une page
 // cassee. Retire de cette liste au fur et a mesure des lots.
 const COMING_SOON: Partial<Record<CommunityTab, string>> = {
-  polls: 'Les sondages arriveront bientôt ici.',
   suggestions: 'Les suggestions de la communauté arriveront bientôt ici.',
   support: 'Le support par tickets arrivera bientôt ici.',
 };
@@ -83,6 +83,7 @@ export default function CommunityPage({ initialTab }: CommunityPageProps) {
       {activeTab === 'resources' && <ResourcesTab />}
       {activeTab === 'faq' && <FaqTab />}
       {activeTab === 'roadmap' && <RoadmapTab />}
+      {activeTab === 'polls' && <PollsTab />}
       {activeTab === 'discord' && <DiscordTab />}
       {COMING_SOON[activeTab] && (
         <EmptyState
