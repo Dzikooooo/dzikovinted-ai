@@ -16,7 +16,8 @@ import {
   Puzzle,
   Receipt,
   Activity,
-  Eye
+  Eye,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
@@ -41,6 +42,7 @@ const SubscriptionPage = lazy(() => import('./SubscriptionPage'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
 const Opportunities = lazy(() => import('./Opportunities'));
 const WatchlistPage = lazy(() => import('./WatchlistPage'));
+const CommunityPage = lazy(() => import('./CommunityPage'));
 
 function PageFallback() {
   return (
@@ -65,6 +67,7 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[
   { page: 'accounting', icon: Receipt, label: 'Comptabilite' },
   { page: 'expenses', icon: Wallet, label: 'Depenses' },
   { page: 'stats', icon: BarChart2, label: 'Statistiques' },
+  { page: 'community', icon: Users, label: 'Communauté' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
   { page: 'settings', icon: Settings, label: 'Paramètres' },
 ];
@@ -352,6 +355,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               {activePage === 'accounting' && <AccountingPage />}
               {activePage === 'expenses' && <ExpensesPage />}
               {activePage === 'stats' && <StatsPage />}
+              {activePage === 'community' && <CommunityPage />}
               {activePage === 'subscription' && <SubscriptionPage />}
               {activePage === 'settings' && <SettingsPage initialTab={settingsInitialTab} />}
             </Suspense>

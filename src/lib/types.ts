@@ -11,10 +11,51 @@ export type DashboardPage =
   | 'actions'
   | 'stats'
   | 'subscription'
-  | 'settings';
+  | 'settings'
+  | 'community';
   export type AppPage = "landing" | "auth" | "dashboard" | "reset-password";
 export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger';
+// Meme mecanisme que SettingsTab (deep-link via initialTab porte par
+// DashboardLayout) -- voir CommunityPage.tsx. 'discord' est une tuile
+// statique (lien externe), pas une vue avec donnees.
+export type CommunityTab =
+  | 'news'
+  | 'tutorials'
+  | 'guides'
+  | 'resources'
+  | 'roadmap'
+  | 'polls'
+  | 'suggestions'
+  | 'faq'
+  | 'support'
+  | 'discord';
 export type AuthMode = 'login' | 'register' | 'forgot';
+
+// Type des lignes community_content (supabase/migrations/20260727100000_add_community_content.sql).
+// Les 5 valeurs de CommunityContentType correspondent 1:1 aux onglets
+// non-Discord/Roadmap/Polls/Suggestions/Support de CommunityTab.
+export type CommunityContentType = 'changelog' | 'tutorial' | 'guide' | 'resource' | 'faq';
+export type CommunityContentStatus = 'draft' | 'published';
+export type CommunityResourceKind = 'pdf' | 'video' | 'link';
+
+export interface CommunityContent {
+  id: string;
+  type: CommunityContentType;
+  status: CommunityContentStatus;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  body: string;
+  cover_image_url: string | null;
+  resource_kind: CommunityResourceKind | null;
+  resource_url: string | null;
+  category: string | null;
+  sort_order: number;
+  author_id: string;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Profile {
   id: string;
