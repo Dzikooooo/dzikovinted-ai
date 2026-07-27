@@ -8,6 +8,8 @@
 import { OWN_PROFILE_MARKER_SELECTOR, USERNAME_SELECTOR, extractVintedUserIdFromUrl } from "./selectors";
 import { fetchAllWardrobeItems } from "./wardrobeApi";
 import type { InternalMessage } from "../lib/messages";
+import { logger } from "../background/logger";
+import { errorMessage } from "../lib/errorMessage";
 
 async function detectAndReport(): Promise<void> {
   const vintedUserId = extractVintedUserIdFromUrl(location.href);
@@ -26,9 +28,21 @@ async function detectAndReport(): Promise<void> {
     // empecher l'envoi, pas un compte sans annonce.
     const listingsMessage: InternalMessage = { type: "LISTINGS_DETECTED", vintedUserId, vintedUsername, listings };
     chrome.runtime.sendMessage(listingsMessage);
-  } catch {
+  } catch (err) {
     // Echec de recuperation : on n'envoie rien plutot qu'une liste vide qui
-    // effacerait a tort les annonces deja connues en base.
+    // effacerait a tort les annonces deja connues en base. Bug reel trouve
+    // le 2026-07-27 (annonce reelle disparue de ResellOS sans aucune trace) :
+    // cet echec restait totalement silencieux (aucun log, meme pas une
+    // console.log) alors qu'ACCOUNT_DETECTED avait deja ete envoye juste
+    // au-dessus -- vinted_accounts.last_synced_at se rafraichissait donc
+    // normalement, donnant une fausse impression de synchro reussie pendant
+    // que les annonces elles-memes n'etaient jamais mises a jour. Journalise
+    // desormais dans le meme ring buffer persiste (resellos_log) que le
+    // reste de l'extension, visible depuis le popup.
+    logger.error("Echec recuperation wardrobe Vinted -- LISTINGS_DETECTED non envoye", {
+      vintedUserId,
+      error: errorMessage(err),
+    });
   }
 }
 
