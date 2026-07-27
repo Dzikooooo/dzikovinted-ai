@@ -188,7 +188,18 @@ export type ContentReport =
   | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome }
   | { type: "EDIT_TAB_READY" }
   | { type: "EDIT_SAVE_SUBMITTED"; vintedItemId: string; vintedUrl: string }
-  | { type: "EDIT_VERIFICATION_RESULT"; matches: boolean; details: Record<string, { expected: string; actual: string | null }> }
+  | {
+      type: "EDIT_VERIFICATION_RESULT";
+      matches: boolean;
+      // `matches` par champ (2026-07-27, bug reel confirme) : la comparaison
+      // reelle du prix est numerique (parsePriceToNumber, gere le format
+      // Vinted "83,00 €" vs la valeur brute demandee "83") -- describeMismatch
+      // (editListing.ts) comparait auparavant les chaines BRUTES pour decider
+      // quels champs afficher, listant a tort le prix comme "en desaccord"
+      // meme quand sa comparaison numerique avait reellement reussi. Chaque
+      // entree porte desormais son propre verdict, source unique de verite.
+      details: Record<string, { expected: string; actual: string | null; matches: boolean }>;
+    }
   | { type: "EDIT_FIELD_FILL_FAILED"; errorMessage: string };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {

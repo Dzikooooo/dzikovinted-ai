@@ -647,33 +647,33 @@ async function handleVerifyEditFields(historyId: string | undefined, payload: Ve
     await waitForElement(loadDetectorSelector, { timeoutMs: 30000 });
     log(historyId, "verification : formulaire recharge, page consideree chargee", { loadDetectorSelector });
 
-    const details: Record<string, { expected: string; actual: string | null }> = {};
-    // Champs dont la correspondance a ete evaluee numeriquement (prix)
-    // plutot que par egalite stricte de chaines -- le champ prix affiche
-    // une valeur FORMATEE par Vinted ("98,00 €"), jamais la chaine brute
-    // demandee ("98"), voir parsePriceToNumber().
-    const fieldMatches: Record<string, boolean> = {};
+    const details: Record<string, { expected: string; actual: string | null; matches: boolean }> = {};
 
     if (payload.expected.price !== undefined) {
       const priceInput = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
       const actual = priceInput?.value ?? null;
-      details.price = { expected: payload.expected.price, actual };
-      fieldMatches.price = parsePriceToNumber(actual) === parsePriceToNumber(payload.expected.price);
+      // Comparaison numerique, pas d'egalite stricte de chaines -- le champ
+      // prix affiche une valeur FORMATEE par Vinted ("98,00 €"), jamais la
+      // chaine brute demandee ("98"), voir parsePriceToNumber().
+      details.price = { expected: payload.expected.price, actual, matches: parsePriceToNumber(actual) === parsePriceToNumber(payload.expected.price) };
     }
     if (payload.expected.title !== undefined) {
       const titleInput = document.querySelector<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
       const actual = titleInput?.value ?? null;
-      details.title = { expected: payload.expected.title, actual };
-      fieldMatches.title = actual === payload.expected.title;
+      // .trim() (2026-07-27, bug reel confirme) : Vinted retire les espaces
+      // en debut/fin a la sauvegarde -- une egalite stricte sur la chaine
+      // brute saisie par l'utilisateur (qui peut contenir un espace de fin
+      // anodin) declarait a tort la sauvegarde non confirmee alors que
+      // Vinted avait reellement enregistre la bonne valeur.
+      details.title = { expected: payload.expected.title, actual, matches: (actual?.trim() ?? null) === payload.expected.title.trim() };
     }
     if (payload.expected.description !== undefined) {
       const descriptionInput = document.querySelector<HTMLTextAreaElement>(sel.DESCRIPTION_INPUT_SELECTOR);
       const actual = descriptionInput?.value ?? null;
-      details.description = { expected: payload.expected.description, actual };
-      fieldMatches.description = actual === payload.expected.description;
+      details.description = { expected: payload.expected.description, actual, matches: (actual?.trim() ?? null) === payload.expected.description.trim() };
     }
 
-    const matches = Object.values(fieldMatches).every(Boolean);
+    const matches = Object.values(details).every((d) => d.matches);
     mark(historyId, matches ? "SAVE_CONFIRMED" : "SAVE_NOT_CONFIRMED (valeur reelle differente)", details);
     log(historyId, "verification terminee", { matches, details });
     mark(historyId, "SENDING_EDIT_VERIFICATION_RESULT", { matches, currentUrl: location.href });
@@ -685,7 +685,7 @@ async function handleVerifyEditFields(historyId: string | undefined, payload: Ve
     chrome.runtime.sendMessage({
       type: "EDIT_VERIFICATION_RESULT",
       matches: false,
-      details: { _error: { expected: "(verification)", actual: `echec : ${errorMessage(err)}` } },
+      details: { _error: { expected: "(verification)", actual: `echec : ${errorMessage(err)}`, matches: false } },
     });
   }
 }

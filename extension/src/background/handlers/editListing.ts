@@ -135,7 +135,7 @@ const NAVIGATION_SETTLE_DEBOUNCE_MS = 2000;
 // automatiquement la resolution de la promesse retournee.
 async function readLdJsonForVerification(expected: { title?: string; description?: string; price?: string }): Promise<{
   matches: boolean;
-  details: Record<string, { expected: string; actual: string | null }>;
+  details: Record<string, { expected: string; actual: string | null; matches: boolean }>;
 }> {
   const script = await new Promise<Element | null>((resolve) => {
     const existing = document.querySelector('script[type="application/ld+json"]');
@@ -165,25 +165,25 @@ async function readLdJsonForVerification(expected: { title?: string; description
       // data reste vide -- traite comme "champ introuvable" ci-dessous
     }
   }
-  const details: Record<string, { expected: string; actual: string | null }> = {};
-  const fieldMatches: Record<string, boolean> = {};
+  const details: Record<string, { expected: string; actual: string | null; matches: boolean }> = {};
+  // .trim() (2026-07-27, bug reel confirme) : meme raison que
+  // handleVerifyEditFields (vinted-edit.ts) -- une egalite stricte sur la
+  // chaine brute rejette a tort un espace de fin anodin que Vinted retire
+  // lui-meme a la sauvegarde.
   if (expected.title !== undefined) {
     const actual = data.name ?? null;
-    details.title = { expected: expected.title, actual };
-    fieldMatches.title = actual === expected.title;
+    details.title = { expected: expected.title, actual, matches: (actual?.trim() ?? null) === expected.title.trim() };
   }
   if (expected.description !== undefined) {
     const actual = data.description ?? null;
-    details.description = { expected: expected.description, actual };
-    fieldMatches.description = actual === expected.description;
+    details.description = { expected: expected.description, actual, matches: (actual?.trim() ?? null) === expected.description.trim() };
   }
   if (expected.price !== undefined) {
     const actual = typeof data.offers?.price === "number" ? String(data.offers.price) : null;
-    details.price = { expected: expected.price, actual };
     const parseNum = (s: string | null) => (s === null ? null : parseFloat(s.replace(",", ".")));
-    fieldMatches.price = parseNum(actual) === parseNum(expected.price);
+    details.price = { expected: expected.price, actual, matches: parseNum(actual) === parseNum(expected.price) };
   }
-  return { matches: Object.values(fieldMatches).every(Boolean), details };
+  return { matches: Object.values(details).every((d) => d.matches), details };
 }
 
 function sendCommandToTab(tabId: number, command: ContentCommand): Promise<void> {
@@ -445,9 +445,14 @@ export async function handleEditListing(
       });
     }
 
-    function describeMismatch(details: Record<string, { expected: string; actual: string | null }>): string {
+    // Filtre sur d.matches (2026-07-27, bug reel confirme), pas sur une
+    // inegalite de chaines brutes -- un champ dont la comparaison REELLE a
+    // reussi (ex. prix compare numeriquement, "83" vs "83,00 €") ne doit
+    // jamais apparaitre dans le message comme "en desaccord" juste parce
+    // que ses representations textuelles brutes different.
+    function describeMismatch(details: Record<string, { expected: string; actual: string | null; matches: boolean }>): string {
       return Object.entries(details)
-        .filter(([, d]) => d.actual !== d.expected)
+        .filter(([, d]) => !d.matches)
         .map(([field, d]) => `${field} attendu "${d.expected}", trouve "${d.actual ?? "(champ introuvable)"}"`)
         .join(" ; ");
     }
