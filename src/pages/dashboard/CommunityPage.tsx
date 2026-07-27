@@ -15,6 +15,10 @@ import {
 import type { CommunityTab } from '../../lib/types';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ChangelogTab } from './community/ChangelogTab';
+import { TutorialsTab } from './community/TutorialsTab';
+import { GuidesTab } from './community/GuidesTab';
+import { ResourcesTab } from './community/ResourcesTab';
+import { FaqTab } from './community/FaqTab';
 import { DiscordTab } from './community/DiscordTab';
 
 interface CommunityPageProps {
@@ -38,13 +42,9 @@ const TABS: { key: CommunityTab; label: string; icon: LucideIcon }[] = [
 // le plan) -- EmptyState honnete plutot qu'un lien mort ou une page
 // cassee. Retire de cette liste au fur et a mesure des lots.
 const COMING_SOON: Partial<Record<CommunityTab, string>> = {
-  tutorials: 'Les tutoriels ResellOS arriveront bientôt ici.',
-  guides: 'Les guides et la documentation arriveront bientôt ici.',
-  resources: 'Les ressources (PDF, vidéos, mini-formations) arriveront bientôt ici.',
   roadmap: 'La roadmap publique arrivera bientôt ici.',
   polls: 'Les sondages arriveront bientôt ici.',
   suggestions: 'Les suggestions de la communauté arriveront bientôt ici.',
-  faq: 'La FAQ arrivera bientôt ici.',
   support: 'Le support par tickets arrivera bientôt ici.',
 };
 
@@ -78,6 +78,10 @@ export default function CommunityPage({ initialTab }: CommunityPageProps) {
       </div>
 
       {activeTab === 'news' && <ChangelogTab />}
+      {activeTab === 'tutorials' && <TutorialsTab />}
+      {activeTab === 'guides' && <GuidesTab />}
+      {activeTab === 'resources' && <ResourcesTab />}
+      {activeTab === 'faq' && <FaqTab />}
       {activeTab === 'discord' && <DiscordTab />}
       {COMING_SOON[activeTab] && (
         <EmptyState

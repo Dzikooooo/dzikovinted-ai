@@ -1,0 +1,139 @@
+import { useState } from 'react';
+import { FolderDown, FileText, PlayCircle, Link2, Plus, Pencil, Trash2, ExternalLink } from 'lucide-react';
+import { useCommunityContent } from '../../../hooks/useCommunityContent';
+import { useIsAdmin } from '../../../hooks/useIsAdmin';
+import { groupByCategory } from '../../../lib/communityContent';
+import { Skeleton } from '../../../components/ui/Skeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { CommunityContentEditorModal } from '../../../components/community/CommunityContentEditorModal';
+import type { CommunityContent, CommunityResourceKind } from '../../../lib/types';
+
+const RESOURCE_KIND_ICON: Record<CommunityResourceKind, typeof FileText> = {
+  pdf: FileText,
+  video: PlayCircle,
+  link: Link2,
+};
+
+const RESOURCE_KIND_LABEL: Record<CommunityResourceKind, string> = {
+  pdf: 'PDF',
+  video: 'Vidéo',
+  link: 'Lien',
+};
+
+// Contrairement a Tutoriels/Guides, une ressource pointe vers un fichier/
+// une video/un lien externe -- pas de modale de detail, la carte ouvre
+// directement resource_url dans un nouvel onglet.
+export function ResourcesTab() {
+  const isAdmin = useIsAdmin();
+  const { items, loading, error, createItem, updateItem, deleteItem } = useCommunityContent('resource');
+  const [showForm, setShowForm] = useState(false);
+  const [editingItem, setEditingItem] = useState<CommunityContent | null>(null);
+
+  const openCreate = () => {
+    setEditingItem(null);
+    setShowForm(true);
+  };
+  const openEdit = (item: CommunityContent) => {
+    setEditingItem(item);
+    setShowForm(true);
+  };
+
+  const groups = groupByCategory(items);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <p className="text-sm text-gray-400">PDF, vidéos et mini-formations pour aller plus loin.</p>
+        {isAdmin && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all flex-shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            Publier une ressource
+          </button>
+        )}
+      </div>
+
+      {error && <ErrorBanner message={error} className="mb-6" />}
+
+      {loading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} shape="block" className="h-20" />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <EmptyState icon={FolderDown} title="Aucune ressource pour l'instant" description="Les prochaines ressources ResellOS apparaîtront ici." />
+      ) : (
+        <div className="space-y-8">
+          {groups.map(({ category, items: groupItems }) => (
+            <div key={category}>
+              <h2 className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-3">{category}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {groupItems.map((item) => {
+                  const Icon = item.resource_kind ? RESOURCE_KIND_ICON[item.resource_kind] : Link2;
+                  return (
+                    <div
+                      key={item.id}
+                      className="group relative bg-surface border border-white/5 rounded-2xl p-4 transition-all hover:border-white/10 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)]"
+                    >
+                      <a
+                        href={item.resource_url ?? undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-start gap-3 ${item.resource_url ? '' : 'pointer-events-none'}`}
+                      >
+                        <div className="w-10 h-10 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-4 h-4 text-neon-500" />
+                        </div>
+                        <div className="min-w-0 flex-1 pr-8">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-sm text-gray-100">{item.title}</h3>
+                            {item.status === 'draft' && (
+                              <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-lg flex-shrink-0">
+                                Brouillon
+                              </span>
+                            )}
+                          </div>
+                          {item.excerpt && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.excerpt}</p>}
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider text-neon-500/60 mt-2">
+                            {item.resource_kind ? RESOURCE_KIND_LABEL[item.resource_kind] : ''}
+                            {item.resource_url && <ExternalLink className="w-2.5 h-2.5" />}
+                          </span>
+                        </div>
+                      </a>
+                      {isAdmin && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openEdit(item)}
+                            aria-label="Modifier"
+                            className="p-1.5 rounded-lg hover:bg-white/5 text-gray-600 hover:text-gray-300 transition-all"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => deleteItem(item.id)}
+                            aria-label="Supprimer"
+                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showForm && (
+        <CommunityContentEditorModal type="resource" item={editingItem} onClose={() => setShowForm(false)} onCreate={createItem} onUpdate={updateItem} />
+      )}
+    </div>
+  );
+}

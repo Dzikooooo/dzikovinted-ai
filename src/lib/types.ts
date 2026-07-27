@@ -55,6 +55,10 @@ export interface CommunityContent {
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  // Tolerance de schema pour un futur gating par palier d'acces (Membre/
+  // Client/Client Premium -- voir migration 20260727110000). Toujours
+  // null tant qu'aucune UI ni logique d'application ne l'utilise.
+  min_plan: Plan | null;
 }
 
 export interface Profile {
