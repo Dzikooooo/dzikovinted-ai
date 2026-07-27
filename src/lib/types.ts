@@ -112,6 +112,32 @@ export interface PollVote {
   created_at: string;
 }
 
+// Type des lignes suggestions/suggestion_votes (supabase/migrations/20260727140000_add_suggestions.sql).
+// Seul endroit de l'espace Communaute ou la creation n'est pas reservee a
+// l'admin -- voir le commentaire en tete de la migration.
+export type SuggestionStatus = 'open' | 'planned' | 'in_progress' | 'done' | 'declined';
+
+export interface Suggestion {
+  id: string;
+  title: string;
+  description: string;
+  status: SuggestionStatus;
+  author_id: string;
+  admin_reply: string | null;
+  admin_reply_at: string | null;
+  votes_count: number;
+  min_plan: Plan | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SuggestionVote {
+  id: string;
+  suggestion_id: string;
+  user_id: string;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   email: string;
