@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
 import { analyzeWithAI } from '../../lib/aiService';
 import { uploadListingPhotos } from '../../lib/storage';
@@ -69,7 +70,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useIsAdmin();
   const limit = isAdmin ? null : PLAN_LIMITS[plan];
   // Un admin beneficie du meme plafond photo que le plan Pro -- coherent
   // avec le traitement deja applique aux credits (illimite = "au moins

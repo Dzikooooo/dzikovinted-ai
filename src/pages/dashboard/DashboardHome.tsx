@@ -3,6 +3,7 @@ import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, Sh
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
 import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
@@ -120,7 +121,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useIsAdmin();
   const limit = isAdmin ? null : PLAN_LIMITS[plan];
   const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'la';
 

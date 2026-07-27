@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
 import { useActionEngine } from '../../hooks/useActionEngine';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
 import type { Listing } from '../../lib/types';
 import { PLAN_PHOTO_LIMITS } from '../../lib/types';
@@ -129,7 +130,7 @@ interface StockPageProps {
 
 export default function StockPage({ onViewAction }: StockPageProps) {
   const { user, profile } = useAuth();
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = useIsAdmin();
   const photoLimit = isAdmin ? PLAN_PHOTO_LIMITS.pro : PLAN_PHOTO_LIMITS[profile?.plan ?? 'free'];
   const {
     accounts,
