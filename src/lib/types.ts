@@ -61,6 +61,23 @@ export interface CommunityContent {
   min_plan: Plan | null;
 }
 
+// Type des lignes roadmap_items (supabase/migrations/20260727120000_add_roadmap_items.sql).
+// Pas de brouillon/publie ici : un item existe et est immediatement
+// visible, seul son statut change (colonnes Now/Next/Later cote UI).
+export type RoadmapStatus = 'planned' | 'in_progress' | 'shipped';
+
+export interface RoadmapItem {
+  id: string;
+  status: RoadmapStatus;
+  title: string;
+  description: string;
+  sort_order: number;
+  author_id: string;
+  min_plan: Plan | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
   email: string;
