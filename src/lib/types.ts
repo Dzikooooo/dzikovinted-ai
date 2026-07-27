@@ -361,6 +361,12 @@ export interface VintedAccount {
   vinted_username: string;
   connected: boolean;
   last_synced_at: string | null;
+  // Ecrite uniquement par recordListings (extension), jamais par
+  // recordAccountDetected -- signal non ambigu de "les annonces
+  // elles-memes ont ete synchronisees", distinct de last_synced_at qui
+  // se declenche aussi sur une simple detection de compte. Voir
+  // StockPage.tsx::handleSync et 20260727170000_add_listings_synced_at.sql.
+  listings_synced_at: string | null;
   last_error: string | null;
   is_default: boolean;
   created_at: string;

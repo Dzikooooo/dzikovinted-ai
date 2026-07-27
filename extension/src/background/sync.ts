@@ -38,11 +38,23 @@ async function reportSkuRepair(
 // doit jamais l'ecraser. Utilisee independamment par recordAccountDetected
 // et recordListings pour que les deux fonctionnent quel que soit l'ordre
 // d'arrivee des deux messages envoyes par le content script.
+// touchListingsSyncedAt (2026-07-27, bug reel confirme) : cette fonction est
+// appelee a la fois par recordAccountDetected (quasi instantanee, avant meme
+// le debut de la recuperation paginee du wardrobe) et par recordListings
+// (apres l'ecriture reelle des annonces, potentiellement plusieurs secondes
+// plus tard). Les deux ecrivaient jusqu'ici la MEME colonne last_synced_at,
+// rendant impossible pour l'UI de distinguer "compte detecte" de "annonces
+// synchronisees" -- StockPage.tsx::handleSync s'arretait au premier
+// changement detecte (presque toujours celui d'ACCOUNT_DETECTED) et
+// rechargeait la liste avant que les annonces soient reellement ecrites.
+// listings_synced_at n'est desormais ecrite QUE par recordListings (flag
+// explicite, jamais par defaut) -- signal non ambigu.
 async function resolveOrCreateVintedAccount(
   client: ReturnType<typeof supabaseWithToken>,
   userId: string,
   vintedUserId: string,
-  vintedUsername: string
+  vintedUsername: string,
+  touchListingsSyncedAt = false
 ): Promise<string> {
   const { data: existing, error: selectError } = await client
     .from("vinted_accounts")
@@ -56,14 +68,17 @@ async function resolveOrCreateVintedAccount(
     throw selectError;
   }
 
+  const now = new Date().toISOString();
+
   if (existing) {
     const { error: updateError } = await client
       .from("vinted_accounts")
       .update({
         connected: true,
         vinted_username: vintedUsername,
-        last_synced_at: new Date().toISOString(),
+        last_synced_at: now,
         last_error: null,
+        ...(touchListingsSyncedAt ? { listings_synced_at: now } : {}),
       })
       .eq("id", existing.id);
     if (updateError) {
@@ -86,7 +101,8 @@ async function resolveOrCreateVintedAccount(
       vinted_user_id: vintedUserId,
       vinted_username: vintedUsername,
       connected: true,
-      last_synced_at: new Date().toISOString(),
+      last_synced_at: now,
+      ...(touchListingsSyncedAt ? { listings_synced_at: now } : {}),
       is_default: (count ?? 0) === 0,
     })
     .select("id")
@@ -157,7 +173,7 @@ export async function recordListings(
 
   const client = supabaseWithToken(valid.accessToken);
   const vintedAccountId = await withRetry(() =>
-    resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername)
+    resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername, true)
   );
 
   const currentItemIds = listings.map((l) => l.vintedItemId);

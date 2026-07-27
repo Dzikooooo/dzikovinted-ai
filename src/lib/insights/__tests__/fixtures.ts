@@ -56,6 +56,7 @@ export function makeAccount(overrides: Partial<VintedAccount> = {}): VintedAccou
     vinted_username: 'testuser',
     connected: true,
     last_synced_at: new Date().toISOString(),
+    listings_synced_at: new Date().toISOString(),
     last_error: null,
     is_default: true,
     created_at: new Date().toISOString(),

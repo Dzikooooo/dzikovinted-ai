@@ -446,7 +446,15 @@ export default function StockPage({ onViewAction }: StockPageProps) {
     }
 
     const target = selectedAccount;
-    const before = target.last_synced_at;
+    // listings_synced_at (pas last_synced_at) : bug reel confirme le
+    // 2026-07-27 -- last_synced_at se rafraichit aussi sur la simple
+    // detection du compte (ACCOUNT_DETECTED, quasi instantanee), avant
+    // meme que la recuperation paginee des annonces ne commence. S'arreter
+    // sur ce premier changement rechargeait `items` trop tot -- une
+    // annonce reellement synchronisee restait invisible tant qu'aucun F5
+    // manuel n'etait fait. listings_synced_at n'est ecrite que par
+    // recordListings (extension), signal non ambigu.
+    const before = target.listings_synced_at;
     window.open(`https://www.vinted.fr/member/${target.vinted_user_id}`, SYNC_WINDOW_NAME);
     setSyncing(true);
     setSyncHint(null);
@@ -456,11 +464,11 @@ export default function StockPage({ onViewAction }: StockPageProps) {
       attempts += 1;
       const { data } = await supabase
         .from('vinted_accounts')
-        .select('last_synced_at')
+        .select('listings_synced_at')
         .eq('id', target.id)
         .maybeSingle();
 
-      if (data?.last_synced_at && data.last_synced_at !== before) {
+      if (data?.listings_synced_at && data.listings_synced_at !== before) {
         setSyncing(false);
         await refreshAccounts();
         await load();
