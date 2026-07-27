@@ -138,6 +138,31 @@ export interface SuggestionVote {
   created_at: string;
 }
 
+// Type des lignes support_tickets/ticket_messages (supabase/migrations/20260727150000_add_support_tickets.sql).
+// Lot le plus sensible cote confidentialite -- ticket_messages.is_admin_reply
+// ne peut jamais etre force a true cote client sans etre reellement admin
+// (voir la policy insert_own_ticket_messages).
+export type TicketStatus = 'open' | 'in_progress' | 'closed';
+
+export interface SupportTicket {
+  id: string;
+  user_id: string;
+  subject: string;
+  status: TicketStatus;
+  min_plan: Plan | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticket_id: string;
+  author_id: string;
+  body: string;
+  is_admin_reply: boolean;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   email: string;

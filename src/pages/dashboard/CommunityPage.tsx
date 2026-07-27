@@ -13,7 +13,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { CommunityTab } from '../../lib/types';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { ChangelogTab } from './community/ChangelogTab';
 import { TutorialsTab } from './community/TutorialsTab';
 import { GuidesTab } from './community/GuidesTab';
@@ -22,6 +21,7 @@ import { FaqTab } from './community/FaqTab';
 import { RoadmapTab } from './community/RoadmapTab';
 import { PollsTab } from './community/PollsTab';
 import { SuggestionsTab } from './community/SuggestionsTab';
+import { SupportTab } from './community/SupportTab';
 import { DiscordTab } from './community/DiscordTab';
 
 interface CommunityPageProps {
@@ -40,13 +40,6 @@ const TABS: { key: CommunityTab; label: string; icon: LucideIcon }[] = [
   { key: 'support', label: 'Support', icon: LifeBuoy },
   { key: 'discord', label: 'Discord', icon: MessageCircle },
 ];
-
-// Onglets pas encore construits (Lots 2 a 6 du chantier Communaute, voir
-// le plan) -- EmptyState honnete plutot qu'un lien mort ou une page
-// cassee. Retire de cette liste au fur et a mesure des lots.
-const COMING_SOON: Partial<Record<CommunityTab, string>> = {
-  support: 'Le support par tickets arrivera bientôt ici.',
-};
 
 // Meme mecanisme que SettingsPage.tsx (tab bar + rendu conditionnel
 // strict d'un seul onglet a la fois -- jamais de montage cache des
@@ -85,14 +78,8 @@ export default function CommunityPage({ initialTab }: CommunityPageProps) {
       {activeTab === 'roadmap' && <RoadmapTab />}
       {activeTab === 'polls' && <PollsTab />}
       {activeTab === 'suggestions' && <SuggestionsTab />}
+      {activeTab === 'support' && <SupportTab />}
       {activeTab === 'discord' && <DiscordTab />}
-      {COMING_SOON[activeTab] && (
-        <EmptyState
-          icon={TABS.find((t) => t.key === activeTab)?.icon ?? Megaphone}
-          title="Bientôt disponible"
-          description={COMING_SOON[activeTab]}
-        />
-      )}
     </div>
   );
 }
