@@ -1,6 +1,7 @@
-import { AlertTriangle, Search } from 'lucide-react';
+import { AlertTriangle, Clock, Search } from 'lucide-react';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../actions/ActionStepTimeline';
 import { SCAN_STEP_ORDER, SCAN_STEP_LABELS, isScanStep, type ScanStep } from '../../lib/actions/scanSteps';
+import { SCAN_TIMEOUT_ERROR_MESSAGE } from '../../lib/actions/handlers/scanMarket';
 import { useActionLogEntries } from '../../hooks/useActionHistory';
 import { Modal } from '../ui/Modal';
 
@@ -51,20 +52,37 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
   const { entries } = useActionLogEntries(actionId);
   const currentStep = latestScanStep(entries);
   const isTerminal = done || !!error;
+  // Ce timeout precis n'est PAS un echec confirme (voir scanMarket.ts) : le
+  // job GitHub Actions peut tres bien reussir juste apres, et ecrasera ce
+  // message par un vrai statut terminal. Afficher "Echec du scan" en rouge
+  // ici induit l'utilisateur en erreur -- traitement distinct, honnete sur
+  // l'incertitude (bug reel signale par l'utilisateur, 2026-07-27 : le scan
+  // avait en fait reussi, 259 opportunites trouvees, confirme en base).
+  const isUncertainTimeout = error === SCAN_TIMEOUT_ERROR_MESSAGE;
+  const confirmedError = !!error && !isUncertainTimeout;
 
   return (
     <Modal onClose={onClose} dismissible={isTerminal} size="sm">
       <div className="flex items-center gap-2 mb-5">
         <Search className="w-4 h-4 text-neon-500" />
-        <h2 className="text-lg font-black">{error ? 'Échec du scan' : 'Scan en cours'}</h2>
+        <h2 className="text-lg font-black">
+          {confirmedError ? 'Échec du scan' : isUncertainTimeout ? 'Scan toujours en cours ?' : 'Scan en cours'}
+        </h2>
       </div>
 
       <ActionStepTimeline rows={buildRows(currentStep, done, error, entries)} />
 
-      {error && (
+      {confirmedError && (
         <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
           <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-red-300">{error}</p>
+        </div>
+      )}
+
+      {isUncertainTimeout && (
+        <div className="mt-4 flex items-start gap-2 bg-amber-400/10 border border-amber-400/20 rounded-xl p-3">
+          <Clock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-300">{error}</p>
         </div>
       )}
 
