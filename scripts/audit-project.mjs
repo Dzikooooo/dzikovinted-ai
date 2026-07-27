@@ -80,7 +80,7 @@ function parseMigrations() {
   for (const file of files) {
     const content = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
 
-    const createRe = /create\s+table\s+(?:if not exists\s+)?"?(\w+)"?\s*\(/gi;
+    const createRe = /create\s+table\s+(?:if not exists\s+)?(?:"?\w+"?\.)?"?(\w+)"?\s*\(/gi;
     let m;
     while ((m = createRe.exec(content))) {
       const tableName = m[1].toLowerCase();
@@ -99,7 +99,7 @@ function parseMigrations() {
       }
     }
 
-    const alterAddRe = /alter\s+table\s+"?(\w+)"?\s+add\s+column\s+(?:if not exists\s+)?"?(\w+)"?/gi;
+    const alterAddRe = /alter\s+table\s+(?:"?\w+"?\.)?"?(\w+)"?\s+add\s+column\s+(?:if not exists\s+)?"?(\w+)"?/gi;
     while ((m = alterAddRe.exec(content))) {
       const tableName = m[1].toLowerCase();
       const columnName = m[2].toLowerCase();
@@ -108,7 +108,7 @@ function parseMigrations() {
       entry.columns.add(columnName);
     }
 
-    const alterBareRe = /alter\s+table\s+"?(\w+)"?\s+add\s+"?(\w+)"?\s+\w/gi;
+    const alterBareRe = /alter\s+table\s+(?:"?\w+"?\.)?"?(\w+)"?\s+add\s+"?(\w+)"?\s+\w/gi;
     while ((m = alterBareRe.exec(content))) {
       const tableName = m[1].toLowerCase();
       const columnName = m[2].toLowerCase();

@@ -70,6 +70,23 @@ fournissent des faits bruts que tu dois relire et trier avant de les présenter.
      depuis `src/pages/dashboard/GeneratorPage.tsx` via `supabase.rpc(...)`.
      L'heuristique de `audit:schema` ne détecte que les appels `.from("...")`,
      pas les RPC — ne pas re-signaler.
+   - Table `listing_skus` (`audit:schema`, "jamais référencée") : même cas que
+     `usage` ci-dessus — écriture exclusivement via les RPC `allocate_sku`/
+     `release_sku_for_listing`/`repair_sku_inconsistencies`
+     (`20260726200000_add_sku_registry_and_migrate.sql`), aucune policy
+     insert/update/delete n'existe pour `authenticated` par design. Ne pas
+     re-signaler.
+
+   **Piège corrigé le 2026-07-27** : la regex de `create table`/`alter table`
+   dans `audit-project.mjs` ne gérait pas les noms de table qualifiés par
+   schéma (`public.xxx`) — elle capturait `public` comme nom de table au lieu
+   du vrai nom, faisant apparaître à tort `community_content`/`polls`/
+   `roadmap_items`/etc. (9 tables du chantier Communauté) comme "utilisées
+   dans le code mais absentes des migrations". Corrigé en ajoutant un groupe
+   optionnel `(?:"?\w+"?\.)?` avant le nom de table dans les 3 regex. Si un
+   futur audit signale à nouveau une table pourtant bien migrée comme
+   "absente", vérifier d'abord si sa migration utilise un préfixe de schéma
+   inhabituel avant de suspecter une vraie dérive.
 
 5. Synthétise en un rapport court, groupé par sévérité :
    - **À corriger** : incohérences confirmées (table/colonne manquante,
