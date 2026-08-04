@@ -64,7 +64,7 @@ export function SuggestionCreateModal({ onClose, onCreate }: SuggestionCreateMod
         <button
           onClick={handleSave}
           disabled={!canSave || saving}
-          className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
+          className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
         >
           {saving ? 'Envoi...' : 'Envoyer la suggestion'}
         </button>

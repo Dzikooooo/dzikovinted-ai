@@ -4,6 +4,7 @@ import { Modal } from '../ui/Modal';
 import { ErrorBanner } from '../ui/ErrorBanner';
 import type { CommunityContent, CommunityContentType, CommunityContentStatus, CommunityResourceKind } from '../../lib/types';
 import type { CommunityContentInput } from '../../hooks/useCommunityContent';
+import { notifyCommunityPublish } from '../../hooks/useNotifications';
 
 function slugify(title: string): string {
   return title
@@ -73,8 +74,18 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
     setSaving(false);
     // Fermeture uniquement en cas de succes reel confirme -- meme regle
     // que WatchlistPage.tsx (ne jamais fermer sur un echec silencieux).
-    if (ok) onClose();
-    else setError("L'enregistrement a échoué. Réessaie.");
+    if (ok) {
+      // Notification "Dziko IA" uniquement sur une VRAIE premiere
+      // publication d'une actualite (jamais un simple re-enregistrement
+      // d'un item deja publie, jamais les autres types de contenu
+      // Communaute -- demande produit 2026-08-04 : la diffusion doit
+      // rester rare et pertinente, pas un ping a chaque edition de FAQ).
+      const isNewPublish = status === 'published' && (!item || item.status !== 'published');
+      if (type === 'changelog' && isNewPublish) void notifyCommunityPublish(title.trim());
+      onClose();
+    } else {
+      setError("L'enregistrement a échoué. Réessaie.");
+    }
   };
 
   return (
@@ -164,7 +175,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
                     onClick={() => setResourceKind(opt.value)}
                     className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
                       resourceKind === opt.value
-                        ? 'bg-neon-500 text-black border-neon-500'
+                        ? 'bg-neon-600 text-white border-neon-500'
                         : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
                     }`}
                   >
@@ -192,7 +203,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               type="button"
               onClick={() => setStatus('draft')}
               className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                status === 'draft' ? 'bg-neon-500 text-black border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                status === 'draft' ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
               }`}
             >
               Brouillon
@@ -201,7 +212,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               type="button"
               onClick={() => setStatus('published')}
               className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                status === 'published' ? 'bg-neon-500 text-black border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                status === 'published' ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
               }`}
             >
               Publié
@@ -212,7 +223,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
         <button
           onClick={handleSave}
           disabled={!canSave || saving}
-          className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
+          className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
         >
           {saving ? 'Enregistrement...' : status === 'published' ? 'Publier' : 'Enregistrer le brouillon'}
         </button>

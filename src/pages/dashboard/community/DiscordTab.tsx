@@ -27,7 +27,7 @@ export function DiscordTab() {
           href={DISCORD_INVITE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-3 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all"
+          className="inline-flex items-center gap-2 bg-neon-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all"
         >
           Rejoindre le Discord <ExternalLink className="w-4 h-4" />
         </a>

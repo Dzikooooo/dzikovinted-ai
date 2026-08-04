@@ -5,6 +5,8 @@ import { useIsAdmin } from '../../../hooks/useIsAdmin';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { Button } from '../../../components/ui/Button';
+import { Badge } from '../../../components/ui/Badge';
 import { CommunityContentEditorModal } from '../../../components/community/CommunityContentEditorModal';
 import type { CommunityContent } from '../../../lib/types';
 
@@ -38,13 +40,9 @@ export function ChangelogTab() {
       <div className="flex items-center justify-between gap-4 mb-6">
         <p className="text-sm text-gray-400">Les dernières nouveautés de ResellOS.</p>
         {isAdmin && (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" />
+          <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
             Publier une actualité
-          </button>
+          </Button>
         )}
       </div>
 
@@ -73,11 +71,7 @@ export function ChangelogTab() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-gray-100">{item.title}</h3>
-                    {item.status === 'draft' && (
-                      <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-lg flex-shrink-0">
-                        Brouillon
-                      </span>
-                    )}
+                    {item.status === 'draft' && <Badge label="Brouillon" tone="warning" />}
                   </div>
                   <p className="text-xs text-gray-500 mt-1">{formatPublishedDate(item.published_at)}</p>
                   {item.excerpt && <p className="text-sm text-gray-400 mt-3">{item.excerpt}</p>}

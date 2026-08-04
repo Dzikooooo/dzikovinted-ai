@@ -6,6 +6,9 @@ import { groupByCategory } from '../../../lib/communityContent';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { Button } from '../../../components/ui/Button';
+import { Badge } from '../../../components/ui/Badge';
+import { SectionLabel } from '../../../components/ui/SectionLabel';
 import { CommunityContentEditorModal } from '../../../components/community/CommunityContentEditorModal';
 import { CommunityContentDetailModal } from '../../../components/community/CommunityContentDetailModal';
 import type { CommunityContent, CommunityContentType } from '../../../lib/types';
@@ -48,13 +51,9 @@ export function GroupedContentTab({ type, icon: Icon, introText, createLabel, em
       <div className="flex items-center justify-between gap-4 mb-6">
         <p className="text-sm text-gray-400">{introText}</p>
         {isAdmin && (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" />
+          <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
             {createLabel}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -72,7 +71,7 @@ export function GroupedContentTab({ type, icon: Icon, introText, createLabel, em
         <div className="space-y-8">
           {groups.map(({ category, items: groupItems }) => (
             <div key={category}>
-              <h2 className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-3">{category}</h2>
+              <SectionLabel>{category}</SectionLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {groupItems.map((item) => (
                   <div
@@ -82,11 +81,7 @@ export function GroupedContentTab({ type, icon: Icon, introText, createLabel, em
                     <button onClick={() => setViewingItem(item)} className="w-full text-left">
                       <div className="flex items-center gap-2 flex-wrap pr-14">
                         <h3 className="font-bold text-sm text-gray-100">{item.title}</h3>
-                        {item.status === 'draft' && (
-                          <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-lg flex-shrink-0">
-                            Brouillon
-                          </span>
-                        )}
+                        {item.status === 'draft' && <Badge label="Brouillon" tone="warning" />}
                       </div>
                       {item.excerpt && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.excerpt}</p>}
                     </button>

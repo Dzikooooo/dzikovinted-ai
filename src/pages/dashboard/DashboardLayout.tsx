@@ -13,13 +13,17 @@ import {
   Receipt,
   Activity,
   Eye,
-  Users
+  Users,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import AccountSwitcher from '../../components/ui/AccountSwitcher';
 import { Logo } from '../../components/ui/Logo';
+import { DzikoAiBubble } from '../../components/ui/DzikoAiBubble';
+import { NotificationRecapModal } from '../../components/notifications/NotificationRecapModal';
 import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
 import { supabase } from '../../lib/supabase';
 import { runSkuRepair } from '../../lib/sku';
@@ -36,6 +40,7 @@ const SubscriptionPage = lazy(() => import('./SubscriptionPage'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
 const WatchlistPage = lazy(() => import('./WatchlistPage'));
 const CommunityPage = lazy(() => import('./CommunityPage'));
+const AdminUsersPage = lazy(() => import('./AdminUsersPage'));
 
 function PageFallback() {
   return (
@@ -72,6 +77,19 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string; d
   { page: 'settings', icon: Settings, label: 'Paramètres', description: 'Profil, sécurité, comptes' },
 ];
 
+// Onglet admin-only (demande produit 2026-08-04) : ajoute a la fin de la
+// nav, jamais visible pour un compte "client" -- filtre au rendu plutot
+// que baked dans navItems, pour garder ce tableau purement declaratif.
+const ADMIN_NAV_ITEM = { page: 'admin' as DashboardPage, icon: ShieldAlert, label: 'Administration', description: 'Comptes, blocage, notifications' };
+
+// Feature flag (revue pre-commit du 2026-08-04) : dziko-assistant (edge
+// function) n'a encore jamais ete deployee ni testee en conditions reelles
+// depuis ce repo -- desactivee par defaut tant que VITE_DZIKO_AI_ENABLED
+// n'est pas explicitement mis a 'true' sur le deploiement, pour eviter
+// qu'un utilisateur beta ne tombe sur une bulle de chat qui echoue
+// silencieusement faute de fonction deployee ou de cle API configuree.
+const DZIKO_AI_ENABLED = import.meta.env.VITE_DZIKO_AI_ENABLED === 'true';
+
 export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   // Deep-link leger depuis la page publique "A propos" (bouton "Changelog --
   // Espace Communaute", BlogPage.tsx) -- lecture seule dans l'initializer
@@ -105,6 +123,8 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
   const [actionsInitialSelectedId, setActionsInitialSelectedId] = useState<string | undefined>(undefined);
   const { profile, session, signOut } = useAuth();
+  const isAdmin = useIsAdmin();
+  const visibleNavItems = isAdmin ? [...navItems, ADMIN_NAV_ITEM] : navItems;
 
   // Ré-appairage silencieux et automatique (bug réel du 2026-07-13 :
   // l'appairage n'était jusqu'ici jamais rafraîchi que par l'extension
@@ -231,7 +251,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {navItems.map(({ page, icon: Icon, label, description }) => {
+        {visibleNavItems.map(({ page, icon: Icon, label, description }) => {
           const isActive = activePage === page;
 
           return (
@@ -339,7 +359,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
               <div>
                 <h2 className="text-sm font-semibold capitalize">
-                  {navItems.find((i) => i.page === activePage)?.label}
+                  {visibleNavItems.find((i) => i.page === activePage)?.label}
                 </h2>
               </div>
             </div>
@@ -372,10 +392,14 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               {activePage === 'community' && <CommunityPage />}
               {activePage === 'subscription' && <SubscriptionPage />}
               {activePage === 'settings' && <SettingsPage initialTab={settingsInitialTab} />}
+              {activePage === 'admin' && isAdmin && <AdminUsersPage />}
             </Suspense>
           </main>
         </div>
       </div>
+
+      <NotificationRecapModal onNavigate={navigateToPage} />
+      {DZIKO_AI_ENABLED && <DzikoAiBubble />}
     </VintedAccountFilterProvider>
   );
 }

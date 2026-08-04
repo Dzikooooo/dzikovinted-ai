@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { ErrorBanner } from '../ui/ErrorBanner';
+import type { SupportTicket } from '../../lib/types';
 
 interface TicketCreateModalProps {
   onClose: () => void;
-  onCreate: (subject: string, firstMessage: string) => Promise<string | null>;
-  onCreated: (ticketId: string) => void;
+  onCreate: (subject: string, firstMessage: string) => Promise<SupportTicket | null>;
+  onCreated: (ticket: SupportTicket) => void;
 }
 
 export function TicketCreateModal({ onClose, onCreate, onCreated }: TicketCreateModalProps) {
@@ -21,9 +22,9 @@ export function TicketCreateModal({ onClose, onCreate, onCreated }: TicketCreate
     if (!canSave || saving) return;
     setSaving(true);
     setError(null);
-    const ticketId = await onCreate(subject.trim(), message.trim());
+    const ticket = await onCreate(subject.trim(), message.trim());
     setSaving(false);
-    if (ticketId) onCreated(ticketId);
+    if (ticket) onCreated(ticket);
     else setError("L'envoi a échoué. Réessaie.");
   };
 
@@ -61,7 +62,7 @@ export function TicketCreateModal({ onClose, onCreate, onCreated }: TicketCreate
         <button
           onClick={handleSave}
           disabled={!canSave || saving}
-          className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
+          className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
         >
           {saving ? 'Envoi...' : 'Envoyer'}
         </button>

@@ -47,12 +47,18 @@ export function useSupportTickets(scope: TicketScope) {
     };
   }, [user, scope, load]);
 
-  async function createTicket(subject: string, firstMessage: string): Promise<string | null> {
+  // Retourne la ligne complete plutot que le seul id : l'appelant (SupportTab
+  // -> TicketDetailModal) a besoin d'ouvrir la modale de detail immediatement
+  // apres creation, avant que le re-render declenche par load() ci-dessous
+  // n'ait eu lieu -- chercher le ticket dans `tickets` a ce moment-la renvoie
+  // systematiquement une closure perimee (bug confirme : modale de detail
+  // ouverte avec un sujet vide juste apres la creation d'un ticket).
+  async function createTicket(subject: string, firstMessage: string): Promise<SupportTicket | null> {
     if (!user) return null;
     const { data: ticket, error: ticketError } = await supabase
       .from('support_tickets')
       .insert({ user_id: user.id, subject })
-      .select('id')
+      .select('*')
       .single();
     if (ticketError || !ticket) {
       console.error(ticketError);
@@ -68,7 +74,7 @@ export function useSupportTickets(scope: TicketScope) {
       return null;
     }
     await load();
-    return ticket.id as string;
+    return ticket as SupportTicket;
   }
 
   async function setTicketStatus(id: string, status: TicketStatus): Promise<boolean> {

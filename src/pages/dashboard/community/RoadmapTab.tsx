@@ -5,6 +5,7 @@ import { useIsAdmin } from '../../../hooks/useIsAdmin';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { Button } from '../../../components/ui/Button';
 import { RoadmapItemModal } from '../../../components/community/RoadmapItemModal';
 import type { RoadmapItem, RoadmapStatus } from '../../../lib/types';
 
@@ -14,7 +15,7 @@ import type { RoadmapItem, RoadmapStatus } from '../../../lib/types';
 const COLUMNS: { status: RoadmapStatus; label: string; icon: typeof Circle; accent: string }[] = [
   { status: 'in_progress', label: 'En cours', icon: Loader2, accent: 'text-neon-500' },
   { status: 'planned', label: 'Prévu', icon: Circle, accent: 'text-gray-400' },
-  { status: 'shipped', label: 'Livré', icon: CheckCircle2, accent: 'text-emerald-400' },
+  { status: 'shipped', label: 'Livré', icon: CheckCircle2, accent: 'text-green-400' },
 ];
 
 export function RoadmapTab() {
@@ -37,13 +38,9 @@ export function RoadmapTab() {
       <div className="flex items-center justify-between gap-4 mb-6">
         <p className="text-sm text-gray-400">Ce sur quoi l'équipe ResellOS travaille, sans dates promises.</p>
         {isAdmin && (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" />
+          <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
             Nouvel élément
-          </button>
+          </Button>
         )}
       </div>
 

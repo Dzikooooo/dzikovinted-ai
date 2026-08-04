@@ -47,7 +47,7 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
                   onClick={() => onStatusChange(ticket.id, opt.value)}
                   className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
                     ticket.status === opt.value
-                      ? 'bg-neon-500 text-black border-neon-500'
+                      ? 'bg-neon-600 text-white border-neon-500'
                       : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
                   }`}
                 >
@@ -107,7 +107,7 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
             onClick={handleSend}
             disabled={!draft.trim() || sending}
             aria-label="Envoyer"
-            className="bg-neon-500 text-black p-3 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none flex-shrink-0"
+            className="bg-neon-600 text-white p-3 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none flex-shrink-0"
           >
             <Send className="w-4 h-4" />
           </button>

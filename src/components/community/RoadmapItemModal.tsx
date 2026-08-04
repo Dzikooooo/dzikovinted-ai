@@ -82,7 +82,7 @@ export function RoadmapItemModal({ item, onClose, onCreate, onUpdate }: RoadmapI
                 type="button"
                 onClick={() => setStatus(opt.value)}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                  status === opt.value ? 'bg-neon-500 text-black border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                  status === opt.value ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
                 }`}
               >
                 {opt.label}
@@ -94,7 +94,7 @@ export function RoadmapItemModal({ item, onClose, onCreate, onUpdate }: RoadmapI
         <button
           onClick={handleSave}
           disabled={!canSave || saving}
-          className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
+          className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all disabled:opacity-50 disabled:hover:shadow-none"
         >
           {saving ? 'Enregistrement...' : isEdit ? 'Enregistrer' : 'Ajouter à la roadmap'}
         </button>

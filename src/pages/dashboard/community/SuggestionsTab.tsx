@@ -5,16 +5,18 @@ import { useIsAdmin } from '../../../hooks/useIsAdmin';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorBanner } from '../../../components/ui/ErrorBanner';
+import { Button } from '../../../components/ui/Button';
+import { Badge, type BadgeTone } from '../../../components/ui/Badge';
 import { SuggestionCreateModal } from '../../../components/community/SuggestionCreateModal';
 import { SuggestionReplyModal } from '../../../components/community/SuggestionReplyModal';
 import type { SuggestionStatus } from '../../../lib/types';
 
-const STATUS_STYLES: Record<SuggestionStatus, { label: string; bg: string; text: string }> = {
-  open: { label: 'Nouvelle', bg: 'bg-white/10', text: 'text-gray-400' },
-  planned: { label: 'Prévue', bg: 'bg-amber-400/10', text: 'text-amber-400' },
-  in_progress: { label: 'En cours', bg: 'bg-neon-500/10', text: 'text-neon-500' },
-  done: { label: 'Faite', bg: 'bg-emerald-400/10', text: 'text-emerald-400' },
-  declined: { label: 'Refusée', bg: 'bg-red-500/10', text: 'text-red-400' },
+const STATUS_STYLES: Record<SuggestionStatus, { label: string; tone: BadgeTone }> = {
+  open: { label: 'Nouvelle', tone: 'neutral' },
+  planned: { label: 'Prévue', tone: 'warning' },
+  in_progress: { label: 'En cours', tone: 'brand' },
+  done: { label: 'Faite', tone: 'positive' },
+  declined: { label: 'Refusée', tone: 'negative' },
 };
 
 // Seul onglet Communaute ou "Creer" est ouvert a tout le monde -- le
@@ -30,13 +32,9 @@ export function SuggestionsTab() {
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
         <p className="text-sm text-gray-400">Propose une idée, vote pour celles des autres.</p>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" />
+        <Button icon={<Plus className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
           Nouvelle suggestion
-        </button>
+        </Button>
       </div>
 
       {error && <ErrorBanner message={error} className="mb-6" />}
@@ -48,7 +46,12 @@ export function SuggestionsTab() {
           ))}
         </div>
       ) : suggestions.length === 0 ? (
-        <EmptyState icon={Lightbulb} title="Aucune suggestion pour l'instant" description="Sois le premier à en proposer une." />
+        <EmptyState
+          icon={Lightbulb}
+          title="Aucune suggestion pour l'instant"
+          description="Sois le premier à en proposer une."
+          action={{ label: 'Proposer une suggestion', onClick: () => setShowCreate(true) }}
+        />
       ) : (
         <div className="space-y-3">
           {suggestions.map((s) => {
@@ -72,7 +75,7 @@ export function SuggestionsTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-sm text-gray-100">{s.title}</h3>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-lg flex-shrink-0 ${style.text} ${style.bg}`}>{style.label}</span>
+                    <Badge label={style.label} tone={style.tone} />
                   </div>
                   {s.description && <p className="text-sm text-gray-500 mt-1">{s.description}</p>}
 

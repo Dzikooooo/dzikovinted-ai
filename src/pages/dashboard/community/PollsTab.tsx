@@ -6,6 +6,8 @@ import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorBanner } from '../../../components/ui/ErrorBanner';
 import { ProgressBarRow } from '../../../components/ui/ProgressBar';
+import { Button } from '../../../components/ui/Button';
+import { Badge } from '../../../components/ui/Badge';
 import { PollCreateModal } from '../../../components/community/PollCreateModal';
 
 export function PollsTab() {
@@ -18,13 +20,9 @@ export function PollsTab() {
       <div className="flex items-center justify-between gap-4 mb-6">
         <p className="text-sm text-gray-400">Donne ton avis, en direct.</p>
         {isAdmin && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all flex-shrink-0"
-          >
-            <Plus className="w-4 h-4" />
+          <Button icon={<Plus className="w-4 h-4" />} onClick={() => setShowForm(true)}>
             Nouveau sondage
-          </button>
+          </Button>
         )}
       </div>
 
@@ -47,13 +45,7 @@ export function PollsTab() {
               <div key={poll.id} className="group relative bg-surface border border-white/5 rounded-2xl p-5">
                 <div className="flex items-start justify-between gap-4 mb-1">
                   <h3 className="font-bold text-gray-100 pr-16">{poll.question}</h3>
-                  <span
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-lg flex-shrink-0 ${
-                      poll.status === 'open' ? 'text-neon-500 bg-neon-500/10' : 'text-gray-500 bg-white/5'
-                    }`}
-                  >
-                    {poll.status === 'open' ? 'Ouvert' : 'Clos'}
-                  </span>
+                  <Badge label={poll.status === 'open' ? 'Ouvert' : 'Clos'} tone={poll.status === 'open' ? 'brand' : 'neutral'} />
                 </div>
                 {poll.description && <p className="text-sm text-gray-500 mb-4">{poll.description}</p>}
 
