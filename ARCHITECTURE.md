@@ -83,6 +83,14 @@ supabase/
 | Google Gemini pour l'analyse photo | OpenAI GPT-4 Vision | Choix historique du projet ; `SettingsPage.tsx` permet à l'utilisateur de fournir sa propre clé, mais le code/l'UI mentionnent encore "OpenAI API Key" par endroits — **incohérence connue à corriger**, l'edge function `analyze-clothing` appelle bien Gemini (voir §9) |
 | Vitest (2026-07-09) | Playwright Test, pas de tests | Introduit pour le moteur d'intelligence métier (`src/lib/insights/`) : code déterministe, sans effet de bord, sans dépendance Supabase — le cas d'usage qui justifie enfin le coût d'un premier framework de tests. 23 tests unitaires (`src/lib/insights/__tests__/`), `npm run test`. Config isolée (`vitest.config.ts`, environnement `node`) pour ne pas toucher `vite.config.ts`. Le reste de l'app (UI, hooks Supabase) reste vérifié par `typecheck`/`lint`/`build` + inspection manuelle en navigateur — pas encore de tests de composants |
 
+### 3.1 PWA / Service Worker — bundle périmé après déploiement (2026-08-05)
+
+`vite.config.ts` utilise `vite-plugin-pwa` avec `registerType: 'autoUpdate'`. Ce mode ne vérifie une nouvelle version qu'au moment d'une nouvelle registration (typiquement au chargement de la page) — un onglet ou une PWA déjà ouvert(e) **avant** un déploiement continue d'être servi par l'ancien service worker actif, avec son ancien cache précaché (anciens chunks JS inclus), jusqu'à ce qu'une mise à jour soit détectée et activée. Un simple rechargement ne suffit pas toujours : le SW actif peut répondre à la requête de navigation elle-même depuis son propre cache, avant même de vérifier une nouvelle version.
+
+Symptôme observé : après un déploiement, un comportement corrigé (ex. un ancien texte, une ancienne popup) reste visible dans une session déjà ouverte, alors que le code livré est bien correct (vérifiable en téléchargeant directement le bundle déployé et en y cherchant les marqueurs du nouveau code).
+
+Procédure de purge côté testeur : fermer complètement tous les onglets/fenêtres ResellOS (pas juste recharger), puis rouvrir — ou, dans Chrome DevTools → Application → Service Workers, cliquer "Update" puis "skipWaiting" (ou "Unregister") avant de recharger.
+
 ## 4. Flux de données
 
 ### 4.1 Authentification
