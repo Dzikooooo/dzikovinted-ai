@@ -20,7 +20,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // directement la classe utilitaire) porte le meme accent dore.
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
-    'bg-neon-500 text-black shadow-[0_0_25px_rgba(255,196,0,0.18)] hover:bg-neon-600 hover:shadow-[0_0_35px_rgba(255,196,0,0.28)] disabled:hover:bg-neon-500 disabled:shadow-none',
+    'bg-neon-600 text-white shadow-[0_0_25px_rgba(124,92,255,0.18)] hover:bg-neon-700 hover:shadow-[0_0_35px_rgba(124,92,255,0.28)] disabled:hover:bg-neon-600 disabled:shadow-none',
   secondary: 'bg-dark-400 border border-white/10 text-gray-200 hover:border-neon-500/40',
   ghost: 'text-gray-400 hover:text-white hover:bg-white/5',
   danger: 'bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20',

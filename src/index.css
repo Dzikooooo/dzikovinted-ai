@@ -1,16 +1,16 @@
 :root {
-  --bg: #090909;
-  --surface: #171717;
-  --card: #1F1F1F;
+  --bg: #0F1117;
+  --surface: #1A1E28;
+  --card: #1A1E28;
 
-  --primary: #FFC400;
-  --primary-hover: #D89B00;
+  --primary: #7C5CFF;
+  --primary-hover: #5429FF;
 
-  --success: #FFFFFF;
-  --danger: #FF4D4D;
+  --success: #22C55E;
+  --danger: #EF4444;
 
-  --text: #FFFFFF;
-  --text-secondary: #A3A3A3;
+  --text: #F8FAFC;
+  --text-secondary: #6B7280;
 
   --border: #2B2B2B;
 }
@@ -28,11 +28,11 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0A0A0A;
+  background: #0F1117;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #FFFFFF;
+  background: #F8FAFC;
   border-radius: 999px;
 }
 
@@ -43,15 +43,15 @@
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: #FFFFFF #0A0A0A;
+    scrollbar-color: #F8FAFC #0F1117;
   }
 
   body {
-    @apply bg-dark-900 text-gray-100 font-body antialiased;
+    @apply bg-dark-400 text-slate-50 font-body antialiased;
   }
 
   ::selection {
-    background: rgba(255,196,0,.25);
+    background: rgba(124,92,255,.25);
     color: white;
   }
 }
@@ -62,21 +62,21 @@
 
   .neon-glow {
     box-shadow:
-      0 0 10px rgba(255,196,0,.22),
-      0 0 40px rgba(255,196,0,.08);
+      0 0 10px rgba(124,92,255,.22),
+      0 0 40px rgba(124,92,255,.08);
   }
 
   .neon-glow-strong {
     box-shadow:
-      0 0 20px rgba(255,196,0,.30),
-      0 0 60px rgba(255,196,0,.15),
-      0 0 100px rgba(255,196,0,.08);
+      0 0 20px rgba(124,92,255,.30),
+      0 0 60px rgba(124,92,255,.15),
+      0 0 100px rgba(124,92,255,.08);
   }
 
   .neon-text-glow {
     text-shadow:
-      0 0 12px rgba(255,196,0,.35),
-      0 0 40px rgba(255,196,0,.15);
+      0 0 12px rgba(124,92,255,.35),
+      0 0 40px rgba(124,92,255,.15);
   }
 
   .glass-card {
@@ -84,30 +84,30 @@
   }
 
   .btn-neon {
-    @apply bg-neon-500 text-black font-bold rounded-xl px-8 py-4 transition-all duration-300 active:scale-[0.98];
+    @apply bg-neon-600 text-white font-bold rounded-xl px-8 py-4 transition-all duration-300 active:scale-[0.98];
 
-    box-shadow: 0 0 25px rgba(255,196,0,.18);
+    box-shadow: 0 0 25px rgba(124,92,255,.18);
   }
 
   .btn-neon:hover {
-    background: #D89B00;
-    box-shadow: 0 0 35px rgba(255,196,0,.28);
+    background: #5429FF;
+    box-shadow: 0 0 35px rgba(124,92,255,.28);
   }
 
   .btn-outline-neon {
     @apply border rounded-xl px-6 py-3 font-semibold transition-all duration-300;
 
-    border-color: rgba(255,196,0,.35);
-    color: #FFC400;
+    border-color: rgba(124,92,255,.35);
+    color: #7C5CFF;
   }
 
   .btn-outline-neon:hover {
-    background: rgba(255,196,0,.08);
-    border-color: #FFC400;
+    background: rgba(124,92,255,.08);
+    border-color: #7C5CFF;
   }
 
   .field-label {
-    color: rgba(255,196,0,.7);
+    color: rgba(124,92,255,.7);
     @apply text-xs font-mono uppercase tracking-wider;
   }
 
@@ -135,8 +135,8 @@
   }
 
   .input-dark:focus {
-    border-color: rgba(255,196,0,.45);
-    box-shadow: 0 0 0 1px rgba(255,196,0,.15);
+    border-color: rgba(124,92,255,.45);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.15);
   }
 
   /* Entree des modales (Modal.tsx) -- Design Freeze Lot 1 : jusqu'ici
@@ -166,6 +166,61 @@
 @keyframes modal-panel-in {
   from { opacity: 0; transform: scale(.96) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes feature-slide-in-right {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes feature-slide-in-left {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.feature-slide-in-right {
+  animation: feature-slide-in-right .45s ease-out;
+}
+
+.feature-slide-in-left {
+  animation: feature-slide-in-left .45s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-slide-in-right,
+  .feature-slide-in-left {
+    animation: none;
+  }
+}
+
+/* ========================= */
+/* Signes de vie -- petites animations qui donnent le sentiment d'une
+   synchro/activite en cours (audit personnel utilisateur, 2026-08-04 :
+   "le produit parait tres calme"). Purement decoratif, jamais un
+   indicateur d'etat invente : n'appliquer .live-ping qu'a cote d'un fait
+   deja reel (compte connecte, nouvelle opportunite detectee). */
+/* ========================= */
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rise-in {
+  animation: rise-in .45s ease-out both;
+}
+
+@keyframes live-ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+.live-ping {
+  animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in { animation: none; }
+  .live-ping { animation: none; opacity: 0; }
 }
 
 /* ========================= */

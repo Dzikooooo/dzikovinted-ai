@@ -4,33 +4,43 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Rebrand (2026-07-28) : systeme violet a 3 roles distincts, valeurs
+        // exactes donnees par l'utilisateur --
+        // neon-500 = #7C5CFF (marque : logo, liens, accents graphiques)
+        // neon-600 = #5B3FD9 (violet fonce : fond des CTA, texte blanc dessus)
+        // neon-700 = #3B258F (violet tres fonce : hover des CTA, zones premium)
+        // 500 reste le nom du token de base pour ne pas renommer ~150
+        // references dans le code -- seule sa VALEUR change. 50-400/800-900
+        // derives par degrade de luminosite a teinte/saturation constante
+        // (approximatifs, usage marginal -- seuls 500/600/700 sont vraiment
+        // utilises dans le produit).
         neon: {
-          50: '#FFF9E6',
-          100: '#FFF1BF',
-          200: '#FFE680',
-          300: '#FFD84D',
-          400: '#FFCF24',
-          500: '#FFC400',
-          600: '#D89B00',
-          700: '#B88900',
-          800: '#8A6600',
-          900: '#5C4400',
+          50: '#F3F0FF',
+          100: '#E2DBFF',
+          200: '#CABDFF',
+          300: '#A994FF',
+          400: '#957AFF',
+          500: '#7C5CFF',
+          600: '#5B3FD9',
+          700: '#3B258F',
+          800: '#2A1A66',
+          900: '#1D123F',
         },
         dark: {
-          50: '#1a1a1a',
-          100: '#151515',
-          200: '#111111',
-          300: '#0d0d0d',
-          400: '#0a0a0a',
-          500: '#080808',
-          600: '#050505',
-          700: '#030303',
-          800: '#020202',
-          900: '#000000',
+          50: '#1C202B',
+          100: '#171A24',
+          200: '#14171F',
+          300: '#11131A',
+          400: '#0F1117',
+          500: '#0D0F14',
+          600: '#0A0B0F',
+          700: '#08090C',
+          800: '#06070A',
+          900: '#040506',
         },
         surface: {
-          DEFAULT: '#181818',
-          alt: '#171717',
+          DEFAULT: '#1A1E28',
+          alt: '#181B25',
         },
       },
       fontFamily: {
@@ -51,11 +61,11 @@ export default {
         'glow-pulse': {
           '0%': {
             boxShadow:
-              '0 0 5px rgba(255,196,0,0.25), 0 0 20px rgba(255,196,0,0.08)',
+              '0 0 5px rgba(124,92,255,0.25), 0 0 20px rgba(124,92,255,0.08)',
           },
           '100%': {
             boxShadow:
-              '0 0 20px rgba(255,196,0,0.45), 0 0 60px rgba(255,196,0,0.18)',
+              '0 0 20px rgba(124,92,255,0.45), 0 0 60px rgba(124,92,255,0.18)',
           },
         },
         float: {
