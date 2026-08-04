@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Ban, CheckCircle2, RotateCcw, Send, ShieldAlert, Users } from 'lucide-react';
+import { Ban, CheckCircle2, RotateCcw, Send, ShieldAlert, Users, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import type { DashboardPage, Profile } from '../../lib/types';
@@ -10,6 +10,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 
 const TARGET_PAGES: { value: DashboardPage; label: string }[] = [
@@ -34,6 +35,13 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [workingId, setWorkingId] = useState<string | null>(null);
+  // P0-3 (2026-08-04) : bloquer/debloquer suspend reellement l'acces d'un
+  // utilisateur reel a ResellOS -- jusqu'ici un simple clic sur la ligne,
+  // sans confirmation ni rappel de qui est vise. banConfirmTarget porte le
+  // compte en attente de confirmation ; toggleBan() elle-meme reste
+  // inchangee (meme RPC, meme etat de chargement workingId), seul le point
+  // d'entree change (ouvre la modale au lieu d'agir immediatement).
+  const [banConfirmTarget, setBanConfirmTarget] = useState<Profile | null>(null);
 
   const [target, setTarget] = useState<Profile | 'all' | null>(null);
   const [notifTitle, setNotifTitle] = useState('');
@@ -75,6 +83,7 @@ export default function AdminUsersPage() {
       p_banned: !target.banned,
     });
     setWorkingId(null);
+    setBanConfirmTarget(null);
     if (rpcError) {
       console.error(rpcError);
       setError("Impossible de modifier ce compte. Réessaie plus tard.");
@@ -195,8 +204,7 @@ export default function AdminUsersPage() {
                       variant={p.banned ? 'secondary' : 'danger'}
                       size="sm"
                       icon={p.banned ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
-                      loading={workingId === p.id}
-                      onClick={() => toggleBan(p)}
+                      onClick={() => setBanConfirmTarget(p)}
                     >
                       {p.banned ? 'Débloquer' : 'Bloquer'}
                     </Button>
@@ -276,6 +284,60 @@ export default function AdminUsersPage() {
           </Button>
         </div>
       </div>
+
+      {banConfirmTarget && (
+        <Modal onClose={() => setBanConfirmTarget(null)} size="md">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-black">
+              {banConfirmTarget.banned ? 'Débloquer ce compte ?' : 'Bloquer ce compte ?'}
+            </h2>
+            <button
+              onClick={() => setBanConfirmTarget(null)}
+              aria-label="Fermer"
+              className="p-1.5 rounded-lg hover:bg-white/5"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 mb-4 bg-dark-400 border border-white/10 rounded-xl p-3">
+            <AccountAvatar label={banConfirmTarget.full_name || banConfirmTarget.email} size="md" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-sm font-semibold text-gray-200 truncate">
+                  {banConfirmTarget.full_name || banConfirmTarget.email}
+                </p>
+                <Badge
+                  label={banConfirmTarget.plan.toUpperCase()}
+                  tone={banConfirmTarget.plan === 'free' ? 'neutral' : banConfirmTarget.plan === 'pro' ? 'brand' : 'positive'}
+                />
+                {banConfirmTarget.role === 'admin' && <Badge label="Admin" tone="attention" />}
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{banConfirmTarget.email}</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-400 mb-5">
+            {banConfirmTarget.banned
+              ? 'Ce compte pourra à nouveau se connecter à ResellOS et retrouvera un accès normal immédiatement.'
+              : 'Ce compte ne pourra plus se connecter à ResellOS tant qu\'il n\'est pas débloqué. Ses données (annonces, historique, comptabilité) ne sont pas supprimées.'}
+          </p>
+
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setBanConfirmTarget(null)} disabled={workingId === banConfirmTarget.id}>
+              Annuler
+            </Button>
+            <Button
+              variant={banConfirmTarget.banned ? 'secondary' : 'danger'}
+              fullWidth
+              loading={workingId === banConfirmTarget.id}
+              onClick={() => toggleBan(banConfirmTarget)}
+            >
+              {banConfirmTarget.banned ? 'Débloquer' : 'Bloquer'}
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
