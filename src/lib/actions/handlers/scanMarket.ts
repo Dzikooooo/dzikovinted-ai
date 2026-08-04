@@ -50,13 +50,34 @@ async function extractErrorMessage(error: unknown): Promise<string> {
   return 'Le scan a échoué pour une raison inconnue.';
 }
 
+// Frequence du sondage de secours ci-dessous -- assez rapide pour rester
+// invisible pour l'utilisateur, assez espace pour ne jamais peser sur la
+// base sur toute la duree d'un scan (jusqu'a 6 minutes, donc <= ~24 requetes
+// par scan).
+const FALLBACK_POLL_INTERVAL_MS = 15000;
+
 // Le declenchement (execute() ci-dessous) rend la main des que le workflow
 // GitHub Actions est lance - le travail reel se termine de facon
 // asynchrone, minutes plus tard, quand scripts/vinted-scan.ts ecrit
 // lui-meme le statut terminal (authentifie en service_role, meme table
 // action_log que le reste de l'Action Engine). On attend ce statut via
-// Realtime plutot que par polling, meme mecanisme deja etabli pour le
-// Centre des Actions (useActionHistory.ts).
+// Realtime, complete par un sondage de secours (voir plus bas) plutot que
+// par polling seul, meme mecanisme deja etabli pour le Centre des Actions
+// (useActionHistory.ts).
+//
+// BUG REEL confirme le 2026-08-04 (diagnostic "le scan ne se termine
+// jamais") : un scan reel a termine avec succes cote base (status='success'
+// ecrit par scripts/vinted-scan.ts en 5m3s, largement sous les 6 minutes de
+// TERMINAL_WAIT_TIMEOUT_MS) sans que la modale ne le reflete jamais -- le
+// seul mecanisme de reception cote client etait l'evenement Realtime UPDATE
+// + une unique verification au moment de l'abonnement, sans aucun sondage
+// pendant l'attente. Un canal Realtime qui rate son evenement (onglet mis en
+// arriere-plan, reconnexion WebSocket silencieuse, etc. -- comportement deja
+// documente comme non garanti pour Supabase Realtime) laissait alors la
+// modale bloquee jusqu'au timeout local de 6 minutes, et potentiellement
+// au-dela si ce meme setTimeout etait lui-meme retarde par le throttling
+// d'un onglet en arriere-plan. Le sondage de secours ci-dessous rend la
+// detection de fin independante de la fiabilite d'un seul evenement Realtime.
 function waitForTerminalOutcome(historyId: string): Promise<ActionOutcome> {
   return new Promise((resolve) => {
     let settled = false;
@@ -65,9 +86,20 @@ function waitForTerminalOutcome(historyId: string): Promise<ActionOutcome> {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutHandle);
+      clearInterval(pollHandle);
+      document.removeEventListener('visibilitychange', onVisible);
       void supabase.removeChannel(channel);
       resolve(outcome);
     };
+
+    // Un onglet mis en arriere-plan peut retarder aussi bien la reception
+    // Realtime que setInterval/setTimeout (throttling navigateur) -- au
+    // retour au premier plan, verifie immediatement au lieu d'attendre le
+    // prochain tick du sondage (jusqu'a FALLBACK_POLL_INTERVAL_MS de plus).
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void checkNow();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     const timeoutHandle = setTimeout(() => {
       settle({ status: 'error', errorMessage: SCAN_TIMEOUT_ERROR_MESSAGE });
@@ -95,6 +127,8 @@ function waitForTerminalOutcome(historyId: string): Promise<ActionOutcome> {
         () => void checkNow()
       )
       .subscribe();
+
+    const pollHandle = setInterval(() => void checkNow(), FALLBACK_POLL_INTERVAL_MS);
 
     // Verification immediate : couvre le cas rare ou le statut terminal
     // aurait deja ete ecrit avant que l'abonnement Realtime ne soit actif.
