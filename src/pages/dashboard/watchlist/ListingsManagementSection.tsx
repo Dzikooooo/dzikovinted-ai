@@ -33,7 +33,7 @@ import { isActivelyInStock } from '../../../lib/listingStatus';
 import { toLocalDateString } from '../../../lib/date';
 import { isPublishStep, type PublishStep } from '../../../lib/actions/publishSteps';
 import { EDIT_STEP_ORDER, buildEditStepLabels, normalizeEditStepForDisplay } from '../../../lib/actions/editListingSteps';
-import { MANUAL_CLICK_HINT } from '../../../lib/actions/editListingManualClick';
+import { isManualClickTimeout, MANUAL_CLICK_TIMEOUT_MESSAGE, MANUAL_CLICK_HINT } from '../../../lib/actions/editListingManualClick';
 import type { PublishListingPayload } from '../../../lib/actions/handlers/publishListing';
 import type { RepublishListingPayload } from '../../../lib/actions/handlers/republishListing';
 import type { EditableFieldName, EditListingPayload } from '../../../lib/actions/handlers/editListing';
@@ -166,11 +166,18 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     historyId: string | null;
     kind: ActionKind | null;
     changedFields: EditableFieldName[] | null;
-    // Conserve pour "Ouvrir Vinted" sur un edit_listing en cours (audit RC,
-    // 2026-08-05) -- best-effort uniquement, voir openVintedEditTab().
+    // Conserve pour "Réessayer" sur un timeout edit_listing (audit RC,
+    // 2026-08-05) -- seule la relance complete de l'action est possible
+    // sans toucher aux fichiers P-04 (pas de reprise ciblee de la seule
+    // phase de verification, voir le plan valide).
     listing: Listing | null;
   } | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
+  // Desactive "Réessayer" des le premier clic, le temps que runVintedAction()
+  // reprenne la main (son propre garde interne bloque toute nouvelle action
+  // tant que publishState.step n'est pas null/'done', mais cette fenetre
+  // initiale synchrone merite son propre verrou local, demande explicite).
+  const [retryInFlight, setRetryInFlight] = useState(false);
 
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -325,7 +332,17 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       setPublishState({ step: 'done', error: null, historyId, kind, changedFields, listing });
     } else if (result.outcome.status === 'error') {
       await load();
-      setPublishState({ step: null, error: result.outcome.errorMessage, historyId, kind, changedFields, listing });
+      // Simplifie le seul cas "clic manuel non detecte" pour l'affichage
+      // client (audit RC, 2026-08-05) -- le detail technique original reste
+      // visible juste au-dessus, deja logue sans changement (devLog "retour
+      // dans ResellOS, resultat :"). Tout autre message edit_listing (session
+      // expiree, marque verrouillee, timeout de chargement...) est deja
+      // redige pour un client, inchange.
+      const displayError =
+        kind === 'edit_listing' && isManualClickTimeout(result.outcome.errorMessage)
+          ? MANUAL_CLICK_TIMEOUT_MESSAGE
+          : result.outcome.errorMessage;
+      setPublishState({ step: null, error: displayError, historyId, kind, changedFields, listing });
     } else {
       setPublishState({ step: null, error: "Cette action n'est pas encore disponible.", historyId, kind, changedFields, listing });
     }
@@ -369,6 +386,19 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   // d'edition.
   const openVintedEditTab = (vintedItemId: string) => {
     window.open(`https://www.vinted.fr/items/${vintedItemId}/edit`, '_blank', 'noopener,noreferrer');
+  };
+
+  // "Réessayer" (edit_listing uniquement) : relance complete de l'action
+  // (nouvel onglet, nouveau clic requis) -- pas une reprise ciblee de la
+  // seule verification, impossible sans toucher a P-04 (voir le plan
+  // valide). Le garde existant de runVintedAction() empeche deja tout
+  // double-declenchement pendant qu'une action tourne ; retryInFlight
+  // couvre en plus la toute premiere fenetre synchrone avant que
+  // publishState ne soit mis a jour.
+  const retryEditListing = (listing: Listing, changedFields: EditableFieldName[]) => {
+    if (retryInFlight) return;
+    setRetryInFlight(true);
+    void handleConfirmUpdate(listing, changedFields).finally(() => setRetryInFlight(false));
   };
 
   const handleSync = () => {
@@ -775,6 +805,15 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 onOpenVinted: publishState.listing?.vinted_item_id
                   ? () => openVintedEditTab(publishState.listing!.vinted_item_id!)
                   : undefined,
+                // "Réessayer" uniquement sur le timeout de clic manuel precis
+                // (comparaison au message deja simplifie, voir runVintedAction) --
+                // pas pour les autres erreurs edit_listing (session expiree,
+                // marque verrouillee...) ou relancer n'aiderait pas.
+                onRetry:
+                  publishState.error === MANUAL_CLICK_TIMEOUT_MESSAGE && publishState.listing
+                    ? () => retryEditListing(publishState.listing!, publishState.changedFields ?? [])
+                    : undefined,
+                retryDisabled: retryInFlight,
               }
             : publishState.kind === 'republish_listing'
               ? {

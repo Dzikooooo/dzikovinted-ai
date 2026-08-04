@@ -20,14 +20,16 @@ interface PublishProgressModalProps {
   stepLabels?: Record<PublishStep, string>;
   title?: string;
   errorTitle?: string;
-  // Attente du clic manuel sur Valider (audit RC, 2026-08-05) -- optionnel,
-  // jamais fourni par l'ecran de publication original (publish_listing/
-  // republish_listing), aucun changement de comportement pour ces deux-la.
-  // hint : instruction affichee sous la timeline tant que l'action n'est ni
-  // terminee ni en erreur. onOpenVinted : bouton secondaire, affiche
-  // uniquement si fourni par l'appelant.
+  // Attente du clic manuel sur Valider (audit RC, 2026-08-05) -- toutes
+  // optionnelles, jamais fournies par l'ecran de publication original
+  // (publish_listing/republish_listing), aucun changement de comportement
+  // pour ces deux-la. hint : instruction affichee sous la timeline tant que
+  // l'action n'est ni terminee ni en erreur. onOpenVinted/onRetry : boutons
+  // secondaires, affiches uniquement si fournis par l'appelant.
   hint?: string;
   onOpenVinted?: () => void;
+  onRetry?: () => void;
+  retryDisabled?: boolean;
 }
 
 function buildRows(
@@ -59,6 +61,8 @@ export default function PublishProgressModal({
   errorTitle = 'Échec de la publication',
   hint,
   onOpenVinted,
+  onRetry,
+  retryDisabled,
 }: PublishProgressModalProps) {
   const isTerminal = currentStep === 'done' || !!error;
 
@@ -95,10 +99,29 @@ export default function PublishProgressModal({
         <p className="mt-4 text-sm text-neon-500 font-semibold">Terminé.</p>
       )}
 
+      {error && onOpenVinted && (
+        <button
+          onClick={onOpenVinted}
+          className="w-full mt-4 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+        >
+          Ouvrir Vinted
+        </button>
+      )}
+
+      {error && onRetry && (
+        <button
+          onClick={onRetry}
+          disabled={retryDisabled}
+          className="w-full mt-3 bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Réessayer
+        </button>
+      )}
+
       {isTerminal && onViewAction && (
         <button
           onClick={onViewAction}
-          className="w-full mt-5 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+          className="w-full mt-3 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
         >
           Voir dans Niches
         </button>
