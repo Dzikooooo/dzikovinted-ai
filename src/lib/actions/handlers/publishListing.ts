@@ -6,6 +6,7 @@ import {
   checkListingHasRequiredVintedFields,
   checkListingLoaded,
   checkListingNotAlreadyPublished,
+  checkPublishTemporarilyDisabled,
 } from '../checks';
 import type { ActionDefinition } from '../types';
 import { formatEUR } from '../../currency';
@@ -41,6 +42,7 @@ export const publishListingDefinition: ActionDefinition<PublishListingPayload> =
   kind: 'publish_listing',
   label: 'Publier sur Vinted',
   checks: [
+    checkPublishTemporarilyDisabled,
     checkAuthenticated,
     checkExtensionConnected,
     checkAccountSelected,

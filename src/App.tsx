@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import LandingPage from './pages/LandingPage';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import type { AppPage } from './lib/types';
 
 const AuthPage = lazy(() => import('./pages/AuthPage'));
@@ -85,5 +86,9 @@ function AppContent() {
 }
 
 export default function App() {
-  return <AppContent />;
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
 }

@@ -1,5 +1,20 @@
 import type { ActionCheck } from './types';
 
+// P-03 (audit pre-beta 2026-08-03) : resolveCategory() (extension/src/content/
+// formFill.ts) leve desormais inconditionnellement une erreur -- le picker
+// categorie Vinted exige une interaction isTrusted:true impossible a simuler
+// (regression confirmee le 26/07). publish_listing/republish_listing
+// echouent donc a 100% aujourd'hui. Bloque au niveau du check plutot que de
+// laisser ouvrir un onglet Vinted pour un echec garanti -- retire ce check
+// des le jour ou resolveCategory() a une vraie solution.
+export const checkPublishTemporarilyDisabled: ActionCheck = () => ({
+  ok: false,
+  failure: {
+    code: 'publish_temporarily_disabled',
+    message: "La publication automatique sur Vinted est temporairement indisponible (correctif en cours sur la sélection de catégorie) -- réessaie plus tard.",
+  },
+});
+
 export const checkAuthenticated: ActionCheck = (ctx) => {
   if (!ctx.userId) {
     return { ok: false, failure: { code: 'not_authenticated', message: 'Vous devez être connecté.' } };
