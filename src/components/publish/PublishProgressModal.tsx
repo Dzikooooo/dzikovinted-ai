@@ -1,4 +1,4 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../actions/ActionStepTimeline';
 import type { PublishStep } from '../../lib/actions/publishSteps';
 import { PUBLISH_STEP_ORDER, PUBLISH_STEP_LABELS } from '../../lib/actions/publishSteps';
@@ -20,6 +20,14 @@ interface PublishProgressModalProps {
   stepLabels?: Record<PublishStep, string>;
   title?: string;
   errorTitle?: string;
+  // Attente du clic manuel sur Valider (audit RC, 2026-08-05) -- optionnel,
+  // jamais fourni par l'ecran de publication original (publish_listing/
+  // republish_listing), aucun changement de comportement pour ces deux-la.
+  // hint : instruction affichee sous la timeline tant que l'action n'est ni
+  // terminee ni en erreur. onOpenVinted : bouton secondaire, affiche
+  // uniquement si fourni par l'appelant.
+  hint?: string;
+  onOpenVinted?: () => void;
 }
 
 function buildRows(
@@ -49,6 +57,8 @@ export default function PublishProgressModal({
   stepLabels = PUBLISH_STEP_LABELS,
   title = 'Publication en cours',
   errorTitle = 'Échec de la publication',
+  hint,
+  onOpenVinted,
 }: PublishProgressModalProps) {
   const isTerminal = currentStep === 'done' || !!error;
 
@@ -57,6 +67,22 @@ export default function PublishProgressModal({
       <h2 className="text-lg font-black mb-5">{error ? errorTitle : title}</h2>
 
       <ActionStepTimeline rows={buildRows(currentStep, error, stepOrder, stepLabels)} />
+
+      {!isTerminal && hint && (
+        <div className="mt-4 flex items-start gap-2 bg-neon-500/10 border border-neon-500/20 rounded-xl p-3">
+          <Info className="w-4 h-4 text-neon-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-neon-300">{hint}</p>
+        </div>
+      )}
+
+      {!isTerminal && hint && onOpenVinted && (
+        <button
+          onClick={onOpenVinted}
+          className="w-full mt-3 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+        >
+          Ouvrir Vinted
+        </button>
+      )}
 
       {error && (
         <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">

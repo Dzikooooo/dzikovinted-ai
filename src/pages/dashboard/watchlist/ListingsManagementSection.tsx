@@ -33,6 +33,7 @@ import { isActivelyInStock } from '../../../lib/listingStatus';
 import { toLocalDateString } from '../../../lib/date';
 import { isPublishStep, type PublishStep } from '../../../lib/actions/publishSteps';
 import { EDIT_STEP_ORDER, buildEditStepLabels, normalizeEditStepForDisplay } from '../../../lib/actions/editListingSteps';
+import { MANUAL_CLICK_HINT } from '../../../lib/actions/editListingManualClick';
 import type { PublishListingPayload } from '../../../lib/actions/handlers/publishListing';
 import type { RepublishListingPayload } from '../../../lib/actions/handlers/republishListing';
 import type { EditableFieldName, EditListingPayload } from '../../../lib/actions/handlers/editListing';
@@ -165,6 +166,9 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     historyId: string | null;
     kind: ActionKind | null;
     changedFields: EditableFieldName[] | null;
+    // Conserve pour "Ouvrir Vinted" sur un edit_listing en cours (audit RC,
+    // 2026-08-05) -- best-effort uniquement, voir openVintedEditTab().
+    listing: Listing | null;
   } | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
 
@@ -256,7 +260,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     }
 
     const changedFields = kind === 'edit_listing' ? (payload as EditListingPayload).changedFields : null;
-    setPublishState({ step: 'preparing', error: null, historyId: null, kind, changedFields });
+    setPublishState({ step: 'preparing', error: null, historyId: null, kind, changedFields, listing });
     devLog(`[ResellOS][action] prepareAction('${kind}')`, { listingId: listing.id, payload });
 
     if (kind === 'edit_listing') {
@@ -274,7 +278,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     const prepared = await prepareAction(kind, payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
       devWarn('[ResellOS][action] prepare() refuse par les checks :', prepared.failure);
-      setPublishState({ step: null, error: prepared.failure.message, historyId: null, kind, changedFields });
+      setPublishState({ step: null, error: prepared.failure.message, historyId: null, kind, changedFields, listing });
       return;
     }
     const historyId = prepared.prepared.id;
@@ -284,7 +288,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       devLog(`[ResellOS][action][${historyId}] progression :`, step);
       if (!isPublishStep(step)) return;
       const displayStep = kind === 'edit_listing' ? normalizeEditStepForDisplay(step) : step;
-      setPublishState({ step: displayStep, error: null, historyId, kind, changedFields });
+      setPublishState({ step: displayStep, error: null, historyId, kind, changedFields, listing });
     });
     devLog(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
 
@@ -316,14 +320,14 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           .then((r) => devLog(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind})`, r))
           .catch(() => devWarn(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind}) : echec ignore (best-effort)`));
       }
-      setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields });
+      setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields, listing });
       await load();
-      setPublishState({ step: 'done', error: null, historyId, kind, changedFields });
+      setPublishState({ step: 'done', error: null, historyId, kind, changedFields, listing });
     } else if (result.outcome.status === 'error') {
       await load();
-      setPublishState({ step: null, error: result.outcome.errorMessage, historyId, kind, changedFields });
+      setPublishState({ step: null, error: result.outcome.errorMessage, historyId, kind, changedFields, listing });
     } else {
-      setPublishState({ step: null, error: "Cette action n'est pas encore disponible.", historyId, kind, changedFields });
+      setPublishState({ step: null, error: "Cette action n'est pas encore disponible.", historyId, kind, changedFields, listing });
     }
   };
 
@@ -351,10 +355,20 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         historyId: null,
         kind: 'edit_listing',
         changedFields,
+        listing,
       });
       return;
     }
     await runVintedAction('edit_listing', buildEditPayload(listing, selectedAccount, changedFields), listing);
+  };
+
+  // "Ouvrir Vinted" (audit RC, 2026-08-05) : best-effort uniquement -- ne
+  // pretend jamais retrouver l'onglet exact ouvert par l'extension (le web
+  // app n'a aucune reference a ce tabId, extensionBridge.ts est P-04, hors
+  // perimetre). Ouvre/reutilise simplement un onglet sur la meme URL
+  // d'edition.
+  const openVintedEditTab = (vintedItemId: string) => {
+    window.open(`https://www.vinted.fr/items/${vintedItemId}/edit`, '_blank', 'noopener,noreferrer');
   };
 
   const handleSync = () => {
@@ -747,6 +761,20 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 stepLabels: buildEditStepLabels(publishState.changedFields ?? []),
                 title: 'Mise à jour Vinted en cours',
                 errorTitle: 'Échec de la mise à jour',
+                // Hint + "Ouvrir Vinted" pendant l'attente du clic manuel
+                // (audit RC, 2026-08-05) -- l'attente du clic (voir
+                // vinted-edit.ts::submitEdit, WAITING_FOR_MANUAL_CLICK) n'est
+                // jamais rapportee comme un step distinct, elle correspond en
+                // pratique a l'etape "publishing" affichee ici.
+                hint:
+                  publishState.step && publishState.step !== 'done' && !publishState.error
+                    ? normalizeEditStepForDisplay(publishState.step) === 'publishing'
+                      ? MANUAL_CLICK_HINT
+                      : undefined
+                    : undefined,
+                onOpenVinted: publishState.listing?.vinted_item_id
+                  ? () => openVintedEditTab(publishState.listing!.vinted_item_id!)
+                  : undefined,
               }
             : publishState.kind === 'republish_listing'
               ? {
