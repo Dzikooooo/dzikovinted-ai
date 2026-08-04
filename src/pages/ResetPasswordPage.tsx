@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { translateAuthError } from '../lib/errorMessages';
 import type { AppPage } from '../lib/types';
 import { Logo } from '../components/ui/Logo';
+import { Button } from '../components/ui/Button';
 
 interface ResetPasswordPageProps {
   onNavigate: (page: AppPage) => void;
@@ -119,13 +120,9 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
               {passwordsMismatch && <p className="text-xs text-red-400 mt-1.5">Les mots de passe ne correspondent pas.</p>}
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || passwordsMismatch}
-              className="w-full bg-neon-600 text-white font-bold py-3.5 rounded-xl hover:bg-neon-700 transition-all duration-200 hover:shadow-[0_0_30px_rgba(124,92,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-400"
-            >
+            <Button type="submit" fullWidth loading={loading} disabled={passwordsMismatch} className="mt-2">
               {loading ? 'Enregistrement...' : 'Définir le mot de passe'}
-            </button>
+            </Button>
           </form>
 
           <div className="border-t border-white/5 mt-6 pt-6 text-center">

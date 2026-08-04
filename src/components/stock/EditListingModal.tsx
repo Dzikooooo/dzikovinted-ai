@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AlertCircle, ImageIcon, RefreshCw, Save, Sparkles, UploadCloud, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 import { supabase } from '../../lib/supabase';
 import { analyzeWithAI } from '../../lib/aiService';
 import { uploadListingPhotos } from '../../lib/storage';
@@ -458,26 +459,33 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
         )}
 
         <div className="flex flex-col sm:flex-row gap-2 pt-2">
-          <button
+          <Button
+            icon={<Save className="w-4 h-4" />}
+            loading={saving}
+            disabled={regenerating}
             onClick={() => save('none')}
-            disabled={saving || regenerating}
-            className="flex-1 flex items-center justify-center gap-2 bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all disabled:opacity-50"
+            className="flex-1"
           >
-            <Save className="w-4 h-4" />
             {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
-          </button>
+          </Button>
           {!isLinkedToVinted && canPublish && (
-            <button
+            <Button
+              variant="secondary"
+              icon={<UploadCloud className="w-4 h-4" />}
+              loading={saving}
+              disabled={regenerating}
               onClick={() => save('publish')}
-              disabled={saving || regenerating}
-              className="flex-1 flex items-center justify-center gap-2 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:bg-white/5 transition-all disabled:opacity-50"
+              className="flex-1"
             >
-              <UploadCloud className="w-4 h-4" />
               Enregistrer et publier sur Vinted
-            </button>
+            </Button>
           )}
           {isLinkedToVinted && canUpdateOnVinted && (
-            <button
+            <Button
+              variant="secondary"
+              icon={<UploadCloud className="w-4 h-4" />}
+              loading={saving}
+              disabled={regenerating}
               onClick={() => {
                 devLog('[ResellOS][action] clic "Enregistrer et mettre a jour sur Vinted" (etape 1)', {
                   listingId: listing.id,
@@ -485,12 +493,10 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
                 });
                 void save('update');
               }}
-              disabled={saving || regenerating}
-              className="flex-1 flex items-center justify-center gap-2 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:bg-white/5 transition-all disabled:opacity-50"
+              className="flex-1"
             >
-              <UploadCloud className="w-4 h-4" />
               Enregistrer et mettre à jour sur Vinted
-            </button>
+            </Button>
           )}
         </div>
       </div>

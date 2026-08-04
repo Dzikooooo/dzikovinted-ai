@@ -1,7 +1,7 @@
 import { RefreshCw } from 'lucide-react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -24,6 +24,11 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   secondary: 'bg-dark-400 border border-white/10 text-gray-200 hover:border-neon-500/40',
   ghost: 'text-gray-400 hover:text-white hover:bg-white/5',
   danger: 'bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20',
+  // Etat "deja enregistre" (ex. ResultStep.tsx du Generateur) -- reste
+  // pleinement colore meme desactive (disabled:!opacity-100), contrairement
+  // aux autres variantes qui s'estompent a disabled:opacity-50 : le but ici
+  // est de confirmer un succes, pas de signaler une action indisponible.
+  success: 'bg-neon-500/20 text-neon-500 border border-neon-500/30 disabled:!opacity-100',
 };
 
 // Radius unifie a rounded-xl (sm etait en rounded-lg, seule incoherence de

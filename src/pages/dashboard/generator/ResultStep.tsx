@@ -56,14 +56,16 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           <Button variant="secondary" size="sm" icon={<Pencil className="w-4 h-4" />} onClick={onEdit}>
             Modifier
           </Button>
-          <button
+          <Button
+            variant={saved ? 'success' : 'primary'}
+            size="sm"
+            icon={<Save className="w-4 h-4" />}
+            loading={saving}
+            disabled={saved}
             onClick={onSave}
-            disabled={saving || saved}
-            className={`flex items-center gap-2 font-medium px-4 py-2 rounded-xl transition-all text-sm ${saved ? 'bg-neon-500/20 text-neon-500 border border-neon-500/30' : 'bg-neon-600 text-white hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] disabled:opacity-60'}`}
           >
-            <Save className="w-4 h-4" />
             {saved ? 'Sauvegarde !' : saving ? 'Sauvegarde...' : 'Sauvegarder'}
-          </button>
+          </Button>
         </div>
       </div>
 
