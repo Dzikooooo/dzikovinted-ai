@@ -402,23 +402,28 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
             </div>
           </header>
 
-          {/* Page content */}
+          {/* Page content -- page-enter (index.css) rejoue un fondu bref a
+              chaque changement d'onglet (audit RC, 2026-08-05), key={activePage}
+              pour ne le rejouer que sur un vrai changement de page, jamais sur
+              un re-render de la meme page. */}
           <main className="flex-1 overflow-y-auto bg-dark-400">
-            <Suspense fallback={<PageFallback />}>
-              {activePage === 'home' && <DashboardHome onNavigate={navigateToPage} />}
-              {activePage === 'generator' && (
-                <GeneratorPage onNavigate={navigateToPage} onBusyChange={setGeneratorBusy} />
-              )}
-              {activePage === 'watchlist' && <WatchlistPage onNavigate={navigateToPage} onViewAction={handleViewAction} />}
-              {activePage === 'communication' && <CommunicationPage />}
-              {activePage === 'vinted-account' && <VintedAccountPage />}
-              {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}
-              {activePage === 'accounting' && <AccountingPage />}
-              {activePage === 'community' && <CommunityPage />}
-              {activePage === 'subscription' && <SubscriptionPage />}
-              {activePage === 'settings' && <SettingsPage initialTab={settingsInitialTab} />}
-              {activePage === 'admin' && isAdmin && <AdminUsersPage />}
-            </Suspense>
+            <div key={activePage} className="page-enter">
+              <Suspense fallback={<PageFallback />}>
+                {activePage === 'home' && <DashboardHome onNavigate={navigateToPage} />}
+                {activePage === 'generator' && (
+                  <GeneratorPage onNavigate={navigateToPage} onBusyChange={setGeneratorBusy} />
+                )}
+                {activePage === 'watchlist' && <WatchlistPage onNavigate={navigateToPage} onViewAction={handleViewAction} />}
+                {activePage === 'communication' && <CommunicationPage />}
+                {activePage === 'vinted-account' && <VintedAccountPage />}
+                {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}
+                {activePage === 'accounting' && <AccountingPage />}
+                {activePage === 'community' && <CommunityPage />}
+                {activePage === 'subscription' && <SubscriptionPage />}
+                {activePage === 'settings' && <SettingsPage initialTab={settingsInitialTab} />}
+                {activePage === 'admin' && isAdmin && <AdminUsersPage />}
+              </Suspense>
+            </div>
           </main>
         </div>
       </div>
