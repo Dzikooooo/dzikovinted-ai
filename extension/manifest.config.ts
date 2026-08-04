@@ -19,6 +19,18 @@ import pkg from "./package.json";
 // jusqu'a ce que son propre cycle de rafraichissement echoue une seule
 // fois -- apres quoi plus aucun re-appairage n'etait possible depuis
 // l'app reellement utilisee. Les deux origines sont maintenant listees.
+//
+// MEME BUG, MEME CAUSE, recidive le 2026-08-04 : le domaine personnalise
+// resellosapp.com / www.resellosapp.com a ete rattache au projet Vercel
+// (voir alias `vercel alias ls`) sans jamais etre ajoute ici. Chrome
+// applique cette liste AVANT que le message n'atteigne onMessageExternal --
+// aucune trace cote extension (ni logger, ni service worker console),
+// chrome.runtime.sendMessage echoue juste avec un lastError "Could not
+// establish connection", strictement indiscernable d'une extension non
+// installee. C'est ce qui produisait "Extension Chrome non detectee" alors
+// que l'extension etait bel et bien installee et fonctionnelle -- diagnostic
+// pre-beta 2026-08-04. Toute future migration de domaine DOIT mettre a jour
+// cette liste en meme temps que le rattachement DNS/Vercel, jamais apres.
 export default defineManifest({
   manifest_version: 3,
   name: "ResellOS pour Vinted",
@@ -44,7 +56,12 @@ export default defineManifest({
   permissions: ["storage", "tabs", "scripting"],
   host_permissions: ["https://www.vinted.fr/*"],
   externally_connectable: {
-    matches: ["http://localhost:5173/*", "https://dzikovinted-ai.vercel.app/*"],
+    matches: [
+      "http://localhost:5173/*",
+      "https://dzikovinted-ai.vercel.app/*",
+      "https://resellosapp.com/*",
+      "https://www.resellosapp.com/*",
+    ],
   },
   content_scripts: [
     {
