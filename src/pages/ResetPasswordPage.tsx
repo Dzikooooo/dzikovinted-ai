@@ -22,6 +22,7 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,13 +55,13 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
 
   return (
     <div className="min-h-screen bg-dark-400 flex flex-col items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,196,0,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,196,0,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(124,92,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,255,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-neon-500/4 rounded-full blur-[160px]" />
 
       <div className="relative z-10 w-full max-w-md">
-        <div className="flex items-center gap-2 mb-8">
-          <Logo size={32} />
-          <span className="text-xl font-black">Resell<span className="text-neon-500">OS</span></span>
+        <div className="flex items-center gap-1.5 mb-8">
+          <Logo variant="transparent" size={40} />
+          <span className="text-xl font-black">esell<span className="text-neon-500">OS</span></span>
         </div>
 
         <div className="bg-surface border border-white/8 rounded-2xl p-8">
@@ -76,12 +77,14 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
+              <label htmlFor="reset-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                 <input
+                  id="reset-password"
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoFocus
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -95,27 +98,33 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
             </div>
 
             <div>
-              <label className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Confirmer le mot de passe</label>
+              <label htmlFor="reset-confirm-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Confirmer le mot de passe</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                 <input
+                  id="reset-confirm-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                  className={`w-full bg-dark-400 border rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
+                    passwordsMismatch
+                      ? 'border-red-500/40 focus:border-red-500/60 focus:ring-red-500/20'
+                      : 'border-white/10 focus:border-neon-500/40 focus:ring-neon-500/20'
+                  }`}
                 />
               </div>
+              {passwordsMismatch && <p className="text-xs text-red-400 mt-1.5">Les mots de passe ne correspondent pas.</p>}
             </div>
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-neon-500 text-black font-bold py-3.5 rounded-xl hover:bg-neon-600 transition-all duration-200 hover:shadow-[0_0_30px_rgba(255,196,0,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2"
+              disabled={loading || passwordsMismatch}
+              className="w-full bg-neon-600 text-white font-bold py-3.5 rounded-xl hover:bg-neon-700 transition-all duration-200 hover:shadow-[0_0_30px_rgba(124,92,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-400"
             >
-              {loading ? 'Chargement...' : 'Définir le mot de passe'}
+              {loading ? 'Enregistrement...' : 'Définir le mot de passe'}
             </button>
           </form>
 

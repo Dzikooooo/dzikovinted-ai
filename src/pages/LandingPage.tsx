@@ -4,6 +4,7 @@ import { Hero } from './landing/Hero';
 import { ProductPreview } from './landing/ProductPreview';
 import { Features } from './landing/Features';
 import { Pricing } from './landing/Pricing';
+import { FAQ } from './landing/FAQ';
 import { CTABanner } from './landing/CTABanner';
 import { Footer } from './landing/Footer';
 
@@ -19,6 +20,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <ProductPreview />
       <Features />
       <Pricing onNavigate={onNavigate} />
+      <FAQ />
       <CTABanner onNavigate={onNavigate} />
       <Footer onNavigate={onNavigate} />
     </div>

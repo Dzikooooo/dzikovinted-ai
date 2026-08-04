@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import type { AuthMode, AppPage } from '../lib/types';
 import { Logo } from '../components/ui/Logo';
@@ -19,6 +19,8 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { signIn, signUp, resetPassword } = useAuth();
+  const passwordsMismatch = mode === 'register' && confirmPassword.length > 0 && password !== confirmPassword;
+  const loadingLabel = mode === 'login' ? 'Connexion...' : mode === 'register' ? 'Création du compte...' : 'Envoi en cours...';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +50,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
         if (error) {
           setError(error);
         } else if (confirmEmail) {
-          setInfo('Compte cree avec succes ! Verifie ton email pour activer ton compte.');
+          setInfo('Compte créé avec succès ! Vérifie ton email pour activer ton compte.');
         } else {
           onNavigate('dashboard');
         }
@@ -57,7 +59,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
         if (error) {
           setError(error);
         } else {
-          setInfo('Si cet email existe, tu recevras un lien de reinitialisation.');
+          setInfo('Si cet email existe, tu recevras un lien de réinitialisation.');
         }
       }
     } finally {
@@ -67,7 +69,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
   return (
     <div className="min-h-screen bg-dark-400 flex flex-col items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,196,0,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,196,0,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(124,92,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,255,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-neon-500/4 rounded-full blur-[160px]" />
 
       <div className="relative z-10 w-full max-w-md">
@@ -75,9 +77,9 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
           <ArrowLeft className="w-4 h-4" /> Retour à l'accueil
         </button>
 
-        <div className="flex items-center gap-2 mb-8">
-          <Logo size={32} />
-          <span className="text-xl font-black">Resell<span className="text-neon-500">OS</span></span>
+        <div className="flex items-center gap-1.5 mb-8">
+          <Logo variant="transparent" size={44} />
+          <span className="text-2xl font-black">esell<span className="text-neon-500">OS</span></span>
         </div>
 
         <div className="bg-surface border border-white/8 rounded-2xl p-8">
@@ -85,7 +87,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             {mode === 'login' ? 'Connexion' : mode === 'register' ? 'Créer un compte' : 'Mot de passe oublié'}
           </h1>
           <p className="text-sm text-gray-500 mb-8">
-            {mode === 'login' ? 'Accède à ton tableau de bord.' : mode === 'register' ? '10 analyses gratuites dès l\'inscription.' : 'Reçois un lien de réinitialisation.'}
+            {mode === 'login' ? 'Accède à ton tableau de bord.' : mode === 'register' ? '10 annonces IA offertes chaque mois, dès l\'inscription.' : 'Reçois un lien de réinitialisation.'}
           </p>
 
           {error && (
@@ -97,7 +99,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
           {info && (
             <div className="flex items-center gap-3 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3 mb-6">
-              <AlertCircle className="w-4 h-4 text-neon-500 flex-shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-neon-500 flex-shrink-0" />
               <p className="text-sm text-neon-500">{info}</p>
             </div>
           )}
@@ -105,12 +107,14 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
               <div>
-                <label className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
+                <label htmlFor="auth-fullname" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                   <input
+                    id="auth-fullname"
                     type="text"
                     required
+                    autoFocus
                     autoComplete="name"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
@@ -122,12 +126,14 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             )}
 
             <div>
-              <label className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Email</label>
+              <label htmlFor="auth-email" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                 <input
+                  id="auth-email"
                   type="email"
                   required
+                  autoFocus={mode !== 'register'}
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -139,10 +145,11 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
             {mode !== 'forgot' && (
               <div>
-                <label className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Mot de passe</label>
+                <label htmlFor="auth-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Mot de passe</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                   <input
+                    id="auth-password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
@@ -160,19 +167,25 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
             {mode === 'register' && (
               <div>
-                <label className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Confirmer le mot de passe</label>
+                <label htmlFor="auth-confirm-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Confirmer le mot de passe</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
                   <input
+                    id="auth-confirm-password"
                     type={showPassword ? 'text' : 'password'}
                     required
                     autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                    className={`w-full bg-dark-400 border rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
+                      passwordsMismatch
+                        ? 'border-red-500/40 focus:border-red-500/60 focus:ring-red-500/20'
+                        : 'border-white/10 focus:border-neon-500/40 focus:ring-neon-500/20'
+                    }`}
                   />
                 </div>
+                {passwordsMismatch && <p className="text-xs text-red-400 mt-1.5">Les mots de passe ne correspondent pas.</p>}
               </div>
             )}
 
@@ -186,10 +199,10 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-neon-500 text-black font-bold py-3.5 rounded-xl hover:bg-neon-600 transition-all duration-200 hover:shadow-[0_0_30px_rgba(255,196,0,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2"
+              disabled={loading || passwordsMismatch}
+              className="w-full bg-neon-600 text-white font-bold py-3.5 rounded-xl hover:bg-neon-700 transition-all duration-200 hover:shadow-[0_0_30px_rgba(124,92,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed text-sm mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-400"
             >
-              {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : mode === 'register' ? 'Créer mon compte' : 'Envoyer le lien'}
+              {loading ? loadingLabel : mode === 'login' ? 'Se connecter' : mode === 'register' ? 'Créer mon compte' : 'Envoyer le lien'}
             </button>
           </form>
 

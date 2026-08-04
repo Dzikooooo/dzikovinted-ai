@@ -1,8 +1,25 @@
-import { Logo } from '../../components/ui/Logo';
+import { MessageCircle, Sparkles, Eye, MessageSquare, Receipt } from 'lucide-react';
+
+// Refonte complete (audit personnel utilisateur, 2026-08-01) : l'ancienne
+// version reproduisait une capture d'ecran quasi complete du Dashboard
+// (sidebar, anneaux, cartes, chiffres) -- trop dense, devoilait toute
+// l'interface. Nouvelle version : uniquement 5 modules, presentation
+// premium et volontairement mysterieuse (aucune capture d'ecran, aucune
+// donnee chiffree), pour donner envie de decouvrir le produit plutot que
+// de tout montrer avant l'inscription. Libelles/icones/description repris
+// tels quels de la sidebar reelle (DashboardLayout.tsx) -- jamais de texte
+// invente.
+const MODULES = [
+  { icon: MessageCircle, label: 'Communauté Discord' },
+  { icon: Sparkles, label: 'Générateur IA' },
+  { icon: Eye, label: 'Mes annonces', desc: 'Modifier, supprimer, surveiller le marché' },
+  { icon: MessageSquare, label: 'Communication' },
+  { icon: Receipt, label: 'Comptabilité' },
+];
 
 export function ProductPreview() {
   return (
-    <section className="pt-24 pb-10 relative overflow-hidden">
+    <section className="pt-16 pb-16 sm:pb-24 relative overflow-hidden">
       <div className="absolute inset-x-0 top-10 mx-auto h-72 w-[70%] bg-neon-500/10 blur-[140px] pointer-events-none" />
 
       <div className="relative max-w-7xl mx-auto px-4">
@@ -11,150 +28,46 @@ export function ProductPreview() {
             APERÇU DE LA PLATEFORME
           </p>
 
-          <h2 className="text-4xl sm:text-6xl font-black tracking-tight leading-none">
-            Un seul dashboard.
+          <h2 className="text-4xl sm:text-5xl font-black tracking-tight leading-none">
+            Une seule plateforme.
             <br />
-            Toute votre activité.
+            Tout votre business.
           </h2>
 
           <p className="mt-6 text-gray-400 max-w-3xl mx-auto text-lg leading-8">
-            Créez vos annonces, estimez vos prix, détectez les meilleures opportunités
-            et pilotez votre business depuis une seule interface.
+            Tout ce qu'il faut pour gérer ton activité Vinted, sans changer d'outil.
           </p>
-
-          <span className="inline-block mt-6 text-[10px] font-mono uppercase tracking-wider text-gray-500 bg-white/5 border border-white/10 px-2.5 py-1 rounded-md">
-            Aperçu — exemple, pas des données réelles
-          </span>
         </div>
 
-        <div className="relative rounded-[36px] border border-neon-500/25 bg-gradient-to-b from-[#1A1A1A] to-[#0B0B0B] p-3 shadow-[0_50px_140px_rgba(0,0,0,.7),0_0_80px_rgba(255,196,0,.08)] transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_60px_160px_rgba(0,0,0,.8),0_0_120px_rgba(255,196,0,.12)]">
-        <div className="absolute -inset-px rounded-[36px] bg-gradient-to-r from-transparent via-neon-500/30 to-transparent opacity-30 pointer-events-none" />
-          <div className="rounded-[28px] border border-white/10 bg-black overflow-hidden">
+        <div className="relative rounded-[36px] border border-neon-500/25 bg-gradient-to-b from-[#1A1A1A] to-[#0B0B0B] px-6 py-16 sm:px-16 sm:py-20 shadow-[0_50px_140px_rgba(0,0,0,.7),0_0_80px_rgba(124,92,255,.08)] overflow-hidden">
+          <div className="absolute -inset-px rounded-[36px] bg-gradient-to-r from-transparent via-neon-500/30 to-transparent opacity-30 pointer-events-none" />
+          <div
+            className="absolute inset-0 opacity-40 pointer-events-none"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(124,92,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,255,0.05) 1px, transparent 1px)',
+              backgroundSize: '48px 48px',
+            }}
+          />
 
-            <div className="h-12 border-b border-white/10 flex items-center justify-between px-5">
-              <div className="flex items-center gap-2">
-                <Logo size={18} />
-                <span className="text-xs font-bold text-gray-300">Resell<span className="text-neon-500">OS</span></span>
+          <div className="relative grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
+            {MODULES.map(({ icon: Icon, label, desc }) => (
+              <div
+                key={label}
+                className="group flex flex-col items-center text-center gap-4 transition-all duration-500 hover:-translate-y-2"
+              >
+                <div className="w-[72px] h-[72px] rounded-2xl bg-neon-500/10 border border-neon-500/20 flex items-center justify-center transition-all duration-500 group-hover:bg-neon-500/20 group-hover:shadow-[0_0_40px_rgba(124,92,255,0.35)]">
+                  <Icon className="w-8 h-8 text-neon-500" />
+                </div>
+                <div>
+                  <p className="font-bold text-white text-sm sm:text-base">{label}</p>
+                  {desc && <p className="text-gray-500 text-xs mt-1.5 max-w-[10rem] mx-auto leading-relaxed">{desc}</p>}
+                </div>
               </div>
-
-              <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-gray-500">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-neon-500" />
-                </span>
-                Aperçu en direct
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-[240px_1fr] min-h-[520px]">
-              <aside className="hidden lg:block border-r border-white/10 p-6">
-                <div className="flex items-center gap-3 mb-10">
-                  <Logo size={36} />
-                  <div className="font-black">
-                    <span>Resell</span>
-                    <span className="text-neon-500 ml-1">OS</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {["Dashboard", "Générateur IA", "Opportunités", "Stock", "Statistiques"].map((item, index) => (
-                    <div
-                      key={item}
-                      className={`px-4 py-3 rounded-xl text-sm ${
-                        index === 0
-                          ? "bg-neon-500/10 text-neon-500"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              </aside>
-
-              <div className="p-6 sm:p-8">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 mb-8">
-                  <div>
-                    <h3 className="text-3xl sm:text-4xl font-black tracking-tight">
-                      Bonjour, <span className="text-neon-500">jean</span>
-                    </h3>
-                    <p className="text-gray-500 mt-2">
-                      Voici un aperçu de votre activité Resell OS.
-                    </p>
-                  </div>
-
-                  <button className="bg-neon-500 text-black font-bold rounded-2xl px-5 py-3">
-                    Nouvelle annonce
-                  </button>
-                </div>
-
-                <div className="rounded-3xl bg-surface-alt border border-white/10 p-6 mb-6">
-      <div className="flex items-center justify-between mb-5">
-        <div className="w-full">
-          <p className="font-bold mb-3">Crédits restants</p>
-
-          <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full w-[40%] bg-gradient-to-r from-neon-500 to-white rounded-full" />
+            ))}
           </div>
-
-          <p className="mt-4 text-3xl font-black">
-            4 <span className="text-gray-500 text-lg font-medium">/10 ce mois</span>
-          </p>
         </div>
       </div>
-    </div>
-
-    <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-                  {[
-                    ["1", "Annonces générées"],
-                    ["FREE", "Plan actuel"],
-                    ["0", "Favoris"],
-                    ["35 €", "Revenus estimés"],
-                  ].map(([value, label]) => (
-                    <div
-                      key={label}
-                      className="rounded-2xl bg-surface-alt border border-white/10 p-5"
-                    >
-                      <p className="text-2xl font-black">{value}</p>
-                      <p className="text-gray-500 text-sm mt-2">{label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4 mb-6">
-                  {[
-                    ["Générer une annonce", "Upload des photos et génère."],
-                    ["Mes annonces", "Retrouve tes annonces sauvegardées."],
-                    ["Statistiques", "Suis tes performances et revenus."],
-                  ].map(([title, desc]) => (
-                    <div
-                      key={title}
-                      className="rounded-2xl bg-surface-alt border border-white/10 p-5"
-                    >
-                      <h4 className="font-bold">{title}</h4>
-                      <p className="text-gray-500 text-sm mt-2">{desc}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl bg-surface-alt border border-white/10 p-5 flex items-center justify-between">
-                  <div>
-                    <p className="font-bold">Polo Ralph Lauren homme bleu marine taille L</p>
-                    <p className="text-gray-500 text-sm mt-1">Ralph Lauren · 25 juin</p>
-                  </div>
-                  <p className="text-neon-500 font-black">35 €</p>
-                  </div> {/* dernière carte */}
-
-    </div> {/* contenu principal */}
-
-    </div> {/* grid */}
-
-    </div> {/* rounded-[28px] */}
-
-    </div> {/* rounded-[36px] */}
-
-    </div> {/* max-w-7xl */}
-
     </section>
   );
 }
