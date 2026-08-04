@@ -153,6 +153,12 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
 
   const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
   const [editingItem, setEditingItem] = useState<Listing | null>(null);
+  // Etape d'explication avant ouverture de l'onglet Vinted pour edit_listing
+  // (audit RC, 2026-08-05) -- meme principe que PublishConfirmationModal
+  // pour publish/republish, qui elle existait deja. Jusqu'ici "Enregistrer
+  // et mettre a jour sur Vinted" declenchait handleConfirmUpdate() (et donc
+  // l'ouverture reelle de l'onglet) sans aucune etape intermediaire.
+  const [pendingUpdate, setPendingUpdate] = useState<{ listing: Listing; changedFields: EditableFieldName[] } | null>(null);
   const [publishState, setPublishState] = useState<{
     step: PublishStep | 'done' | null;
     error: string | null;
@@ -763,9 +769,34 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             setSelected(new Set());
             load();
             if (intent === 'publish') setPublishingItem(updated);
-            if (intent === 'update') void handleConfirmUpdate(updated, changedFields);
+            if (intent === 'update') setPendingUpdate({ listing: updated, changedFields });
           }}
         />
+      )}
+
+      {pendingUpdate && (
+        <Modal onClose={() => setPendingUpdate(null)} size="sm">
+          <h2 className="text-lg font-black mb-2">Mettre à jour sur Vinted ?</h2>
+          <p className="text-sm text-gray-400 mb-6">
+            Un nouvel onglet Vinted va s'ouvrir avec les champs déjà préparés. Il te suffira de cliquer une fois sur
+            Valider dans cet onglet pour terminer la modification.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button
+              fullWidth
+              onClick={() => {
+                const { listing, changedFields } = pendingUpdate;
+                setPendingUpdate(null);
+                void handleConfirmUpdate(listing, changedFields);
+              }}
+            >
+              Continuer vers Vinted
+            </Button>
+            <Button variant="secondary" fullWidth onClick={() => setPendingUpdate(null)}>
+              Annuler
+            </Button>
+          </div>
+        </Modal>
       )}
 
       {confirmBulkDelete && (
