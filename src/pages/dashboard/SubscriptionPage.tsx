@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Check, Zap, Crown, ShoppingBag, ExternalLink, Receipt, XCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ContactModal } from '../../components/ui/ContactModal';
 
 const plans = [
   {
@@ -40,6 +42,14 @@ const plans = [
 export default function SubscriptionPage() {
   const { profile } = useAuth();
   const currentPlan = profile?.plan ?? 'free';
+  // P0-4 (2026-08-04) : la landing traite deja Team comme "contacter
+  // l'equipe, pas un achat immediat" (Pricing.tsx, meme ContactModal) --
+  // ici la carte Team affichait "Bientot disponible" desactive, sans aucun
+  // moyen d'agir, alors qu'un utilisateur deja connecte et interesse par
+  // Team est justement le public le plus probable a vouloir le faire. Meme
+  // verite produit des deux cotes desormais : pas d'achat immediat promis
+  // nulle part, mais un vrai chemin de contact partout.
+  const [teamContactOpen, setTeamContactOpen] = useState(false);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -106,9 +116,19 @@ export default function SubscriptionPage() {
                   </li>
                 ))}
               </ul>
-              <Button variant="secondary" disabled fullWidth>
-                {isCurrent ? 'Plan actuel' : 'Bientôt disponible'}
-              </Button>
+              {isCurrent ? (
+                <Button variant="secondary" disabled fullWidth>
+                  Plan actuel
+                </Button>
+              ) : plan.plan === 'team' ? (
+                <Button variant="secondary" fullWidth onClick={() => setTeamContactOpen(true)}>
+                  Contacter l'équipe
+                </Button>
+              ) : (
+                <Button variant="secondary" disabled fullWidth>
+                  Bientôt disponible
+                </Button>
+              )}
             </div>
           );
         })}
@@ -150,6 +170,18 @@ export default function SubscriptionPage() {
           description="Une fois la facturation en ligne activée, tes factures apparaîtront ici automatiquement."
         />
       </div>
+
+      {teamContactOpen && (
+        <ContactModal
+          onClose={() => setTeamContactOpen(false)}
+          title="Parlons de ton équipe"
+          description="Explique-nous brièvement ton organisation et tes besoins. Nous te répondrons pour t'aider à choisir la meilleure configuration ResellOS."
+          subject="Demande concernant le plan Team ResellOS"
+          emailLabel="Adresse e-mail"
+          showNameField
+          showUserCountField
+        />
+      )}
     </div>
   );
 }
