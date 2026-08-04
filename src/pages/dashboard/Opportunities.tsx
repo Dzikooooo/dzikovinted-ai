@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, Heart, ImageOff, Search, Sparkles, Tag, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
-import type { MarketOpportunity, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
+import type { MarketOpportunity, OpportunityBreakdownEntry, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
 import { OPPORTUNITY_CATEGORIES } from "../../lib/opportunityCategories";
 import { computeVerdict, VERDICT_BADGES } from "../../lib/opportunityVerdict";
 import { formatEUR } from "../../lib/currency";
@@ -508,6 +508,34 @@ function buildHighlights(item: MarketOpportunity, risk: { label: string; classNa
   return highlights;
 }
 
+// P0-2 (2026-08-04) : le score/confiance/risque du moteur sont chacun une
+// somme de facteurs nommes (voir scripts/opportunity-engine/scoring.ts,
+// confidence.ts, risk.ts) deja tagues par `kind` a la source -- jamais
+// exploite cote affichage jusqu'ici, tout finissait dans un seul flux
+// "Pourquoi cette opportunite ?". Regrouper par kind rend visible QUELS
+// facteurs ont fait le score (pas juste le resultat final), sans toucher au
+// moteur de calcul lui-meme.
+const BREAKDOWN_GROUP_ORDER: OpportunityBreakdownEntry["kind"][] = ["score", "confidence", "risk"];
+const BREAKDOWN_GROUP_LABELS: Record<OpportunityBreakdownEntry["kind"], string> = {
+  score: "Facteurs de score",
+  confidence: "Facteurs de confiance",
+  risk: "Facteurs de risque",
+};
+
+function groupBreakdownByKind(
+  breakdown: OpportunityBreakdownEntry[] | null
+): Record<OpportunityBreakdownEntry["kind"], OpportunityBreakdownEntry[]> {
+  const groups: Record<OpportunityBreakdownEntry["kind"], OpportunityBreakdownEntry[]> = {
+    score: [],
+    confidence: [],
+    risk: [],
+  };
+  for (const entry of breakdown ?? []) {
+    groups[entry.kind].push(entry);
+  }
+  return groups;
+}
+
 function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -709,7 +737,19 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
         </span>
       </div>
 
-      <OneScoreBar score={Number(item.score || 0)} size="md" className="mb-4" />
+      <div className="mb-4">
+        <OneScoreBar score={Number(item.score || 0)} size="md" />
+        {/* P0-2 : le score est une somme de bonus/malus plafonnee a 100 (voir
+            scripts/opportunity-engine/scoring.ts) -- plusieurs signaux forts
+            cumules atteignent legitimement le plafond, ce n'est pas un defaut
+            d'affichage. Le detail juste en dessous montre precisement quels
+            facteurs y ont contribue. */}
+        {Number(item.score ?? 0) >= 100 && (
+          <p className="text-[11px] text-amber-400 mt-1.5">
+            Score maximal atteint — plusieurs signaux positifs se cumulent (détail ci-dessous).
+          </p>
+        )}
+      </div>
 
       {highlights.length > 0 && (
         <div className="mb-5">
@@ -721,6 +761,36 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
           </ul>
         </div>
       )}
+
+      {(() => {
+        const groups = groupBreakdownByKind(item.breakdown);
+        const nonEmptyGroups = BREAKDOWN_GROUP_ORDER.filter((kind) => groups[kind].length > 0);
+        if (nonEmptyGroups.length === 0) return null;
+        return (
+          <div className="mb-5 space-y-4">
+            {nonEmptyGroups.map((kind) => (
+              <div key={kind}>
+                <p className="text-xs text-gray-500 font-bold mb-2">{BREAKDOWN_GROUP_LABELS[kind]}</p>
+                <ul className="space-y-1.5 text-sm text-gray-300">
+                  {groups[kind].map((entry, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className={entry.delta >= 0 ? "text-neon-500 flex-shrink-0" : "text-amber-400 flex-shrink-0"}>
+                        {entry.delta >= 0 ? "✓" : "⚠"}
+                      </span>
+                      <span>
+                        {entry.label}
+                        {entry.delta !== 0 && (
+                          <span className="text-gray-500"> ({entry.delta > 0 ? "+" : ""}{entry.delta})</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {item.vinted_url ? (
         <a
