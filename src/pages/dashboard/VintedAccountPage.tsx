@@ -8,6 +8,7 @@ import { getConfiguredExtensionId, isExtensionConfigured, pingExtension, pairExt
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
 import { formatEUR } from '../../lib/currency';
+import { CopyBtn } from '../../components/ui/CopyBtn';
 import { devLog, devWarn } from '../../lib/devLog';
 
 const UPCOMING = [
@@ -154,11 +155,27 @@ export default function VintedAccountPage() {
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
             Installe l'extension ResellOS pour Vinted, puis reviens sur cette page. Plus besoin d'ouvrir Vinted au quotidien.
           </p>
-          <p className="text-[11px] text-gray-600 max-w-sm mx-auto mt-3">
-            Déjà installée ? Vérifie sur <code className="text-gray-400">chrome://extensions</code> que son ID correspond
-            exactement à <code className="text-gray-400">{getConfiguredExtensionId() ?? '—'}</code> — un ID différent
-            produit exactement le même message (Chrome ne fait pas la distinction).
-          </p>
+
+          {/* P0-5 (2026-08-04) : l'ID etait auparavant pose en texte brut au
+              milieu d'une phrase -- utile pour le diagnostic (voir
+              EXTENSION.md) mais illisible et pas copiable, presentation type
+              "message de debug" plutot qu'un vrai etat produit. Bloc dedie,
+              jamais un changement de fonctionnement (P-04 non touche ici). */}
+          <div className="max-w-sm mx-auto mt-4 bg-dark-400 border border-white/10 rounded-xl p-3 text-left">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-1.5">
+              ID d'extension attendu
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 text-xs text-gray-300 font-mono break-all">
+                {getConfiguredExtensionId() ?? '—'}
+              </code>
+              {getConfiguredExtensionId() && <CopyBtn text={getConfiguredExtensionId()!} small />}
+            </div>
+            <p className="text-[11px] text-gray-600 mt-2">
+              Déjà installée ? Compare avec l'ID affiché sur <code className="text-gray-400">chrome://extensions</code>
+              {' '}— un ID différent produit exactement le même message (Chrome ne fait pas la distinction).
+            </p>
+          </div>
         </div>
       )}
 
