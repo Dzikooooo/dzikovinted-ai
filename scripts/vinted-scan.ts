@@ -7,6 +7,7 @@ import {
   buildSearchContext,
   contextForItem,
   observationLookbackSince,
+  normalizeBrand,
 } from "./opportunity-engine";
 import type { ScrapedItem } from "./types";
 import { dedupeWatchlist, type WatchlistRow } from "./watchlistDedup";
@@ -239,7 +240,6 @@ async function extractItemsFromPage(page: Page): Promise<ScrapedItem[]> {
 
       results.push({
         title,
-        brand: titleEl.textContent?.trim() || "Vinted",
         price,
         image: imageEl?.getAttribute("src") || "",
         url: href,
@@ -308,6 +308,11 @@ async function scanSearch(page: Page, search: string) {
 }
 
 interface ScoredOpportunity extends ScrapedItem {
+  // P0-1 (2026-08-04) : marque de la recherche watchlist qui a produit cet
+  // item, jamais le texte scrape du DOM Vinted (voir types.ts ScrapedItem).
+  // null quand normalizeBrand() rejette watch.brand (filet de securite,
+  // watch.brand est deja fiable par construction -- voir brand.ts).
+  brand: string | null;
   category: string;
   market_price: number;
   profit: number;
@@ -473,6 +478,24 @@ async function main() {
       const comparablePrices = items.map((i) => i.price);
       const searchCtx = buildSearchContext(watch, comparablePrices, scanCtx);
 
+      // Calcule une seule fois par recherche watchlist (constant pour tous
+      // ses items) -- evite de repeter le calcul et le log de diagnostic
+      // ci-dessous pour chaque annonce individuelle d'une meme recherche.
+      const normalizedWatchBrand = normalizeBrand(watch.brand);
+
+      // DIAGNOSTIC TEMPORAIRE (P0-1, demande utilisateur 2026-08-04) -- a
+      // retirer une fois valide sur quelques scans reels (objectif : confirmer
+      // qu'aucune marque rare legitime de la watchlist n'est jamais rejetee,
+      // et que seules des valeurs manifestement invalides le sont). Ne
+      // s'execute qu'en cas de rejet reel (rare par construction, voir
+      // brand.ts) -- au plus une ligne par recherche watchlist concernee,
+      // jamais par annonce. Visible dans les logs du run GitHub Actions.
+      if (watch.brand && !normalizedWatchBrand) {
+        console.warn(
+          `[P0-1 diagnostic, a retirer apres validation] normalizeBrand() a rejete la marque watchlist "${watch.brand}" (modele : "${watch.model}")`
+        );
+      }
+
       for (const item of items) {
         if (item.favourites < 5) continue;
 
@@ -488,6 +511,9 @@ async function main() {
 
         allItems.push({
           ...item,
+          // P0-1 : jamais le texte scrape du DOM Vinted -- voir types.ts et
+          // le commentaire sur ScoredOpportunity.brand plus haut.
+          brand: normalizedWatchBrand,
           category: watch.category,
           market_price: analysis.market_price,
           profit: analysis.profit,
