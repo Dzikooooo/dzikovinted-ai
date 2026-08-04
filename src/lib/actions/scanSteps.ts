@@ -8,6 +8,7 @@ export type ScanStep =
   | 'searching'
   | 'analyzing'
   | 'ranking'
+  | 'photos'
   | 'saving';
 
 export const SCAN_STEP_ORDER: ScanStep[] = [
@@ -15,6 +16,7 @@ export const SCAN_STEP_ORDER: ScanStep[] = [
   'searching',
   'analyzing',
   'ranking',
+  'photos',
   'saving',
 ];
 
@@ -23,6 +25,7 @@ export const SCAN_STEP_LABELS: Record<ScanStep, string> = {
   searching: 'Recherche…',
   analyzing: 'Analyse…',
   ranking: 'Classement…',
+  photos: 'Récupération des photos…',
   saving: 'Enregistrement…',
 };
 
