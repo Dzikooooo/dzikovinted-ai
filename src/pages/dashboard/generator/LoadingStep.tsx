@@ -3,10 +3,10 @@ import { Check } from 'lucide-react';
 import { Logo } from '../../../components/ui/Logo';
 
 const LOADING_MESSAGES = [
-  { text: 'Analyse du vetement...', sub: 'Detection des caracteristiques visuelles' },
-  { text: 'Detection de la marque...', sub: 'Identification du logo et des etiquettes' },
-  { text: 'Estimation du prix...', sub: 'Comparaison avec le marche Vinted' },
-  { text: 'Generation SEO...', sub: 'Optimisation titre, description et mots-cles' },
+  { text: 'Analyse du vêtement...', sub: 'Détection des caractéristiques visuelles' },
+  { text: 'Détection de la marque...', sub: 'Identification du logo et des étiquettes' },
+  { text: 'Estimation du prix...', sub: 'Comparaison avec le marché Vinted' },
+  { text: 'Génération SEO...', sub: 'Optimisation titre, description et mots-clés' },
 ];
 
 interface LoadingStepProps {
@@ -36,7 +36,7 @@ export function LoadingStep({ loadingStep }: LoadingStepProps) {
             <Logo size={40} className="animate-pulse" />
           </div>
         </div>
-        <h2 className="text-xl font-black mb-2">L'IA analyse ton vetement</h2>
+        <h2 className="text-xl font-black mb-2">L'IA analyse ton vêtement</h2>
         <p className="text-gray-500 text-sm mb-8">
           {isSlow ? "Ça prend plus de temps que d'habitude, merci de patienter..." : 'Quelques secondes...'}
         </p>
@@ -45,7 +45,7 @@ export function LoadingStep({ loadingStep }: LoadingStepProps) {
             const isActive = i === loadingStep;
             const isDone = i < loadingStep;
             return (
-              <div key={text} className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all duration-500 ${isActive ? 'bg-neon-500/10 border-neon-500/30 shadow-[0_0_20px_rgba(255,196,0,0.1)]' : isDone ? 'bg-neon-500/5 border-neon-500/10' : 'bg-surface border-white/5'}`}>
+              <div key={text} className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all duration-500 ${isActive ? 'bg-neon-500/10 border-neon-500/30 shadow-[0_0_20px_rgba(124,92,255,0.1)]' : isDone ? 'bg-neon-500/5 border-neon-500/10' : 'bg-surface border-white/5'}`}>
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-neon-500 animate-pulse' : isDone ? 'bg-neon-500/60' : 'bg-gray-700'}`} />
                 <div className="flex-1 text-left">
                   <span className={`text-sm block ${isActive ? 'text-neon-500 font-medium' : isDone ? 'text-gray-400' : 'text-gray-600'}`}>{text}</span>

@@ -80,7 +80,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
 
   const handleGenerate = async () => {
     if (isLimitReached) {
-      setError('Tu as atteint ta limite de credits. Passe au plan Pro pour continuer.');
+      setError('Tu as atteint ta limite de crédits. Passe au plan Pro pour continuer.');
       return;
     }
 
@@ -231,7 +231,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         onSave={handleSave}
         saving={saving}
         saved={saved}
-        onGoToStock={() => onNavigate('stock')}
+        onGoToStock={() => onNavigate('watchlist')}
         onCreateNew={resetAll}
       />
     );

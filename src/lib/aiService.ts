@@ -70,7 +70,7 @@ export async function analyzeWithAI({
         color: listing.color ?? '',
         size: listing.size ?? '',
         material: listing.material ?? '',
-        condition: listing.condition ?? 'Bon etat',
+        condition: listing.condition ?? 'Bon état',
         price: Number(listing.price) || 0,
         quick_price: Number(listing.quick_price) || 0,
         premium_price: Number(listing.premium_price) || 0,
@@ -83,6 +83,8 @@ export async function analyzeWithAI({
       .filter((k: string, i: number, arr: string[]) => arr.indexOf(k) === i)
   : [],
         vinted_filters: Array.isArray(listing.vinted_filters) ? listing.vinted_filters : [],
+        price_source: listing.price_source === 'market' ? 'market' : 'ai_estimate',
+        price_comparables_count: Number(listing.price_comparables_count) || 0,
       };
     } catch (err) {
       console.error('Edge function call failed:', err);

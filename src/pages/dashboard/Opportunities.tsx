@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Heart, ImageOff, RefreshCw, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, Heart, ImageOff, Search, Sparkles, Tag, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import type { MarketOpportunity, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
@@ -12,6 +12,12 @@ import { OneScoreBar } from "../../components/ui/OneScoreBar";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { ErrorBanner } from "../../components/ui/ErrorBanner";
+import { Button } from "../../components/ui/Button";
+import { Modal } from "../../components/ui/Modal";
+import { PageHeader } from "../../components/ui/PageHeader";
+import { FilterPill } from "../../components/ui/FilterPill";
+import { SearchInput } from "../../components/ui/SearchInput";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { useActionEngine } from "../../hooks/useActionEngine";
 import ScanProgressModal from "../../components/opportunities/ScanProgressModal";
 import OpportunityFilterPanel from "../../components/opportunities/OpportunityFilterPanel";
@@ -287,102 +293,117 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
     };
   }, [filteredProducts]);
 
+  // Marque la plus representee dans le marche scanne (toutes opportunites,
+  // pas seulement celles filtrees -- reflete le marche dans son ensemble,
+  // pas la vue courante de l'utilisateur).
+  const topBrand = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of products) {
+      if (item.brand) counts.set(item.brand, (counts.get(item.brand) ?? 0) + 1);
+    }
+    let best: { brand: string; count: number } | null = null;
+    for (const [brand, count] of counts) {
+      if (!best || count > best.count) best = { brand, count };
+    }
+    return best;
+  }, [products]);
+
   const categories: CategoryFilter[] = ["all", ...OPPORTUNITY_CATEGORIES];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-8">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black mb-1">
-            Opportunités <span className="text-neon-500">Vinted</span>
-          </h1>
-          <p className="text-gray-400 text-sm">
+      <PageHeader
+        title={
+          loading ? (
+            <>Opportunités <span className="text-neon-500">Vinted</span></>
+          ) : (
+            <>
+              {products.length} opportunité{products.length !== 1 ? 's' : ''}{' '}
+              <span className="text-neon-500">détectée{products.length !== 1 ? 's' : ''}</span>
+            </>
+          )
+        }
+        description={
+          <>
             Les meilleures opportunités détectées en temps réel.
-          </p>
-          {lastScanRun && (
-            <p className="text-xs text-gray-600 mt-1.5">
-              {lastScanRun.status === "success" && lastScanRun.completedAt
-                ? `Dernier scan réussi : ${formatRelativeSync(lastScanRun.completedAt)}`
-                : lastScanRun.status === "error"
-                  ? "Le dernier scan automatique a échoué — nouvelle tentative au prochain passage (toutes les 4h), ou lance un scan manuel."
-                  : "Un scan est en cours."}
-            </p>
-          )}
-        </div>
-
-        <button
-          onClick={scanNow}
-          disabled={isScanning}
-          className="bg-neon-500 text-black px-6 py-3 rounded-xl font-bold flex gap-2 items-center justify-center disabled:opacity-50 hover:bg-neon-600 transition"
-        >
-          {isScanning ? <RefreshCw size={20} className="animate-spin" /> : <Search size={20} />}
-          {isScanning ? "Scan en cours" : "Scanner maintenant"}
-        </button>
-      </div>
+            {lastScanRun && (
+              <span className="block text-xs text-gray-600 mt-1.5">
+                {lastScanRun.status === "success" && lastScanRun.completedAt
+                  ? `Dernier scan réussi : ${formatRelativeSync(lastScanRun.completedAt)}`
+                  : lastScanRun.status === "error"
+                    ? "Le dernier scan automatique a échoué — nouvelle tentative au prochain passage (toutes les 4h), ou lance un scan manuel."
+                    : "Un scan est en cours."}
+              </span>
+            )}
+          </>
+        }
+        action={
+          <Button
+            onClick={scanNow}
+            disabled={isScanning}
+            loading={isScanning}
+            icon={!isScanning && <Search className="w-4 h-4" />}
+          >
+            {isScanning ? "Scan en cours" : "Scanner maintenant"}
+          </Button>
+        }
+      />
 
       {loadError && <ErrorBanner message={loadError} className="mb-6" />}
 
       {lastScanRun?.status === "error" && (
-        <div className="flex items-center gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3 mb-6">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-          <p className="text-sm text-amber-400">
+        <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <p className="text-sm text-red-400">
             Le dernier scan automatique a échoué. Les opportunités ci-dessous peuvent être obsolètes — un nouveau scan aura lieu automatiquement dans les prochaines heures, ou lance-le toi-même.
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard size="lg" label="Opportunités" value={stats.count} />
-        <StatCard size="lg" label="Profit moyen" value={`+${formatEUR(stats.avgProfit)}`} />
-        <StatCard size="lg" label="ROI moyen" value={`+${stats.avgRoi}%`} />
-        <StatCard size="lg" label="Meilleur deal" value={`+${formatEUR(stats.bestProfit)}`} />
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+        <StatCard size="lg" label="Opportunités" value={stats.count} highlight tone="attention" />
+        <StatCard size="lg" label="Profit moyen" value={`+${formatEUR(stats.avgProfit)}`} highlight tone="positive" />
+        <StatCard size="lg" label="ROI moyen" value={`+${stats.avgRoi}%`} highlight tone="positive" />
+        <StatCard size="lg" label="Meilleur deal" value={`+${formatEUR(stats.bestProfit)}`} highlight tone="positive" />
+        <StatCard size="lg" icon={Tag} label="Marque la plus vue" value={topBrand ? topBrand.brand : "-"} />
       </div>
 
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher une opportunité..."
-          className="w-full bg-surface border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/30 focus:ring-2 focus:ring-neon-500/20"
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Rechercher une opportunité..."
+        className="mb-4"
+      />
 
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           {categories.map((cat) => (
-            <button
+            <FilterPill
               key={cat}
+              label={cat === "all" ? "Toutes" : cat}
+              active={filters.category === cat}
               onClick={() => setFilters({ ...filters, category: cat })}
-              className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
-                filters.category === cat
-                  ? "bg-neon-500 text-black border-neon-500"
-                  : "bg-surface-alt text-gray-400 border-white/10 hover:text-white"
-              }`}
-            >
-              {cat === "all" ? "Toutes" : cat}
-            </button>
+            />
           ))}
-          <button
+          <FilterPill
+            label="Favoris"
+            active={favouritesOnly}
             onClick={() => setFavouritesOnly((v) => !v)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold border transition flex items-center gap-1.5 ${
-              favouritesOnly
-                ? "bg-neon-500 text-black border-neon-500"
-                : "bg-surface-alt text-gray-400 border-white/10 hover:text-white"
-            }`}
-          >
-            <Heart className={`w-3.5 h-3.5 ${favouritesOnly ? "fill-current" : ""}`} />
-            Favoris
-          </button>
+            icon={<Heart className={`w-3.5 h-3.5 ${favouritesOnly ? "fill-current" : ""}`} />}
+          />
         </div>
 
-        <div className="flex bg-surface-alt border border-white/10 rounded-xl overflow-hidden">
-          <SortButton label="Score" active={sortBy === "score"} onClick={() => setSortBy("score")} />
-          <SortButton label="Profit" active={sortBy === "profit"} onClick={() => setSortBy("profit")} />
-          <SortButton label="ROI" active={sortBy === "roi"} onClick={() => setSortBy("roi")} />
-          <SortButton label="Prix" active={sortBy === "price_found"} onClick={() => setSortBy("price_found")} />
-          <SortButton label="Récent" active={sortBy === "created_at"} onClick={() => setSortBy("created_at")} />
-        </div>
+        <SegmentedControl
+          options={[
+            { value: "score", label: "Score" },
+            { value: "profit", label: "Profit" },
+            { value: "roi", label: "ROI" },
+            { value: "price_found", label: "Prix" },
+            { value: "created_at", label: "Récent" },
+          ]}
+          value={sortBy}
+          onChange={setSortBy}
+        />
       </div>
 
       <OpportunityFilterPanel filters={filters} onChange={setFilters} availableBrands={availableBrands} />
@@ -406,8 +427,13 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
           title="Aucune opportunité"
           description={
             products.length === 0
-              ? "Aucune donnée pour l'instant. Un scan tourne automatiquement toutes les 4h — ou lance-le toi-même avec \"Scanner maintenant\"."
+              ? "Aucune donnée pour l'instant, mais ta prochaine opportunité peut arriver au prochain scan. Un scan tourne automatiquement toutes les 4h, ou lance-le toi-même."
               : "Aucune opportunité ne correspond à tes filtres actuels. Essaie de les assouplir."
+          }
+          action={
+            products.length === 0
+              ? { label: isScanning ? 'Scan en cours...' : 'Scanner maintenant', onClick: scanNow }
+              : { label: 'Réinitialiser les filtres', onClick: () => setFilters(EMPTY_FILTERS) }
           }
         />
       ) : (
@@ -452,150 +478,265 @@ interface OpportunityCardProps {
   onToggleFavourite: () => void;
 }
 
-function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const verdict = computeVerdict(Number(item.score || 0), Number(item.confidence || 0), item.risk_level);
-  const verdictBadge = VERDICT_BADGES[verdict];
-  const favourites = item.favourites ?? 0;
-  const risk = item.risk_level ? RISK_BADGE[item.risk_level] : null;
-  const checklist = (item.breakdown ?? []).slice(0, 8);
+const MAX_CARD_HIGHLIGHTS = 5;
 
+function buildHighlights(item: MarketOpportunity, risk: { label: string; className: string } | null): string[] {
   // Chiffres concrets dérivés des champs déjà exposés par le moteur (aucun
   // nouveau calcul côté serveur) - complète le breakdown existant, qui reste
   // en tier abstrait ("ROI élevé (≥100%)"), par les vraies valeurs de cette
   // opportunité précise.
-  const concreteHighlights: string[] = [];
+  const highlights: string[] = [];
   if (item.price_found && item.market_price && item.market_price > 0) {
     const pctUnderMarket = Math.round((1 - Number(item.price_found) / Number(item.market_price)) * 100);
-    if (pctUnderMarket > 0) concreteHighlights.push(`Prix ${pctUnderMarket}% sous le marché`);
+    if (pctUnderMarket > 0) highlights.push(`Prix ${pctUnderMarket}% sous le marché`);
   }
   if (item.competing_listings_count !== null && item.competing_listings_count > 0) {
-    concreteHighlights.push(
+    highlights.push(
       `${item.competing_listings_count} annonce${item.competing_listings_count > 1 ? "s" : ""} comparable${item.competing_listings_count > 1 ? "s" : ""} analysée${item.competing_listings_count > 1 ? "s" : ""}`
     );
   }
-  if (item.profit !== null) concreteHighlights.push(`Bénéfice estimé de +${formatEUR(Number(item.profit))}`);
-  if (item.roi !== null) concreteHighlights.push(`ROI estimé ${Math.round(Number(item.roi))}%`);
-  if (item.confidence !== null) concreteHighlights.push(`Confiance du modèle ${item.confidence}%`);
+  if (item.profit !== null) highlights.push(`Bénéfice estimé de +${formatEUR(Number(item.profit))}`);
+  if (item.roi !== null) highlights.push(`ROI estimé ${Math.round(Number(item.roi))}%`);
+  if (item.confidence !== null) highlights.push(`Confiance du modèle ${item.confidence}%`);
   if (item.resale_days_min !== null && item.resale_days_max !== null) {
-    concreteHighlights.push(`Revente moyenne en ${Math.round((item.resale_days_min + item.resale_days_max) / 2)} jours`);
+    highlights.push(`Revente moyenne en ${Math.round((item.resale_days_min + item.resale_days_max) / 2)} jours`);
   }
-  if (risk) concreteHighlights.push(risk.label);
+  if (risk) highlights.push(risk.label);
+  for (const entry of item.breakdown ?? []) {
+    highlights.push(`${entry.delta >= 0 ? "✓" : "⚠"} ${entry.label}`);
+  }
+  return highlights;
+}
+
+function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const verdict = computeVerdict(Number(item.score || 0), Number(item.confidence || 0), item.risk_level);
+  const verdictBadge = VERDICT_BADGES[verdict];
+  const favourites = item.favourites ?? 0;
+  const risk = item.risk_level ? RISK_BADGE[item.risk_level] : null;
+  const allHighlights = buildHighlights(item, risk);
+  // Max 5 lignes d'info sur la carte (demande produit 2026-07-29) -- la vue
+  // detaillee (modale) reste le seul endroit qui montre tout.
+  const cardHighlights = allHighlights.slice(0, MAX_CARD_HIGHLIGHTS);
 
   return (
-    <div className="group bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 hover:-translate-y-1 transition-all duration-300 overflow-hidden hover:shadow-[0_20px_50px_rgba(0,0,0,0.35)]">
-      <div className="relative h-44 bg-dark-400 border-b border-white/10 overflow-hidden">
-        {item.image && !imageFailed ? (
-          <img
-            src={item.image}
-            alt={item.title}
-            onError={() => setImageFailed(true)}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-700">
-            <ImageOff className="w-8 h-8" />
-          </div>
-        )}
-        <span className={`absolute top-3 left-3 flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${verdictBadge.className}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
-          {verdictBadge.label}
-        </span>
-        <div className="absolute top-3 right-3 flex items-center gap-1.5">
-          {favourites > 0 && (
-            <span className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-              <Heart className="w-3 h-3 fill-current" />
-              {favourites}
-            </span>
+    <>
+      <button
+        onClick={() => setDetailOpen(true)}
+        className="group bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 hover:-translate-y-1 transition-all duration-300 overflow-hidden hover:shadow-[0_20px_50px_rgba(0,0,0,0.35)] text-left w-full"
+      >
+        <div className="relative h-44 bg-dark-400 border-b border-white/10 overflow-hidden">
+          {item.image && !imageFailed ? (
+            <img
+              src={item.image}
+              alt={item.title}
+              onError={() => setImageFailed(true)}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-700">
+              <ImageOff className="w-8 h-8" />
+            </div>
           )}
-          <button
-            onClick={onToggleFavourite}
-            aria-label={isFavourited ? "Retirer des favoris" : "Ajouter aux favoris"}
-            className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors ${
-              isFavourited ? "bg-neon-500 text-black" : "bg-black/60 text-white hover:bg-black/80"
-            }`}
-          >
-            <Heart className={`w-3.5 h-3.5 ${isFavourited ? "fill-current" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      <div className="p-5">
-        <h2 className="text-base font-black line-clamp-2 min-h-[48px]">{item.title}</h2>
-        <p className="text-gray-500 text-sm mt-1">
-          {item.brand} · {item.category}
-        </p>
-
-        <div className="flex items-center gap-2 mt-4 text-sm">
-          <span className="text-gray-400 font-medium">
-            {item.price_found !== null ? formatEUR(Number(item.price_found)) : "Prix inconnu"}
-          </span>
-          <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
-          <span className="text-gray-200 font-semibold">
-            {item.market_price !== null ? `${formatEUR(Number(item.market_price))} estimés` : "Estimation indisponible"}
-          </span>
-        </div>
-
-        <OneScoreBar score={Number(item.score || 0)} size="md" className="mt-4" />
-
-        <p className="text-[11px] text-gray-600 mt-3">
-          {item.price_source ?? "estimation IA"}
-          {item.first_observed_at ? ` · vue depuis ${daysSince(item.first_observed_at)}` : ""}
-        </p>
-
-        {(concreteHighlights.length > 0 || checklist.length > 0) && (
-          <div className="mt-3">
-            <p className="text-[11px] text-gray-500 font-bold mb-1.5">Pourquoi cette opportunité ?</p>
-            <ul className="space-y-1 text-[11px] text-gray-400">
-              {concreteHighlights.map((label, i) => (
-                <li key={`concrete-${i}`}>✔ {label}</li>
-              ))}
-              {checklist.map((entry, i) => (
-                <li key={i} className={entry.delta < 0 ? "text-amber-400/80" : "text-gray-400"}>
-                  {entry.delta >= 0 ? "✓" : "⚠"} {entry.label}
-                </li>
-              ))}
-            </ul>
+          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+            {favourites > 0 && (
+              <span className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                <Heart className="w-3 h-3 fill-current" />
+                {favourites}
+              </span>
+            )}
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavourite();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  onToggleFavourite();
+                }
+              }}
+              aria-label={isFavourited ? "Retirer des favoris" : "Ajouter aux favoris"}
+              className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors cursor-pointer ${
+                isFavourited ? "bg-neon-600 text-white" : "bg-black/60 text-white hover:bg-black/80"
+              }`}
+            >
+              <Heart className={`w-3.5 h-3.5 ${isFavourited ? "fill-current" : ""}`} />
+            </span>
           </div>
-        )}
+        </div>
 
-        {item.vinted_url ? (
-          <a
-            href={item.vinted_url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 bg-neon-500 text-black px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] transition-all"
-          >
-            Voir l'annonce
-            <ArrowUpRight size={18} />
-          </a>
-        ) : (
-          <div className="mt-4 bg-dark-400 text-gray-600 px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed">
-            Lien indisponible
+        <div className="p-5">
+          {/* Deplace hors de l'image (2026-07-28) : superpose au visuel, le
+              badge devenait illisible selon la photo -- toujours lisible ici,
+              quel que soit le contenu de l'image. */}
+          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full mb-2 ${verdictBadge.className}`}>
+            <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
+            {verdictBadge.label}
+          </span>
+          <h2 className="text-base font-black line-clamp-2 min-h-[48px]">{item.title}</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            {item.brand} · {item.category}
+          </p>
+
+          <div className="flex items-center gap-2 mt-4 text-sm">
+            <span className="text-gray-400 font-medium">
+              {item.price_found !== null ? formatEUR(Number(item.price_found)) : "Prix inconnu"}
+            </span>
+            <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
+            <span className="text-gray-200 font-semibold">
+              {item.market_price !== null ? `${formatEUR(Number(item.market_price))} estimés` : "Estimation indisponible"}
+            </span>
           </div>
-        )}
-      </div>
-    </div>
+
+          <OneScoreBar score={Number(item.score || 0)} size="md" className="mt-4" />
+
+          <p className="text-[11px] text-gray-600 mt-3">
+            {item.price_source ?? "estimation IA"}
+            {item.first_observed_at ? ` · vue depuis ${daysSince(item.first_observed_at)}` : ""}
+          </p>
+
+          {cardHighlights.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[11px] text-gray-500 font-bold mb-1.5">Pourquoi cette opportunité ?</p>
+              <ul className="space-y-1 text-[11px] text-gray-400">
+                {cardHighlights.map((label, i) => (
+                  <li key={i}>{label}</li>
+                ))}
+              </ul>
+              {allHighlights.length > cardHighlights.length && (
+                <p className="text-[11px] text-neon-500 mt-1.5">
+                  + {allHighlights.length - cardHighlights.length} autre{allHighlights.length - cardHighlights.length > 1 ? "s" : ""} raison{allHighlights.length - cardHighlights.length > 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </button>
+
+      {detailOpen && (
+        <OpportunityDetailModal
+          item={item}
+          highlights={allHighlights}
+          verdictLabel={verdictBadge.label}
+          verdictClassName={verdictBadge.className}
+          onClose={() => setDetailOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
-function SortButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
+interface OpportunityDetailModalProps {
+  item: MarketOpportunity;
+  highlights: string[];
+  verdictLabel: string;
+  verdictClassName: string;
+  onClose: () => void;
+}
+
+// Vue detaillee d'une opportunite (demande produit 2026-07-29 : carte
+// cliquable -> "galerie photo"). scripts/vinted-scan.ts visite desormais la
+// page de chaque opportunite retenue pour recuperer sa galerie complete
+// (meme selecteur verifie que extension/src/content/itemSelectors.ts) --
+// quand cette galerie existe (item.images), on l'affiche reellement ; sinon
+// (ligne pas encore rescrapee, ou page inaccessible au moment du scan) on
+// reste honnete plutot que d'inventer des photos qui n'existent pas dans
+// nos donnees, et on renvoie vers Vinted. Le clic-pour-acheter en un geste
+// depuis cette modale est explicitement roadmap (decision utilisateur
+// 2026-07-29), pas construit ici.
+function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassName, onClose }: OpportunityDetailModalProps) {
+  const gallery = item.images && item.images.length > 0 ? item.images : item.image ? [item.image] : [];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [imageFailed, setImageFailed] = useState(false);
+  const activeSrc = gallery[activeIndex];
+
   return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-3 text-sm font-bold transition ${
-        active ? "bg-neon-500 text-black" : "text-gray-400 hover:text-white"
-      }`}
-    >
-      {label}
-    </button>
+    <Modal onClose={onClose} size="lg">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${verdictClassName}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
+          {verdictLabel}
+        </span>
+        <button onClick={onClose} aria-label="Fermer" className="text-gray-500 hover:text-gray-300 transition-colors">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="rounded-xl bg-dark-400 border border-white/10 overflow-hidden h-64 mb-2">
+        {activeSrc && !imageFailed ? (
+          <img src={activeSrc} alt={item.title} onError={() => setImageFailed(true)} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-700">
+            <ImageOff className="w-10 h-10" />
+          </div>
+        )}
+      </div>
+
+      {gallery.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-2">
+          {gallery.map((src, i) => (
+            <button
+              key={src}
+              onClick={() => { setActiveIndex(i); setImageFailed(false); }}
+              className={`w-14 h-14 rounded-lg overflow-hidden border flex-shrink-0 transition-colors ${i === activeIndex ? 'border-neon-500' : 'border-white/10 hover:border-white/30'}`}
+            >
+              <img src={src} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <p className="text-[11px] text-gray-600 mb-4">
+        {gallery.length > 1
+          ? `Galerie complète (${gallery.length} photos) récupérée depuis l'annonce Vinted.`
+          : "Galerie photo pas encore récupérée pour cette annonce — visible directement sur Vinted."}
+      </p>
+
+      <h2 className="text-xl font-black mb-1">{item.title}</h2>
+      <p className="text-gray-500 text-sm mb-4">{item.brand} · {item.category}</p>
+
+      <div className="flex items-center gap-2 text-sm mb-4">
+        <span className="text-gray-400 font-medium">
+          {item.price_found !== null ? formatEUR(Number(item.price_found)) : "Prix inconnu"}
+        </span>
+        <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
+        <span className="text-gray-200 font-semibold">
+          {item.market_price !== null ? `${formatEUR(Number(item.market_price))} estimés` : "Estimation indisponible"}
+        </span>
+      </div>
+
+      <OneScoreBar score={Number(item.score || 0)} size="md" className="mb-4" />
+
+      {highlights.length > 0 && (
+        <div className="mb-5">
+          <p className="text-xs text-gray-500 font-bold mb-2">Pourquoi cette opportunité ?</p>
+          <ul className="space-y-1.5 text-sm text-gray-300">
+            {highlights.map((label, i) => (
+              <li key={i}>{label}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {item.vinted_url ? (
+        <a
+          href={item.vinted_url}
+          target="_blank"
+          rel="noreferrer"
+          className="w-full bg-neon-600 text-white px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all"
+        >
+          Voir l'annonce et ses photos sur Vinted
+          <ArrowUpRight size={18} />
+        </a>
+      ) : (
+        <div className="w-full bg-dark-400 text-gray-600 px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed">
+          Lien indisponible
+        </div>
+      )}
+    </Modal>
   );
 }

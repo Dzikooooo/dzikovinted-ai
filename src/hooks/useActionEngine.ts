@@ -72,6 +72,34 @@ async function applyPublishListingResult(request: ActionRequest, outcome: Extrac
     .is('sold_price', null);
 }
 
+// Miroir de applyPublishListingResult ci-dessus, pour republish_listing --
+// meme ecriture exactement (le nouvel item Vinted remplace l'ancien lien sur
+// la MEME ligne `listings`, jamais une nouvelle ligne). L'ancien
+// vinted_item_id n'est jamais efface d'une trace : il reste consultable
+// indefiniment dans action_log.payload (previousVintedItemId, voir
+// republishListing.ts::buildPreview) -- seule la ligne `listings` courante
+// ne porte plus qu'un lien Vinted actif a la fois, par design (coherent avec
+// le reste du schema, qui ne garde jamais d'historique sur `listings`
+// elle-meme).
+async function applyRepublishListingResult(request: ActionRequest, outcome: Extract<ActionOutcome, { status: 'success' }>) {
+  if (request.kind !== 'republish_listing' || !request.listingId) return;
+  const resultPayload = outcome.resultPayload as { vintedItemId?: string; vintedUrl?: string } | undefined;
+  if (!resultPayload?.vintedItemId || !resultPayload.vintedUrl) return;
+
+  await supabase
+    .from('listings')
+    .update({
+      vinted_account_id: request.vintedAccountId,
+      vinted_item_id: resultPayload.vintedItemId,
+      vinted_url: resultPayload.vintedUrl,
+      vinted_status: 'online',
+      synced_at: new Date().toISOString(),
+      status: 'en_stock',
+    })
+    .eq('id', request.listingId)
+    .is('sold_price', null);
+}
+
 // Centre des Actions : journalise une ligne d'historique consultable et,
 // si l'etape correspond a une ActionStep connue, met a jour le champ
 // denormalise action_log.current_step (evite de re-derive la derniere
@@ -158,6 +186,7 @@ export function useActionEngine(): UseActionEngineResult {
         },
         resyncAffectedData: async (request, outcome) => {
           await applyPublishListingResult(request, outcome);
+          await applyRepublishListingResult(request, outcome);
           // Pas de cache global a invalider : les pages (Stock, Dashboard,
           // Comptabilite, Statistiques, Insights) lisent toutes `listings`
           // en direct a chaque chargement/changement de filtre - elles

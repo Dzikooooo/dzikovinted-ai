@@ -1,15 +1,25 @@
 import { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Pencil, Star, X } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Pencil, Star, X, Shield, Database, Server, Cookie, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
+import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Modal } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
+import { Badge, type BadgeTone } from '../../components/ui/Badge';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { FilterPill } from '../../components/ui/FilterPill';
+import { ClosableSection } from '../../components/ui/ClosableSection';
+import { Logo } from '../../components/ui/Logo';
 import type { SettingsTab, VintedAccount } from '../../lib/types';
+import { PLAN_LIMITS } from '../../lib/types';
 import { translateAuthError } from '../../lib/errorMessages';
+
+const PLAN_BADGE_TONE: Record<string, BadgeTone> = { free: 'neutral', pro: 'brand', team: 'positive' };
 
 interface SettingsPageProps {
   initialTab?: SettingsTab;
@@ -17,6 +27,7 @@ interface SettingsPageProps {
 
 export default function SettingsPage({ initialTab }: SettingsPageProps) {
   const { profile, refreshProfile } = useAuth();
+  const isAdmin = useIsAdmin();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'profile');
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
@@ -36,14 +47,14 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
     const { error } = await supabase.from('profiles').update({ full_name: fullName }).eq('id', profile?.id ?? '');
     setSaving(false);
     if (error) setProfileMsg({ type: 'error', text: 'Erreur lors de la sauvegarde.' });
-    else { setProfileMsg({ type: 'success', text: 'Profil mis a jour !' }); await refreshProfile(); setTimeout(() => setProfileMsg(null), 3000); }
+    else { setProfileMsg({ type: 'success', text: 'Profil mis à jour !' }); await refreshProfile(); setTimeout(() => setProfileMsg(null), 3000); }
   };
 
   const changePassword = async () => {
-    if (newPassword.length < 6) { setSecMsg({ type: 'error', text: 'Le mot de passe doit faire au moins 6 caracteres.' }); return; }
+    if (newPassword.length < 6) { setSecMsg({ type: 'error', text: 'Le mot de passe doit faire au moins 6 caractères.' }); return; }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) setSecMsg({ type: 'error', text: translateAuthError(error.message) });
-    else { setSecMsg({ type: 'success', text: 'Mot de passe mis a jour !' }); setNewPassword(''); setTimeout(() => setSecMsg(null), 3000); }
+    else { setSecMsg({ type: 'success', text: 'Mot de passe mis à jour !' }); setNewPassword(''); setTimeout(() => setSecMsg(null), 3000); }
   };
 
   const saveApiKey = () => {
@@ -58,31 +69,63 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
 
   const tabs = [
     { key: 'profile', label: 'Profil', icon: User },
-    { key: 'security', label: 'Securite', icon: Lock },
+    { key: 'security', label: 'Sécurité', icon: Lock },
     { key: 'accounts', label: 'Comptes Vinted', icon: Users },
     { key: 'notifications', label: 'Notifications', icon: Bell },
     { key: 'api', label: 'Cles API', icon: Key },
+    { key: 'privacy', label: 'Confidentialité', icon: Shield },
     { key: 'danger', label: 'Danger', icon: Trash2 },
   ] as const;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-black mb-2">Parametres</h1>
-        <p className="text-gray-400 text-sm">Gere ton profil et tes preferences.</p>
-      </div>
+      <PageHeader title="Paramètres" description="Gère ton profil et tes préférences." />
 
       <div className="flex gap-1 mb-8 overflow-x-auto pb-1">
         {tabs.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all duration-200 flex-shrink-0 ${activeTab === key ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}>
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-          </button>
+          <FilterPill
+            key={key}
+            label={label}
+            active={activeTab === key}
+            onClick={() => setActiveTab(key)}
+            icon={<Icon className="w-3.5 h-3.5" />}
+          />
         ))}
       </div>
 
       {activeTab === 'profile' && (
-        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl space-y-5">
+          {/* Carte d'identite -- avatar, badges de statut et anciennete
+              (audit personnel utilisateur, 2026-08-04 : "il manque un petit
+              cote compte premium") -- toutes les valeurs viennent du profil
+              reel, aucun chiffre invente. */}
+          <div className="bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-white/5 rounded-2xl p-6 flex items-center gap-5">
+            <AccountAvatar label={profile?.full_name || profile?.email || '?'} size="lg" brand />
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-lg text-gray-100 truncate">{profile?.full_name || profile?.email?.split('@')[0]}</p>
+              <p className="text-sm text-gray-500 truncate">{profile?.email}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <Badge label={(profile?.plan ?? 'free').toUpperCase()} tone={PLAN_BADGE_TONE[profile?.plan ?? 'free']} />
+                {isAdmin && <Badge label="Admin" tone="attention" />}
+                {profile?.created_at && (
+                  <span className="text-[10px] font-mono text-gray-600">
+                    Membre depuis {new Date(profile.created_at).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="hidden sm:flex flex-col items-end flex-shrink-0">
+              <div className="flex items-center gap-1.5 text-neon-500">
+                <Zap className="w-3.5 h-3.5" />
+                <span className="text-sm font-bold">
+                  {isAdmin ? 'Illimité' : `${profile?.credits ?? 0} / ${PLAN_LIMITS[profile?.plan ?? 'free'] ?? '∞'}`}
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-500">crédits ce mois</p>
+            </div>
+          </div>
+
+          <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Informations du profil</h2>
           {profileMsg && (
             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
@@ -108,10 +151,10 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Plan</label>
             <div className="px-4 py-3 bg-dark-400 border border-white/5 rounded-xl text-sm text-neon-500 font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
           </div>
-          <button onClick={saveProfile} disabled={saving} className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm disabled:opacity-60">
-            <Save className="w-4 h-4" />
+          <Button icon={<Save className="w-4 h-4" />} loading={saving} onClick={saveProfile}>
             {saving ? 'Sauvegarde...' : 'Sauvegarder'}
-          </button>
+          </Button>
+          </div>
         </div>
       )}
 
@@ -140,10 +183,9 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
               qu'une vraie protection. Chantier de reauthentification reelle
               (signInWithPassword avant updateUser) reporte apres la premiere
               beta, voir memoire du projet. */}
-          <button onClick={changePassword} className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm">
-            <Save className="w-4 h-4" />
-            Mettre a jour
-          </button>
+          <Button icon={<Save className="w-4 h-4" />} onClick={changePassword}>
+            Mettre à jour
+          </Button>
         </div>
       )}
 
@@ -151,15 +193,15 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
 
       {activeTab === 'notifications' && (
         <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-4">
-          <h2 className="font-bold text-sm mb-2">Preferences de notifications</h2>
+          <h2 className="font-bold text-sm mb-2">Préférences de notifications</h2>
           {/* defaultChecked retire (Design Freeze, Lot 8) : rien ne branche
               ces toggles a un vrai etat cote serveur -- les afficher coches
               par defaut laissait croire a une preference deja active et
               sauvegardee, qui n'existe pas. Neutres/off jusqu'a ce qu'un
               vrai systeme de preferences soit construit. */}
           {[
-            { label: 'Resume hebdomadaire', desc: 'Recois un resume de tes annonces chaque semaine.' },
-            { label: 'Nouvelles fonctionnalites', desc: 'Sois informe des mises a jour de Resell OS.' },
+            { label: 'Résumé hebdomadaire', desc: 'Reçois un résumé de tes annonces chaque semaine.' },
+            { label: 'Nouvelles fonctionnalités', desc: 'Sois informé des mises à jour de Resell OS.' },
             { label: 'Conseils de vente', desc: 'Astuces pour vendre plus vite sur Vinted.' },
           ].map(({ label, desc }) => (
             <div key={label} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
@@ -178,25 +220,47 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
 
       {activeTab === 'api' && (
         <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
-          <h2 className="font-bold text-sm">Cles API</h2>
+          <h2 className="font-bold text-sm">Clés API</h2>
           <div className="bg-dark-400 border border-neon-500/20 rounded-xl p-4">
-            <p className="text-xs text-neon-500/70 font-mono mb-1">Cle API Gemini</p>
-            <p className="text-xs text-gray-500">Connecte ta propre cle Gemini pour tes analyses IA. Sans cle personnelle, ResellOS utilise sa cle par defaut, soumise aux memes limites d'utilisation.</p>
+            <p className="text-xs text-neon-500/70 font-mono mb-1">Clé API Gemini</p>
+            <p className="text-xs text-gray-500">Connecte ta propre clé Gemini pour tes analyses IA. Sans clé personnelle, ResellOS utilise sa clé par défaut, soumise aux mêmes limites d'utilisation.</p>
           </div>
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Cle API Gemini</label>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Clé API Gemini</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="Colle ta cle ici" className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
+              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="Colle ta clé ici" className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
             </div>
           </div>
-          <button
-            onClick={saveApiKey}
-            className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all text-sm"
-          >
-            <Save className="w-4 h-4" />
-            {apiSaved ? 'Sauvegarde !' : 'Sauvegarder la cle'}
-          </button>
+          <Button icon={<Save className="w-4 h-4" />} onClick={saveApiKey}>
+            {apiSaved ? 'Sauvegardé !' : 'Sauvegarder la clé'}
+          </Button>
+        </div>
+      )}
+
+      {activeTab === 'privacy' && (
+        <div className="max-w-2xl space-y-4">
+          {[
+            { icon: Database, title: 'Tes données', desc: "Email, profil, annonces synchronisées et historique d'actions — hébergés chez Supabase, protégés par des règles d'accès (RLS) : toi seul peux y accéder." },
+            { icon: Server, title: 'Analyse IA', desc: "Les photos envoyées au Générateur passent par l'API Google Gemini, uniquement le temps de l'analyse. Jamais revendues ni utilisées à d'autres fins." },
+            { icon: Cookie, title: 'Aucun tracking publicitaire', desc: "Le stockage local du navigateur sert uniquement à garder ta session connectée. Pas de cookie publicitaire, pas de revente à des tiers." },
+          ].map(({ icon: Icon, title, desc }) => (
+            <div key={title} className="bg-surface border border-white/5 rounded-2xl p-5 flex items-start gap-4">
+              <div className="w-9 h-9 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4 text-neon-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-200">{title}</p>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{desc}</p>
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center gap-3 bg-surface/50 border border-white/5 rounded-xl px-5 py-4">
+            <p className="text-xs text-gray-500">
+              Suppression, export ou question sur tes données ?{' '}
+              <a href="mailto:resellosapp@gmail.com" className="text-neon-500 hover:underline">resellosapp@gmail.com</a>
+            </p>
+          </div>
         </div>
       )}
 
@@ -205,14 +269,27 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
           <h2 className="font-bold text-sm text-red-400">Zone de danger</h2>
           <div className="border border-red-500/10 rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Supprimer mon compte</p>
-            <p className="text-xs text-gray-500 mb-4">Cette action est irreversible. Toutes tes donnees seront supprimees definitivement.</p>
-            <button disabled title="Bientot disponible" className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 font-medium px-4 py-2 rounded-xl opacity-50 cursor-not-allowed text-sm">
-              <Trash2 className="w-4 h-4" />
-              Supprimer mon compte (bientot disponible)
-            </button>
+            <p className="text-xs text-gray-500 mb-4">Cette action est irréversible. Toutes tes données seront supprimées définitivement.</p>
+            <Button variant="danger" disabled title="Bientôt disponible" icon={<Trash2 className="w-4 h-4" />}>
+              Supprimer mon compte (bientôt disponible)
+            </Button>
           </div>
         </div>
       )}
+
+      {/* Logo en bas de page, dans un onglet fermable -- demande produit
+          2026-07-29 : le seul endroit du dashboard ou le logo doit
+          apparaitre en dehors de la sidebar/navbar, replie par defaut pour
+          ne pas alourdir la page. */}
+      <ClosableSection label="Resell OS" labelOpen="Masquer" className="max-w-2xl mt-8">
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 flex items-center gap-3">
+          <Logo variant="transparent" size={36} />
+          <div>
+            <p className="font-black text-sm">esell<span className="text-neon-500">OS</span></p>
+            <p className="text-xs text-gray-500 mt-0.5">Le système complet du revendeur Vinted.</p>
+          </div>
+        </div>
+      </ClosableSection>
     </div>
   );
 }
@@ -257,8 +334,12 @@ function AccountsManager() {
   const openDeleteConfirm = async (account: VintedAccount) => {
     setDeleteTarget(account);
     setDeleteListingsCount(null);
+    // `vinted_listings` a ete fusionnee dans `listings` (migration
+    // 20260709190000, renommee vinted_listings_deprecated_20260709) --
+    // interroger l'ancien nom de table echouait silencieusement ici,
+    // affichant toujours "0 annonce" quel que soit le vrai nombre.
     const { count } = await supabase
-      .from('vinted_listings')
+      .from('listings')
       .select('*', { count: 'exact', head: true })
       .eq('vinted_account_id', account.id);
     setDeleteListingsCount(count ?? 0);
@@ -382,24 +463,23 @@ function AccountsManager() {
             {deleteListingsCount === null
               ? 'Vérification des annonces synchronisées...'
               : deleteListingsCount > 0
-                ? `Cette action supprimera aussi les ${deleteListingsCount} annonce${deleteListingsCount > 1 ? 's' : ''} synchronisée${deleteListingsCount > 1 ? 's' : ''} de ce compte. Cette action est irréversible.`
+                ? `${deleteListingsCount} annonce${deleteListingsCount > 1 ? 's' : ''} synchronisée${deleteListingsCount > 1 ? 's' : ''} depuis ce compte resteront dans Mes annonces, simplement détachées de ce compte Vinted. Cette action est irréversible.`
                 : 'Cette action est irréversible.'}
           </p>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setDeleteTarget(null)}
-              className="flex-1 bg-white/5 text-gray-300 font-medium py-2.5 rounded-xl hover:bg-white/10 transition-all text-sm"
-            >
+            <Button variant="secondary" fullWidth onClick={() => setDeleteTarget(null)}>
               Annuler
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="danger"
+              fullWidth
+              loading={deleting}
+              disabled={deleteListingsCount === null}
               onClick={confirmDelete}
-              disabled={deleting || deleteListingsCount === null}
-              className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 font-bold py-2.5 rounded-xl hover:bg-red-500/20 transition-all text-sm disabled:opacity-50"
             >
               {deleting ? 'Suppression...' : 'Supprimer'}
-            </button>
+            </Button>
           </div>
         </Modal>
       )}

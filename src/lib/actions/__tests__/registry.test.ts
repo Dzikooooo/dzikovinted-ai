@@ -7,7 +7,12 @@ describe('ACTION_DEFINITIONS', () => {
   // nouvelle action enregistrée (Phase 3.2+), jamais "juste passer"
   // silencieusement.
   it('registers exactly the actions implemented so far', () => {
-    expect(ACTION_DEFINITIONS.map((d) => d.kind)).toEqual(['publish_listing', 'edit_listing', 'scan_market']);
+    expect(ACTION_DEFINITIONS.map((d) => d.kind)).toEqual([
+      'publish_listing',
+      'edit_listing',
+      'republish_listing',
+      'scan_market',
+    ]);
   });
 
   it('never registers the same kind twice', () => {
@@ -21,7 +26,11 @@ describe('findActionDefinition', () => {
     expect(findActionDefinition('publish_listing')).toBeDefined();
   });
 
+  it('finds republish_listing (real handler added 2026-08-01, reuses the publish_listing extension flow)', () => {
+    expect(findActionDefinition('republish_listing')).toBeDefined();
+  });
+
   it('returns undefined for an unregistered kind', () => {
-    expect(findActionDefinition('republish_listing')).toBeUndefined();
+    expect(findActionDefinition('pause_listing')).toBeUndefined();
   });
 });

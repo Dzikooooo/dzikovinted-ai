@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, X, Activity, Clock, AlertTriangle } from 'lucide-react';
+import { X, Activity, Clock, AlertTriangle, Search, History } from 'lucide-react';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useActionHistory, useActionLogEntries, type ActionHistoryRow } from '../../hooks/useActionHistory';
 import { ACTION_KIND_LABELS, ACTION_KIND_ICONS } from '../../lib/actions/labels';
@@ -12,6 +12,12 @@ import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Modal } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { StatCard } from '../../components/ui/StatCard';
+import { FilterPill } from '../../components/ui/FilterPill';
+import { SearchInput } from '../../components/ui/SearchInput';
+import Opportunities from './Opportunities';
 
 const PERIOD_FILTERS: { key: ActionPeriod; label: string }[] = [
   { key: 'today', label: "Aujourd'hui" },
@@ -54,7 +60,42 @@ interface ActionsPageProps {
   initialSelectedActionId?: string;
 }
 
+type NichesTab = 'opportunities' | 'history';
+
+// "Niches" (ex-Centre des Actions) fusionne desormais Opportunites -- demande
+// produit 2026-07-31 : les deux concepts sont deja lies (un scan
+// d'opportunites est lui-meme une action loggee dans l'historique
+// ci-dessous), plutot que deux pages separees dans la sidebar. Un simple
+// selecteur d'onglet au-dessus, chaque onglet garde son propre contenu tel
+// quel (aucune logique interne modifiee).
 export default function ActionsPage({ initialSelectedActionId }: ActionsPageProps) {
+  // Arriver ici avec un actionId precis (depuis "Voir dans Niches" ailleurs
+  // dans l'app) signifie toujours "montre-moi cette action" -> l'onglet
+  // Historique, jamais Opportunites.
+  const [tab, setTab] = useState<NichesTab>(initialSelectedActionId ? 'history' : 'opportunities');
+  const [historyInitialId, setHistoryInitialId] = useState<string | undefined>(initialSelectedActionId);
+
+  return (
+    <div>
+      <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 max-w-7xl mx-auto flex gap-1">
+        <FilterPill label="Opportunités" icon={<Search className="w-3.5 h-3.5" />} active={tab === 'opportunities'} onClick={() => setTab('opportunities')} />
+        <FilterPill label="Historique des actions" icon={<History className="w-3.5 h-3.5" />} active={tab === 'history'} onClick={() => setTab('history')} />
+      </div>
+
+      {tab === 'opportunities' && (
+        <Opportunities
+          onViewAction={(actionId) => {
+            setHistoryInitialId(actionId);
+            setTab('history');
+          }}
+        />
+      )}
+      {tab === 'history' && <NichesHistoryTab initialSelectedActionId={historyInitialId} />}
+    </div>
+  );
+}
+
+function NichesHistoryTab({ initialSelectedActionId }: ActionsPageProps) {
   const { selectedAccountId } = useVintedAccountFilter();
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState<ActionPeriod>('all');
@@ -72,53 +113,35 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-black mb-1">Centre des Actions</h1>
-        <p className="text-gray-400 text-sm">
-          Tout ce qui s'exécute sur tes comptes Vinted, en direct et dans le temps.
-        </p>
-      </div>
+      <PageHeader
+        title={
+          !loading && counts.total > 0
+            ? <>{counts.total} action{counts.total !== 1 ? 's' : ''} <span className="text-neon-500">enregistrée{counts.total !== 1 ? 's' : ''}</span></>
+            : 'Historique des actions'
+        }
+        description="Tout ce qui s'exécute sur tes comptes Vinted, en direct et dans le temps."
+      />
 
       {error && <ErrorBanner message={error} className="mb-6" />}
 
       {counts.total > 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-surface border border-white/5 rounded-2xl p-4">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">Actions</p>
-            <p className="text-xl font-black">{counts.total}</p>
-          </div>
-          <div className="bg-surface border border-white/5 rounded-2xl p-4">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">Réussies</p>
-            <p className="text-xl font-black text-neon-500">{counts.success}</p>
-          </div>
-          <div className="bg-surface border border-white/5 rounded-2xl p-4">
-            <p className="text-[10px] uppercase tracking-wider text-gray-500">Erreurs</p>
-            <p className="text-xl font-black text-red-400">{counts.error}</p>
-          </div>
+          <StatCard label="Actions" value={counts.total} />
+          <StatCard label="Réussies" value={counts.success} highlight tone="positive" />
+          <StatCard label="Erreurs" value={counts.error} highlight tone="negative" />
         </div>
       )}
 
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher une action ou une annonce..."
-          className="w-full bg-surface border border-white/8 rounded-xl pl-10 pr-4 py-2.5 text-sm text-gray-300 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/30 focus:ring-2 focus:ring-neon-500/20"
-        />
-      </div>
+      <SearchInput
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Rechercher une action ou une annonce..."
+        className="mb-4"
+      />
 
       <div className="flex gap-1 mb-2 overflow-x-auto pb-1">
         {PERIOD_FILTERS.map(({ key: k, label }) => (
-          <button
-            key={k}
-            onClick={() => setPeriod(k)}
-            className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
-              period === k ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-            }`}
-          >
-            {label}
-          </button>
+          <FilterPill key={k} label={label} active={period === k} onClick={() => setPeriod(k)} />
         ))}
       </div>
 
@@ -127,38 +150,15 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
           filtres a choix du produit (Stock, Opportunites, Watchlist,
           Comptabilite), seul endroit qui utilisait encore un select brut. */}
       <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
-        <button
-          onClick={() => setKind('all')}
-          className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
-            kind === 'all' ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-          }`}
-        >
-          Tous les types
-        </button>
+        <FilterPill label="Tous les types" active={kind === 'all'} onClick={() => setKind('all')} />
         {(Object.keys(ACTION_KIND_LABELS) as ActionKind[]).map((k) => (
-          <button
-            key={k}
-            onClick={() => setKind(k)}
-            className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
-              kind === k ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-            }`}
-          >
-            {ACTION_KIND_LABELS[k]}
-          </button>
+          <FilterPill key={k} label={ACTION_KIND_LABELS[k]} active={kind === k} onClick={() => setKind(k)} />
         ))}
       </div>
 
       <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
         {RESULT_FILTERS.map(({ key: k, label }) => (
-          <button
-            key={k}
-            onClick={() => setResult(k)}
-            className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 ${
-              result === k ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
-            }`}
-          >
-            {label}
-          </button>
+          <FilterPill key={k} label={label} active={result === k} onClick={() => setResult(k)} />
         ))}
       </div>
 
@@ -187,13 +187,16 @@ export default function ActionsPage({ initialSelectedActionId }: ActionsPageProp
             ))}
           </div>
           {hasMore && (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              className="mt-4"
+              loading={loadingMore}
               onClick={() => void loadMore()}
-              disabled={loadingMore}
-              className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold text-gray-400 bg-surface border border-white/5 hover:border-white/10 hover:text-gray-200 transition-all disabled:opacity-50"
             >
               {loadingMore ? 'Chargement...' : 'Charger plus'}
-            </button>
+            </Button>
           )}
         </>
       )}

@@ -96,7 +96,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
               onClick={() => toggleVerdict(verdict)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                 filters.verdicts.includes(verdict)
-                  ? "bg-neon-500 text-black border-neon-500"
+                  ? "bg-neon-600 text-white border-neon-500"
                   : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
               }`}
             >
@@ -113,7 +113,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
               onClick={() => toggleRisk(opt.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                 filters.riskLevels.includes(opt.value)
-                  ? "bg-neon-500 text-black border-neon-500"
+                  ? "bg-neon-600 text-white border-neon-500"
                   : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
               }`}
             >
@@ -131,7 +131,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
                 onClick={() => toggleBrand(brand)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                   filters.brands.includes(brand)
-                    ? "bg-neon-500 text-black border-neon-500"
+                    ? "bg-neon-600 text-white border-neon-500"
                     : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
                 }`}
               >

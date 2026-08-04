@@ -1,3 +1,4 @@
+import { needsRepublish } from '../listingStatus';
 import type { ActionCheck } from './types';
 
 // P-03 (audit pre-beta 2026-08-03) : resolveCategory() (extension/src/content/
@@ -108,6 +109,39 @@ export const checkListingAlreadyPublished: ActionCheck = (_ctx, deps) => {
     return {
       ok: false,
       failure: { code: 'not_published_yet', message: "Cette annonce n'est pas encore publiée sur Vinted." },
+    };
+  }
+  return { ok: true };
+};
+
+// republish_listing : symetrique de checkListingNotAlreadyPublished (bloque
+// publish_listing) et checkListingAlreadyPublished (exige un vinted_item_id
+// pour edit_listing) -- ce check autorise republish_listing exactement sur
+// les annonces "en Republication" (voir needsRepublish, listingStatus.ts),
+// avec un message distinct pour chaque cas de refus plutot qu'un message
+// generique (demande explicite : "comportement si l'annonce d'origine est
+// masquee, supprimee, vendue ou inconnue" doit etre traite explicitement).
+export const checkListingNeedsRepublish: ActionCheck = (_ctx, deps) => {
+  const listing = deps.targetListing;
+  if (!listing) {
+    return { ok: false, failure: { code: 'listing_not_found', message: "L'annonce ciblée est introuvable." } };
+  }
+  if (listing.status === 'vendu') {
+    return {
+      ok: false,
+      failure: { code: 'listing_sold', message: 'Cette annonce est déjà vendue -- impossible de la republier.' },
+    };
+  }
+  if (listing.status !== 'en_stock') {
+    return {
+      ok: false,
+      failure: { code: 'listing_not_in_stock', message: "Cette annonce est en brouillon -- termine-la avant de la republier." },
+    };
+  }
+  if (!needsRepublish(listing)) {
+    return {
+      ok: false,
+      failure: { code: 'already_live', message: 'Cette annonce est déjà en ligne sur Vinted.' },
     };
   }
   return { ok: true };

@@ -74,14 +74,14 @@ export default function PublishProgressModal({
           onClick={onViewAction}
           className="w-full mt-5 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
         >
-          Voir dans le Centre des Actions
+          Voir dans Niches
         </button>
       )}
 
       {isTerminal && (
         <button
           onClick={onClose}
-          className="w-full mt-3 bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
+          className="w-full mt-3 bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all"
         >
           Fermer
         </button>

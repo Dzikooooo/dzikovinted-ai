@@ -48,7 +48,7 @@ export interface DominantSignalInput {
 export function computeDominantSignal(input: DominantSignalInput): DominantSignal {
   const criticalAlert = input.alerts.find((a) => a.severity === 'critical');
   if (criticalAlert) {
-    return { tier: 'critical_alert', message: criticalAlert.message, listingId: criticalAlert.listingId, actionPage: 'stock' };
+    return { tier: 'critical_alert', message: criticalAlert.message, listingId: criticalAlert.listingId, actionPage: 'watchlist' };
   }
 
   if (input.newOpportunitiesLast24h > 0) {
@@ -56,24 +56,24 @@ export function computeDominantSignal(input: DominantSignalInput): DominantSigna
     return {
       tier: 'opportunity',
       message: `${n} nouvelle${n > 1 ? 's' : ''} opportunité${n > 1 ? 's' : ''} détectée${n > 1 ? 's' : ''} sur les dernières 24h.`,
-      actionPage: 'opportunities',
+      actionPage: 'actions',
     };
   }
 
   const warningAlert = input.alerts.find((a) => a.severity === 'warning');
   if (warningAlert) {
-    return { tier: 'warning_alert', message: warningAlert.message, listingId: warningAlert.listingId, actionPage: 'stock' };
+    return { tier: 'warning_alert', message: warningAlert.message, listingId: warningAlert.listingId, actionPage: 'watchlist' };
   }
 
   const topRecommendation = input.recommendations[0];
   if (topRecommendation) {
-    return { tier: 'recommendation', message: topRecommendation.message, listingId: topRecommendation.listingId, actionPage: 'stock' };
+    return { tier: 'recommendation', message: topRecommendation.message, listingId: topRecommendation.listingId, actionPage: 'watchlist' };
   }
 
   const sign = input.profitMonth >= 0 ? '+' : '';
   return {
     tier: 'stat',
     message: `Bénéfice ce mois-ci : ${sign}${formatEUR(input.profitMonth)}.`,
-    actionPage: 'stats',
+    actionPage: 'accounting',
   };
 }

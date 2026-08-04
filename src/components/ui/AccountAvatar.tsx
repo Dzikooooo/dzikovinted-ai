@@ -1,6 +1,6 @@
 interface AccountAvatarProps {
   label: string;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   /** Force la teinte de marque (neon) au lieu de la couleur derivee du label — reserve a l'identite ResellOS de l'utilisateur, distincte des comptes Vinted qui doivent rester visuellement differenciables entre eux. */
   brand?: boolean;
 }
@@ -9,7 +9,7 @@ const BRAND_COLOR = { bg: 'bg-neon-500/10', text: 'text-neon-500' };
 
 const PALETTE = [
   BRAND_COLOR,
-  { bg: 'bg-blue-400/10', text: 'text-blue-400' },
+  { bg: 'bg-cyan-400/10', text: 'text-cyan-400' },
   { bg: 'bg-purple-400/10', text: 'text-purple-400' },
   { bg: 'bg-emerald-400/10', text: 'text-emerald-400' },
   { bg: 'bg-pink-400/10', text: 'text-pink-400' },
@@ -26,7 +26,7 @@ function colorFor(label: string) {
 
 export default function AccountAvatar({ label, size = 'sm', brand = false }: AccountAvatarProps) {
   const { bg, text } = brand ? BRAND_COLOR : colorFor(label);
-  const sizeClasses = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
+  const sizeClasses = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-16 h-16 text-2xl' : 'w-10 h-10 text-sm';
 
   return (
     <div className={`${sizeClasses} rounded-full ${bg} flex items-center justify-center font-bold ${text} flex-shrink-0`}>

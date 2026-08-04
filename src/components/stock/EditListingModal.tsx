@@ -54,14 +54,14 @@ function toEditForm(listing: Listing): EditForm {
 
 const TEXT_FIELDS: { k: 'brand' | 'category' | 'size' | 'color' | 'material'; label: string }[] = [
   { k: 'brand', label: 'Marque' },
-  { k: 'category', label: 'Categorie' },
+  { k: 'category', label: 'Catégorie' },
   { k: 'size', label: 'Taille' },
   { k: 'color', label: 'Couleur' },
-  { k: 'material', label: 'Matiere' },
+  { k: 'material', label: 'Matière' },
 ];
 
 const PRICE_FIELDS: { k: 'price' | 'quick_price' | 'premium_price'; label: string }[] = [
-  { k: 'price', label: 'Prix recommande' },
+  { k: 'price', label: 'Prix recommandé' },
   { k: 'quick_price', label: 'Vente rapide' },
   { k: 'premium_price', label: 'Prix premium' },
 ];
@@ -294,7 +294,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           </p>
           {listing.last_edited_at && (
             <p className="text-[10px] text-gray-600 mt-0.5">
-              Modifiee le {new Date(listing.last_edited_at).toLocaleDateString('fr-FR')}
+              Modifiée le {new Date(listing.last_edited_at).toLocaleDateString('fr-FR')}
             </p>
           )}
         </div>
@@ -334,7 +334,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
             )}
           </div>
           <p className="text-[11px] text-gray-600 mt-2">
-            Remplacement manuel uniquement -- aucune regeneration IA de la photo n'est disponible pour l'instant.
+            Remplacement manuel uniquement -- aucune régénération IA de la photo n'est disponible pour l'instant.
           </p>
         </div>
 
@@ -392,17 +392,17 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
             </div>
           ))}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Etat</label>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">État</label>
             <select
               className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
               value={form.condition}
               onChange={(e) => updateField('condition', e.target.value)}
             >
-              <option>Neuf avec etiquette</option>
-              <option>Neuf sans etiquette</option>
-              <option>Tres bon etat</option>
-              <option>Bon etat</option>
-              <option>Etat satisfaisant</option>
+              <option>Neuf avec étiquette</option>
+              <option>Neuf sans étiquette</option>
+              <option>Très bon état</option>
+              <option>Bon état</option>
+              <option>État satisfaisant</option>
             </select>
           </div>
         </div>
@@ -431,7 +431,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
             <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-red-300">
               Impossible de mettre à jour cette annonce sur Vinted pour l'instant : le compte sélectionné dans le
-              filtre en haut de la page Stock n'est pas celui auquel cette annonce appartient. Sélectionne le bon
+              filtre en haut de la page Mes annonces n'est pas celui auquel cette annonce appartient. Sélectionne le bon
               compte Vinted dans ce filtre, puis rouvre cette modale. En attendant, "Enregistrer les modifications"
               ne sauvegardera que les champs internes à ResellOS (prix rapide/premium, mots-clés, filtres, photos) --
               le titre, la description, le prix et les autres champs poussés vers Vinted resteront inchangés.
@@ -443,11 +443,11 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           <div className="flex items-start gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3">
             <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-300">
-              Cette annonce est deja liee a un compte Vinted. "Enregistrer et mettre a jour sur Vinted" pousse le
-              titre, le prix, la description, la marque, la taille, l'etat, la couleur et la matiere vers la fiche
-              Vinted -- tu valides toi-meme l'enregistrement sur place. Les photos ne sont pas encore synchronisees
-              par cette mise a jour (modifie-les directement sur Vinted si besoin), et un changement de categorie
-              n'est pas garanti d'etre pris en compte -- non teste en conditions reelles.
+              Cette annonce est déjà liée à un compte Vinted. "Enregistrer et mettre à jour sur Vinted" pousse le
+              titre, le prix, la description, la marque, la taille, l'état, la couleur et la matière vers la fiche
+              Vinted -- tu valides toi-même l'enregistrement sur place. Les photos ne sont pas encore synchronisées
+              par cette mise à jour (modifie-les directement sur Vinted si besoin), et un changement de catégorie
+              n'est pas garanti d'être pris en compte -- non testé en conditions réelles.
             </p>
           </div>
         ) : (
@@ -461,7 +461,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           <button
             onClick={() => save('none')}
             disabled={saving || regenerating}
-            className="flex-1 flex items-center justify-center gap-2 bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}

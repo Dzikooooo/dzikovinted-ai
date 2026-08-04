@@ -1,5 +1,6 @@
 import { publishListingDefinition } from './publishListing';
 import { editListingDefinition } from './editListing';
+import { republishListingDefinition } from './republishListing';
 import { scanMarketDefinition } from './scanMarket';
 import type { ActionDefinition } from '../types';
 
@@ -10,5 +11,6 @@ import type { ActionDefinition } from '../types';
 export const ACTION_DEFINITIONS: ActionDefinition[] = [
   publishListingDefinition as ActionDefinition,
   editListingDefinition as ActionDefinition,
+  republishListingDefinition as ActionDefinition,
   scanMarketDefinition as ActionDefinition,
 ];

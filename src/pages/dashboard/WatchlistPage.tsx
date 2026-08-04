@@ -8,6 +8,12 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Modal } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { SegmentedControl } from '../../components/ui/SegmentedControl';
+import { ClosableSection } from '../../components/ui/ClosableSection';
+import { ListingsManagementSection } from './watchlist/ListingsManagementSection';
 
 const DEFAULT_MIN_PROFIT = 20;
 const DEFAULT_MIN_ROI = 50;
@@ -43,9 +49,10 @@ function entryToForm(entry: WatchlistEntry): FormState {
 
 interface WatchlistPageProps {
   onNavigate: (page: DashboardPage) => void;
+  onViewAction?: (actionId: string) => void;
 }
 
-export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
+export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPageProps) {
   const { myEntries, platformEntries, loading, error, addEntry, updateEntry, toggleActive, deleteEntry } =
     useWatchlist();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -92,24 +99,30 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black mb-1">Watchlist</h1>
-          <p className="text-gray-400 text-sm">
-            Choisis les marques et modèles que le scanner doit surveiller pour toi.
-          </p>
-        </div>
-
-        <button
-          onClick={openAddForm}
-          className="flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 transition-all flex-shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          Ajouter une recherche
-        </button>
-      </div>
+      <PageHeader
+        title="Mes annonces"
+        description="Gère tes annonces Vinted (republication, suppression) et les recherches que le scanner surveille pour toi."
+      />
 
       {error && <ErrorBanner message={error} className="mb-6" />}
+
+      {/* Gestion des annonces (restructuration 2026-07-29, ex-onglet
+          Watchlist) -- republication/annonces/supprimer en onglets, dans
+          un onglet fermable comme le reste du produit. */}
+      <ClosableSection label="Gestion des annonces" labelOpen="Masquer la gestion des annonces" defaultOpen className="mb-8">
+        <ListingsManagementSection onViewAction={onViewAction} />
+      </ClosableSection>
+
+      <SectionLabel
+        className="mb-4"
+        action={
+          <Button icon={<Plus className="w-4 h-4" />} onClick={openAddForm}>
+            Ajouter une recherche
+          </Button>
+        }
+      >
+        Recherches surveillées
+      </SectionLabel>
 
       {/* Pedagogie explicite : sans ca, un nouvel utilisateur ajoutait une
           recherche, allait voir "Aucune opportunite" sur la page
@@ -121,11 +134,11 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
         <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-gray-500 flex-1">
           Le scan tourne automatiquement toutes les 4h. Les résultats correspondant à tes recherches
-          (et remplissant certains critères : popularité, marge minimum...) apparaissent ensuite sur la
-          page Opportunités.
+          (et remplissant certains critères : popularité, marge minimum...) apparaissent ensuite dans
+          l'onglet Opportunités de Niches.
         </p>
         <button
-          onClick={() => onNavigate('opportunities')}
+          onClick={() => onNavigate('actions')}
           className="flex items-center gap-1.5 text-xs font-bold text-neon-500 hover:underline flex-shrink-0"
         >
           <Search className="w-3.5 h-3.5" />
@@ -162,16 +175,15 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
                 <div className="w-9 h-9 rounded-xl bg-neon-500/10 flex items-center justify-center flex-shrink-0">
                   <Tag className="w-4 h-4 text-neon-500/70" />
                 </div>
-                <button
-                  onClick={() => toggleActive(entry.id, !entry.active)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition flex-shrink-0 ${
-                    entry.active
-                      ? 'bg-neon-500 text-black border-neon-500'
-                      : 'bg-dark-400 text-gray-500 border-white/10 hover:text-white'
-                  }`}
-                >
-                  {entry.active ? 'Actif' : 'Inactif'}
-                </button>
+                <SegmentedControl
+                  options={[
+                    { value: 'active', label: 'Actif' },
+                    { value: 'inactive', label: 'Inactif' },
+                  ]}
+                  value={entry.active ? 'active' : 'inactive'}
+                  onChange={(v) => toggleActive(entry.id, v === 'active')}
+                  className="flex-shrink-0"
+                />
                 <div className="min-w-0">
                   <p className="font-semibold text-sm text-gray-100 truncate">
                     {entry.brand} {entry.model}
@@ -205,9 +217,7 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
 
       {platformEntries.length > 0 && (
         <div>
-          <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">
-            Recherches par défaut de ResellOS
-          </h2>
+          <SectionLabel>Recherches par défaut de ResellOS</SectionLabel>
           <div className="grid grid-cols-1 gap-3">
             {platformEntries.map((entry) => (
               <div
@@ -281,21 +291,17 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
 
             <div>
               <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">Priorité</label>
-              <div className="flex gap-2">
-                {[1, 2, 3].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setForm({ ...form, priority: p })}
-                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                      form.priority === p
-                        ? 'bg-neon-500 text-black border-neon-500'
-                        : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                options={[
+                  { value: '1', label: '1' },
+                  { value: '2', label: '2' },
+                  { value: '3', label: '3' },
+                ]}
+                value={String(form.priority)}
+                onChange={(v) => setForm({ ...form, priority: Number(v) })}
+                fullWidth
+                className="w-full"
+              />
             </div>
 
             <button
@@ -333,13 +339,14 @@ export default function WatchlistPage({ onNavigate }: WatchlistPageProps) {
               </div>
             )}
 
-            <button
+            <Button
+              fullWidth
+              loading={saving}
+              disabled={!form.brand.trim() || !form.model.trim()}
               onClick={handleSubmit}
-              disabled={saving || !form.brand.trim() || !form.model.trim()}
-              className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all disabled:opacity-60"
             >
               {saving ? 'Enregistrement...' : editingId ? 'Enregistrer' : 'Ajouter la recherche'}
-            </button>
+            </Button>
           </div>
         </Modal>
       )}

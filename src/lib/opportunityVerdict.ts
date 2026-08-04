@@ -26,7 +26,7 @@ export function computeVerdict(
 }
 
 export const VERDICT_BADGES: Record<Verdict, { label: string; className: string }> = {
-  excellent: { label: 'Excellente affaire', className: 'bg-neon-500 text-black' },
+  excellent: { label: 'Excellente affaire', className: 'bg-neon-600 text-white' },
   recommande: {
     label: 'Achat recommandé',
     className: 'bg-neon-500/15 text-neon-500 border border-neon-500/30',

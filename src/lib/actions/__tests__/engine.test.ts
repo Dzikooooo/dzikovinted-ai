@@ -8,10 +8,11 @@ import type { ActionDefinition, ActionRequest } from '../types';
 // engine.ts consulte le registre via findActionDefinition(), qui lit
 // ACTION_DEFINITIONS (tableau exporté par handlers/index.ts, qui contient
 // déjà les vraies actions enregistrées, ex. publish_listing). On y pousse
-// temporairement des définitions de test (kind 'republish_listing', pas
-// encore réel) puis on restaure exactement le contenu d'origine après
-// chaque test - jamais un tableau vide, pour ne pas faire disparaître les
-// vraies actions pour le reste de la suite (voir registry.test.ts).
+// temporairement des définitions de test (kind 'pause_listing', toujours
+// pas réel après l'ajout de republish_listing le 2026-08-01) puis on
+// restaure exactement le contenu d'origine après chaque test - jamais un
+// tableau vide, pour ne pas faire disparaître les vraies actions pour le
+// reste de la suite (voir registry.test.ts).
 let originalDefinitions: ActionDefinition[];
 
 beforeEach(() => {
@@ -28,7 +29,7 @@ function registerTestDefinition(definition: ActionDefinition): void {
 }
 
 const request: ActionRequest = {
-  kind: 'republish_listing',
+  kind: 'pause_listing',
   vintedAccountId: 'account-1',
   listingId: 'listing-1',
   payload: {},
@@ -47,8 +48,8 @@ describe('createActionEngine().prepare', () => {
 
   it('stops at the first failing check and never produces a token', async () => {
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [checkAuthenticated, checkExtensionConnected],
       buildPreview: () => ({ summary: 'preview', details: {} }),
     });
@@ -67,8 +68,8 @@ describe('createActionEngine().prepare', () => {
 
   it('on success, builds the preview, inserts a pending_confirmation history row and returns a token', async () => {
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [checkAuthenticated],
       buildPreview: () => ({ summary: 'Republier « Pull Zara »', details: { foo: 'bar' } }),
     });
@@ -90,8 +91,8 @@ describe('createActionEngine().prepare', () => {
 describe('createActionEngine().confirm', () => {
   it('falls back to runViaExtension when the definition has no execute(), resolving not_implemented', async () => {
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [],
       buildPreview: () => ({ summary: 'preview', details: {} }),
     });
@@ -116,8 +117,8 @@ describe('createActionEngine().confirm', () => {
   it('calls a definition-provided execute() instead of runViaExtension when present', async () => {
     const execute = vi.fn().mockResolvedValue({ status: 'success', resultPayload: { ok: true } });
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [],
       buildPreview: () => ({ summary: 'preview', details: {} }),
       execute,
@@ -139,8 +140,8 @@ describe('createActionEngine().confirm', () => {
 
   it('does not call resyncAffectedData on an error outcome', async () => {
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [],
       buildPreview: () => ({ summary: 'preview', details: {} }),
     });
@@ -160,8 +161,8 @@ describe('createActionEngine().confirm', () => {
 
   it('computes durationMs from the injected now() between prepare() and confirm()', async () => {
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [],
       buildPreview: () => ({ summary: 'preview', details: {} }),
     });
@@ -182,8 +183,8 @@ describe('createActionEngine().confirm', () => {
 describe('createActionEngine().cancel', () => {
   it('writes a cancelled history entry without calling runViaExtension or resyncAffectedData', async () => {
     registerTestDefinition({
-      kind: 'republish_listing',
-      label: 'Republier une annonce',
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
       checks: [],
       buildPreview: () => ({ summary: 'preview', details: {} }),
     });

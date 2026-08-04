@@ -7,6 +7,7 @@ import {
   checkListingHasPhotos,
   checkListingHasRequiredVintedFields,
   checkListingLoaded,
+  checkListingNeedsRepublish,
   checkListingNotAlreadyPublished,
   checkListingOwnership,
   checkNoScanInProgress,
@@ -212,6 +213,69 @@ describe('checkListingAlreadyPublished', () => {
   it('fails with not_published_yet when no listing is loaded', () => {
     const result = checkListingAlreadyPublished(makeActionContext(), makeCheckDeps({ targetListing: null }));
     expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'not_published_yet' }) });
+  });
+});
+
+describe('checkListingNeedsRepublish', () => {
+  it('passes for a listing that was published but is no longer live (hidden)', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'hidden' }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('passes for a listing that was deleted on Vinted', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'deleted' }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('passes for a listing never published at all', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: null, vinted_status: null }) })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with listing_not_found when no listing is loaded', () => {
+    const result = checkListingNeedsRepublish(makeActionContext(), makeCheckDeps({ targetListing: null }));
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'listing_not_found' }) });
+  });
+
+  it('fails with listing_sold when the listing is already sold', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'vendu', vinted_item_id: '123', vinted_status: 'hidden' }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'listing_sold' }) });
+  });
+
+  it('fails with listing_not_in_stock when the listing is still a draft', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'draft', vinted_item_id: null, vinted_status: null }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'listing_not_in_stock' }) });
+  });
+
+  it('fails with already_live when the listing is genuinely online on Vinted (anti-duplicate)', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'online' }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_live' }) });
+  });
+
+  it('fails with already_live when the listing is reserved on Vinted', () => {
+    const result = checkListingNeedsRepublish(
+      makeActionContext(),
+      makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'reserved' }) })
+    );
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_live' }) });
   });
 });
 

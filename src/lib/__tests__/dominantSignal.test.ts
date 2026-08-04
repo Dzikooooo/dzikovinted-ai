@@ -29,7 +29,7 @@ describe('computeDominantSignal', () => {
       newOpportunitiesLast24h: 3,
     });
     expect(result.tier).toBe('opportunity');
-    expect(result.actionPage).toBe('opportunities');
+    expect(result.actionPage).toBe('actions');
   });
 
   it('tier 3 : une alerte avertissement domine une recommandation, une alerte info est ignoree', () => {
@@ -52,7 +52,7 @@ describe('computeDominantSignal', () => {
     const result = computeDominantSignal({ ...BASE, profitMonth: 42 });
     expect(result.tier).toBe('stat');
     expect(result.message).toContain('42');
-    expect(result.actionPage).toBe('stats');
+    expect(result.actionPage).toBe('accounting');
   });
 
   it('tier 5 : reste deterministe (pas de division par zero ni de NaN) avec un benefice negatif', () => {

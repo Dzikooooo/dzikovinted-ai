@@ -2,9 +2,6 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Sparkles,
-  History,
-  Wallet,
-  BarChart2,
   CreditCard,
   Settings,
   LogOut,
@@ -12,7 +9,6 @@ import {
   X,
   Menu,
   Plus,
-  Search,
   Puzzle,
   Receipt,
   Activity,
@@ -32,15 +28,12 @@ import { devLog, devWarn } from '../../lib/devLog';
 
 const DashboardHome = lazy(() => import('./DashboardHome'));
 const GeneratorPage = lazy(() => import('./GeneratorPage'));
-const StockPage = lazy(() => import('./StockPage'));
-const ExpensesPage = lazy(() => import('./ExpensesPage'));
+const CommunicationPage = lazy(() => import('./CommunicationPage'));
 const AccountingPage = lazy(() => import('./AccountingPage'));
 const VintedAccountPage = lazy(() => import('./VintedAccountPage'));
 const ActionsPage = lazy(() => import('./ActionsPage'));
-const StatsPage = lazy(() => import('./StatsPage'));
 const SubscriptionPage = lazy(() => import('./SubscriptionPage'));
 const SettingsPage = lazy(() => import('./SettingsPage'));
-const Opportunities = lazy(() => import('./Opportunities'));
 const WatchlistPage = lazy(() => import('./WatchlistPage'));
 const CommunityPage = lazy(() => import('./CommunityPage'));
 
@@ -56,24 +49,43 @@ interface DashboardLayoutProps {
   onNavigate: (page: AppPage) => void;
 }
 
-const navItems: { page: DashboardPage; icon: React.ElementType; label: string }[] = [
-  { page: 'home', icon: LayoutDashboard, label: 'Dashboard' },
-  { page: 'generator', icon: Sparkles, label: 'Générateur IA' },
-  { page: 'opportunities', icon: Search, label: 'Opportunités' },
-  { page: 'watchlist', icon: Eye, label: 'Watchlist' },
-  { page: 'stock', icon: History, label: 'Stock' },
-  { page: 'vinted-account', icon: Puzzle, label: 'Compte Vinted' },
-  { page: 'actions', icon: Activity, label: 'Centre des Actions' },
-  { page: 'accounting', icon: Receipt, label: 'Comptabilite' },
-  { page: 'expenses', icon: Wallet, label: 'Depenses' },
-  { page: 'stats', icon: BarChart2, label: 'Statistiques' },
-  { page: 'community', icon: Users, label: 'Communauté' },
-  { page: 'subscription', icon: CreditCard, label: 'Abonnement' },
-  { page: 'settings', icon: Settings, label: 'Paramètres' },
+// "explicatif" par categorie (demande produit 2026-07-29) : une phrase
+// courte qui dit ce que fait chaque page, visible directement dans la
+// sidebar -- pas seulement une fois la page ouverte (le PageHeader de
+// chaque page porte deja sa propre description, celle-ci sert a decider
+// AVANT de cliquer).
+const navItems: { page: DashboardPage; icon: React.ElementType; label: string; description: string }[] = [
+  { page: 'vinted-account', icon: Puzzle, label: 'Compte Vinted', description: 'Connexion de l\'extension' },
+  { page: 'community', icon: Users, label: 'Communauté', description: 'Nouveautés, roadmap, échanges' },
+  { page: 'home', icon: LayoutDashboard, label: 'Dashboard', description: 'Vue d\'ensemble de ton activité' },
+  { page: 'generator', icon: Sparkles, label: 'Générateur IA', description: 'Photo -> annonce en quelques secondes' },
+  { page: 'watchlist', icon: Eye, label: 'Mes annonces', description: 'Modifier, supprimer, surveiller le marché' },
+  // 'communication' volontairement absente de cette liste : CommunicationPage.tsx
+  // reste un mockup non fonctionnel (bouton d'envoi desactive en dur, bandeau
+  // "Pas encore construit" en page) -- le code et la route (ci-dessous)
+  // restent en place pour la reprise du chantier, mais aucun utilisateur
+  // beta ne doit pouvoir l'atteindre via la navigation tant que ce n'est
+  // pas reellement fonctionnel.
+  { page: 'actions', icon: Activity, label: 'Niches', description: 'Opportunités détectées et historique des actions' },
+  { page: 'accounting', icon: Receipt, label: 'Comptabilité', description: 'Chiffre d\'affaires, marge, stats' },
+  { page: 'subscription', icon: CreditCard, label: 'Abonnement', description: 'Ton plan, factures, résiliation' },
+  { page: 'settings', icon: Settings, label: 'Paramètres', description: 'Profil, sécurité, comptes' },
 ];
 
 export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
-  const [activePage, setActivePage] = useState<DashboardPage>('home');
+  // Deep-link leger depuis la page publique "A propos" (bouton "Changelog --
+  // Espace Communaute", BlogPage.tsx) -- lecture seule dans l'initializer
+  // (StrictMode l'appelle deux fois en dev), nettoyage a part dans l'effet
+  // ci-dessous. Corrige un bug reel (retour utilisateur 2026-08-04) : ce
+  // lien renvoyait au Dashboard generique au lieu de l'espace Communaute
+  // demande.
+  const [activePage, setActivePage] = useState<DashboardPage>(
+    () => (sessionStorage.getItem('resellos:dashboardPage') as DashboardPage | null) ?? 'home'
+  );
+
+  useEffect(() => {
+    sessionStorage.removeItem('resellos:dashboardPage');
+  }, []);
   // Vrai uniquement pendant une analyse Generateur en cours ou un resultat
   // genere pas encore sauvegarde (voir GeneratorPage.tsx) -- un credit est
   // deja reserve cote serveur des le lancement de l'analyse ; quitter cet
@@ -196,7 +208,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const planColors: Record<string, string> = {
     free: 'text-gray-400',
     pro: 'text-neon-500',
-    team: 'text-blue-400',
+    team: 'text-yellow-400',
   };
   
   const planBadge = (profile?.plan ?? 'free').toUpperCase();
@@ -205,10 +217,10 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-5 border-b border-white/5">
-        <button onClick={() => { if (confirmLeaveGenerator()) onNavigate('landing'); }} className="flex items-center gap-2">
-          <Logo size={32} />
+        <button onClick={() => { if (confirmLeaveGenerator()) onNavigate('landing'); }} className="flex items-center gap-1">
+          <Logo variant="transparent" size={28} />
           <span className="text-lg font-black">
-            <span className="text-white">Resell</span>
+            <span className="text-white">esell</span>
             <span className="text-neon-500">OS</span>
           </span>
         </button>
@@ -219,7 +231,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
       {/* Nav */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {navItems.map(({ page, icon: Icon, label }) => {
+        {navItems.map(({ page, icon: Icon, label, description }) => {
           const isActive = activePage === page;
 
           return (
@@ -229,9 +241,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
                 navigateToPage(page);
                 setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 group ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group ${
                 isActive
-                  ? 'bg-neon-500/10 text-neon-500 font-medium shadow-[0_0_16px_rgba(255,196,0,0.08)]'
+                  ? 'bg-neon-500/10 text-neon-500 font-medium shadow-[0_0_16px_rgba(124,92,255,0.08)]'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
               }`}
             >
@@ -241,10 +253,15 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
                 }`}
               />
 
-              {label}
+              <span className="flex-1 min-w-0 text-left">
+                <span className="block truncate">{label}</span>
+                <span className={`block text-[10px] font-normal truncate ${isActive ? 'text-neon-500/70' : 'text-gray-600'}`}>
+                  {description}
+                </span>
+              </span>
 
               {isActive && (
-                <ChevronRight className="w-3.5 h-3.5 ml-auto text-neon-500" />
+                <ChevronRight className="w-3.5 h-3.5 ml-auto text-neon-500 flex-shrink-0" />
               )}
             </button>
           );
@@ -330,7 +347,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setActivePage('generator')}
-                className="hidden sm:flex items-center gap-2 bg-neon-500 text-black text-sm font-bold px-4 py-2 rounded-xl hover:bg-neon-600 transition-all"
+                className="hidden sm:flex items-center gap-2 bg-neon-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-neon-700 transition-all"
               >
                 <Plus className="w-4 h-4" />
                 Nouvel article
@@ -347,14 +364,11 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               {activePage === 'generator' && (
                 <GeneratorPage onNavigate={navigateToPage} onBusyChange={setGeneratorBusy} />
               )}
-              {activePage === 'opportunities' && <Opportunities onViewAction={handleViewAction} />}
-              {activePage === 'watchlist' && <WatchlistPage onNavigate={navigateToPage} />}
-              {activePage === 'stock' && <StockPage onViewAction={handleViewAction} />}
+              {activePage === 'watchlist' && <WatchlistPage onNavigate={navigateToPage} onViewAction={handleViewAction} />}
+              {activePage === 'communication' && <CommunicationPage />}
               {activePage === 'vinted-account' && <VintedAccountPage />}
               {activePage === 'actions' && <ActionsPage initialSelectedActionId={actionsInitialSelectedId} />}
               {activePage === 'accounting' && <AccountingPage />}
-              {activePage === 'expenses' && <ExpensesPage />}
-              {activePage === 'stats' && <StatsPage />}
               {activePage === 'community' && <CommunityPage />}
               {activePage === 'subscription' && <SubscriptionPage />}
               {activePage === 'settings' && <SettingsPage initialTab={settingsInitialTab} />}

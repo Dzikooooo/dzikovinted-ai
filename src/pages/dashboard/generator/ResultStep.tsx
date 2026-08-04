@@ -1,7 +1,8 @@
-import { AlertCircle, ArrowLeft, CheckCircle2, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Star, Tag } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Sparkles, Star, Tag, TrendingUp } from 'lucide-react';
 import type { GeneratedListing } from '../../../lib/types';
 import { CopyBtn } from '../../../components/ui/CopyBtn';
 import { FieldCard } from '../../../components/ui/FieldCard';
+import { Button } from '../../../components/ui/Button';
 import { formatEUR } from '../../../lib/currency';
 
 interface ResultStepProps {
@@ -22,16 +23,16 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
     const t = [
       result.title, '',
       result.description, '',
-      `Prix recommande: ${formatEUR(result.price)}`,
+      `Prix recommandé: ${formatEUR(result.price)}`,
       `Vente rapide: ${formatEUR(result.quick_price)}`,
       `Premium: ${formatEUR(result.premium_price)}`,
       `Marque: ${result.brand}`,
-      `Categorie: ${result.category}`,
+      `Catégorie: ${result.category}`,
       `Taille: ${result.size}`,
       `Couleur: ${result.color}`,
-      `Matiere: ${result.material}`,
-      `Etat: ${result.condition}`,
-      `Mots-cles: ${result.keywords.join(', ')}`,
+      `Matière: ${result.material}`,
+      `État: ${result.condition}`,
+      `Mots-clés: ${result.keywords.join(', ')}`,
     ].join('\n');
     navigator.clipboard.writeText(t);
   };
@@ -49,16 +50,16 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           <p className="text-gray-400 text-sm">Optimisée pour Vinted</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button onClick={handleCopyAll} className="flex items-center gap-2 border border-white/10 text-gray-300 font-medium px-4 py-2 rounded-xl hover:bg-white/5 transition-all text-sm">
-            <Copy className="w-4 h-4" /> Copier tout
-          </button>
-          <button onClick={onEdit} className="flex items-center gap-2 border border-neon-500/30 text-neon-500 font-medium px-4 py-2 rounded-xl hover:bg-neon-500/10 transition-all text-sm">
-            <Pencil className="w-4 h-4" /> Modifier
-          </button>
+          <Button variant="secondary" size="sm" icon={<Copy className="w-4 h-4" />} onClick={handleCopyAll}>
+            Copier tout
+          </Button>
+          <Button variant="secondary" size="sm" icon={<Pencil className="w-4 h-4" />} onClick={onEdit}>
+            Modifier
+          </Button>
           <button
             onClick={onSave}
             disabled={saving || saved}
-            className={`flex items-center gap-2 font-medium px-4 py-2 rounded-xl transition-all text-sm ${saved ? 'bg-neon-500/20 text-neon-500 border border-neon-500/30' : 'bg-neon-500 text-black hover:bg-neon-600 hover:shadow-[0_0_20px_rgba(255,196,0,0.3)] disabled:opacity-60'}`}
+            className={`flex items-center gap-2 font-medium px-4 py-2 rounded-xl transition-all text-sm ${saved ? 'bg-neon-500/20 text-neon-500 border border-neon-500/30' : 'bg-neon-600 text-white hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] disabled:opacity-60'}`}
           >
             <Save className="w-4 h-4" />
             {saved ? 'Sauvegarde !' : saving ? 'Sauvegarde...' : 'Sauvegarder'}
@@ -81,15 +82,15 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3.5 mb-6">
           <div className="flex items-center gap-3">
             <CheckCircle2 className="w-4 h-4 text-neon-500 flex-shrink-0" />
-            <p className="text-sm text-neon-500">Annonce enregistrée dans ton Stock.</p>
+            <p className="text-sm text-neon-500">Annonce enregistrée dans Mes annonces.</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={onGoToStock} className="flex items-center gap-2 bg-neon-500 text-black font-medium px-3.5 py-1.5 rounded-lg hover:bg-neon-600 transition-all text-xs">
-              <Package className="w-3.5 h-3.5" /> Voir dans mon Stock
-            </button>
-            <button onClick={onCreateNew} className="flex items-center gap-2 border border-neon-500/30 text-neon-500 font-medium px-3.5 py-1.5 rounded-lg hover:bg-neon-500/10 transition-all text-xs">
+            <Button size="sm" icon={<Package className="w-3.5 h-3.5" />} onClick={onGoToStock}>
+              Voir dans Mes annonces
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onCreateNew}>
               Créer une nouvelle annonce
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -114,7 +115,7 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
             neutres que les FieldCard d'attributs ci-dessous plutot que
             trois accents concurrents de poids visuel egal (audit Brand
             Book, 2026-07-23). */}
-        <div className="bg-neon-500/5 border border-neon-500/20 rounded-xl p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_25px_rgba(255,196,0,0.12)]">
+        <div className="bg-neon-500/5 border border-neon-500/20 rounded-xl p-5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_25px_rgba(124,92,255,0.12)]">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-neon-500" />
@@ -123,6 +124,24 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
             <CopyBtn text={formatEUR(result.price)} />
           </div>
           <p className="text-3xl sm:text-4xl font-black text-neon-500">{formatEUR(result.price)}</p>
+          {/* Provenance honnete du prix (2026-07-28) : jamais presenter une
+              estimation Gemini comme une donnee de marche confirmee, ni
+              l'inverse. price_source vient de analyze-clothing/index.ts --
+              'market' seulement quand >= 3 vraies annonces comparables ont
+              ete trouvees dans market_price_observations (couverture limitee
+              a la Watchlist -- la majorite des generations restent
+              honnetement 'ai_estimate'). */}
+          {result.price_source === 'market' ? (
+            <p className="flex items-center gap-1.5 text-[11px] text-neon-500/70 mt-2">
+              <TrendingUp className="w-3 h-3 flex-shrink-0" />
+              Basé sur {result.price_comparables_count} annonce{result.price_comparables_count > 1 ? 's' : ''} comparable{result.price_comparables_count > 1 ? 's' : ''} réelle{result.price_comparables_count > 1 ? 's' : ''}
+            </p>
+          ) : (
+            <p className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-2">
+              <Sparkles className="w-3 h-3 flex-shrink-0" />
+              Estimation IA — pas de donnée de marché pour cet article
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -142,11 +161,11 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <FieldCard label="Marque" value={result.brand} icon={Star} />
-          <FieldCard label="Categorie" value={result.category} icon={Layers} />
+          <FieldCard label="Catégorie" value={result.category} icon={Layers} />
           <FieldCard label="Taille" value={result.size} icon={Ruler} />
           <FieldCard label="Couleur" value={result.color} icon={Palette} />
-          <FieldCard label="Matiere" value={result.material} icon={Tag} />
-          <FieldCard label="Etat" value={result.condition} icon={Tag} />
+          <FieldCard label="Matière" value={result.material} icon={Tag} />
+          <FieldCard label="État" value={result.condition} icon={Tag} />
         </div>
 
         <div className="bg-dark-400 border border-white/5 rounded-xl p-4">

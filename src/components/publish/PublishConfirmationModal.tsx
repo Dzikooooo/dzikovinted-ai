@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Package } from 'lucide-react';
+import { X, Package, AlertTriangle } from 'lucide-react';
 import AccountAvatar from '../ui/AccountAvatar';
 import { Modal } from '../ui/Modal';
 import type { Listing, VintedAccount } from '../../lib/types';
@@ -36,6 +36,13 @@ interface PublishConfirmationModalProps {
   account: VintedAccount;
   onCancel: () => void;
   onConfirm: (packageSize: PackageSize) => void;
+  // true quand l'annonce a deja un vinted_item_id (etait publiee, ne l'est
+  // plus reellement -- voir checks.ts::checkListingNeedsRepublish). Le
+  // formulaire de confirmation reste identique (memes champs a valider),
+  // seul le libelle change pour ne jamais laisser croire a une
+  // "reactivation" de l'ancienne fiche Vinted -- il s'agit toujours d'une
+  // creation.
+  isRepublish?: boolean;
 }
 
 export default function PublishConfirmationModal({
@@ -43,6 +50,7 @@ export default function PublishConfirmationModal({
   account,
   onCancel,
   onConfirm,
+  isRepublish = false,
 }: PublishConfirmationModalProps) {
   const [packageSize, setPackageSize] = useState<PackageSize>(defaultPackageSize(listing.category));
 
@@ -50,7 +58,7 @@ export default function PublishConfirmationModal({
     <Modal onClose={onCancel} size="md">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h2 className="text-lg font-black">Publier sur Vinted</h2>
+          <h2 className="text-lg font-black">{isRepublish ? 'Republier sur Vinted' : 'Publier sur Vinted'}</h2>
           <p className="text-xs text-gray-500 mt-1">{listing.title}</p>
         </div>
         <button onClick={onCancel} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
@@ -59,6 +67,16 @@ export default function PublishConfirmationModal({
       </div>
 
       <div className="space-y-4">
+        {isRepublish && (
+          <div className="flex items-start gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300">
+              Cette annonce a déjà été publiée mais n'est plus en ligne sur Vinted (masquée, supprimée ou introuvable).
+              Une <strong>nouvelle</strong> fiche Vinted va être créée avec ces informations -- l'ancienne n'est jamais
+              modifiée ni supprimée.
+            </p>
+          </div>
+        )}
         {listing.image_urls.length > 0 && (
           <div className="flex gap-2 overflow-x-auto">
             {listing.image_urls.slice(0, 5).map((url) => (
@@ -100,7 +118,7 @@ export default function PublishConfirmationModal({
                 title={option.hint}
                 className={`text-xs font-semibold py-2.5 rounded-xl border transition-all ${
                   packageSize === option.value
-                    ? 'bg-neon-500 text-black border-neon-500'
+                    ? 'bg-neon-600 text-white border-neon-500'
                     : 'bg-dark-400 text-gray-400 border-white/10 hover:border-white/20'
                 }`}
               >
@@ -112,9 +130,9 @@ export default function PublishConfirmationModal({
 
         <button
           onClick={() => onConfirm(packageSize)}
-          className="w-full bg-neon-500 text-black font-bold py-3 rounded-xl hover:bg-neon-600 transition-all"
+          className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all"
         >
-          Publier
+          {isRepublish ? 'Republier' : 'Publier'}
         </button>
       </div>
     </Modal>

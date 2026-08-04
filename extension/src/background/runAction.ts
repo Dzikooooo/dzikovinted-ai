@@ -20,6 +20,14 @@ type ActionHandler = (request: RunActionRequest, onProgress: (step: PublishStep)
 const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {
   publish_listing: handlePublishListing,
   edit_listing: handleEditListing,
+  // republish_listing (2026-08-01) reutilise handlePublishListing tel quel :
+  // mecaniquement identique a publish_listing (memes /items/new, meme
+  // content script vinted-publish.ts, meme formulaire de creation) -- seule
+  // la logique d'eligibilite differe, et elle vit entierement cote app
+  // (checks.ts::checkListingNeedsRepublish, avant meme que RUN_ACTION ne
+  // soit envoye). Aucun nouveau selecteur DOM, aucun nouveau risque jamais
+  // teste en direct cote extension.
+  republish_listing: handlePublishListing,
 };
 // toute cle absente tombe sur le fallback not_implemented
 

@@ -251,6 +251,33 @@ async function extractItemsFromPage(page: Page): Promise<ScrapedItem[]> {
   });
 }
 
+// Galerie photo complete d'une opportunite retenue (demande produit
+// 2026-07-29 : carte cliquable -> voir toutes les photos de l'annonce
+// Vinted). Meme selecteur verifie en direct que
+// extension/src/content/itemSelectors.ts::extractPhotoUrls() -- une seule
+// tentative, timeout court : c'est un enrichissement best-effort execute
+// pour chaque opportunite deja retenue (~une centaine par scan), pas une
+// etape critique comme scanSearch() -- un echec ponctuel ne doit jamais
+// faire perdre l'opportunite elle-meme, seulement sa galerie.
+const PHOTO_NAVIGATION_TIMEOUT_MS = 15000;
+
+async function scrapeItemPhotos(page: Page, url: string): Promise<string[]> {
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: PHOTO_NAVIGATION_TIMEOUT_MS });
+    return await page.evaluate(() => {
+      const imgs = Array.from(
+        document.querySelectorAll<HTMLImageElement>('img[data-testid^="item-photo-"][data-testid$="--img"]')
+      );
+      const urls = imgs.map((img) => img.getAttribute("src")).filter((src): src is string => !!src);
+      return [...new Set(urls)];
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[photos] Galerie ignorée pour ${url} : ${message}`);
+    return [];
+  }
+}
+
 async function scanSearch(page: Page, search: string) {
   const foundItems: ScrapedItem[] = [];
 
@@ -491,6 +518,21 @@ async function main() {
     console.log("TOTAL OPPORTUNITÉS :", unique.length);
     console.log("=======================");
 
+    // Passe 3 - galerie photo complete de chaque opportunite retenue
+    // (uniquement le lot final, jamais tous les articles scrapes en passe 1
+    // - visiter la page de chaque annonce candidate serait inutilement
+    // lourd pour des articles qui ne deviendront jamais des opportunites).
+    await logProgress("photos", `Récupération des photos de ${unique.length} opportunité${unique.length === 1 ? "" : "s"}…`);
+    const photosByUrl = new Map<string, string[]>();
+    for (let i = 0; i < unique.length; i++) {
+      const item = unique[i];
+      const photos = await scrapeItemPhotos(page, item.url);
+      photosByUrl.set(item.url, photos);
+      if ((i + 1) % 20 === 0 || i === unique.length - 1) {
+        await logProgress("photos", `Photos récupérées : ${i + 1}/${unique.length}`);
+      }
+    }
+
     await logProgress("saving", "Enregistrement des résultats…");
 
     await insertObservations(observationRows);
@@ -503,6 +545,7 @@ async function main() {
           brand: item.brand,
           category: item.category,
           image: item.image,
+          images: photosByUrl.get(item.url) ?? [],
 
           price_found: item.price,
           market_price: item.market_price,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers, Lightbulb, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers, Lightbulb, AlertTriangle, Lock, Receipt, Eye, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
@@ -16,6 +16,12 @@ import { formatEUR } from '../../lib/currency';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { OneScoreBar } from '../../components/ui/OneScoreBar';
+import { UsageRing } from '../../components/ui/UsageRing';
+import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { EmptyState } from '../../components/ui/EmptyState';
 
 // Au-dela de ce seuil, une synchro Vinted est consideree trop ancienne pour
 // que le Copilote affiche ses chiffres comme fiables -- meme convention que
@@ -30,12 +36,26 @@ function profitOf(l: Listing) {
   return Number(l.sold_price || 0) - Number(l.purchase_price || 0) - Number(l.fees || 0);
 }
 
+// Raccourcis vers les actions les plus frequentes (audit personnel
+// utilisateur, 2026-08-02 : "actions rapides") -- navigation pure, aucune
+// nouvelle fonctionnalite, juste un acces plus direct a ce qui existe deja.
+const QUICK_ACTIONS: { icon: LucideIcon; label: string; page: DashboardPage }[] = [
+  { icon: Sparkles, label: 'Générer une annonce', page: 'generator' },
+  { icon: Search, label: 'Voir les opportunités', page: 'actions' },
+  { icon: Eye, label: 'Mes annonces', page: 'watchlist' },
+  { icon: Receipt, label: 'Comptabilité', page: 'accounting' },
+];
+
 const DOMINANT_SIGNAL_STYLES: Record<DominantSignalTier, { bg: string; border: string; text: string; icon: typeof AlertTriangle; label: string }> = {
   critical_alert: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', icon: AlertTriangle, label: 'Alerte critique' },
   warning_alert: { bg: 'bg-amber-400/10', border: 'border-amber-400/30', text: 'text-amber-400', icon: AlertTriangle, label: 'À surveiller' },
-  opportunity: { bg: 'bg-blue-400/10', border: 'border-blue-400/30', text: 'text-blue-400', icon: Search, label: 'Opportunité' },
+  // Pas de bleu dans la palette (regle explicite 2026-07-28) -- jaune
+  // reserve aux elements d'attention/opportunites/badges.
+  opportunity: { bg: 'bg-yellow-400/10', border: 'border-yellow-400/30', text: 'text-yellow-400', icon: Search, label: 'Opportunité' },
   recommendation: { bg: 'bg-neon-500/10', border: 'border-neon-500/30', text: 'text-neon-500', icon: Lightbulb, label: 'Recommandation' },
-  stat: { bg: 'bg-neon-500/10', border: 'border-neon-500/30', text: 'text-neon-500', icon: TrendingUp, label: 'Aperçu du mois' },
+  // 'stat' affiche toujours un chiffre de benefice pur (voir dominantSignal.ts
+  // -- "Benefice ce mois-ci : +X€"), jamais une action -- vert (benefice).
+  stat: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400', icon: TrendingUp, label: 'Aperçu du mois' },
 };
 
 export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
@@ -47,7 +67,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const [opportunityStats, setOpportunityStats] = useState({ today: 0, avgRoi: 0, avgProfit: 0 });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [showDetail, setShowDetail] = useState(false);
+  const [showZeroCreditModal, setShowZeroCreditModal] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -123,12 +143,21 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const credits = profile?.credits ?? 0;
   const isAdmin = useIsAdmin();
   const limit = isAdmin ? null : PLAN_LIMITS[plan];
-  const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'la';
+  const isLimitReached = !isAdmin && limit !== null && credits <= 0;
+  const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || '';
+
+  const handleNewListing = () => {
+    if (isLimitReached) {
+      setShowZeroCreditModal(true);
+      return;
+    }
+    onNavigate('generator');
+  };
 
   const greeting = () => {
     const h = new Date().getHours();
     if (h < 12) return 'Bonjour';
-    if (h < 18) return 'Bon apres-midi';
+    if (h < 18) return 'Bon après-midi';
     return 'Bonsoir';
   };
 
@@ -167,6 +196,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       newListingsToday,
       recentListings: listings.slice(0, 5),
       hasAnyListing: listings.length > 0,
+      stockHealthPct: stockItems.length > 0 ? Math.round(((stockItems.length - agingStock.length) / stockItems.length) * 100) : 100,
     };
   }, [listings]);
 
@@ -206,26 +236,40 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     {
       icon: ShoppingBag,
       label: metrics.soldTodayCount > 0 ? `${metrics.soldTodayCount} vente${metrics.soldTodayCount > 1 ? 's' : ''} aujourd'hui` : 'Aucune vente aujourd\'hui',
-      detail: metrics.profitToday > 0 ? `+${formatEUR(metrics.profitToday)} de benefice` : 'Reviens plus tard',
-      page: 'stock' as DashboardPage,
-      color: 'text-neon-500',
-      bg: 'bg-neon-500/10',
+      detail: metrics.soldTodayCount === 0
+        ? 'Ton prochain article pourrait se vendre aujourd\'hui'
+        : metrics.profitToday > 0
+          ? `+${formatEUR(metrics.profitToday)} de bénéfice`
+          : `${formatEUR(metrics.profitToday)} de bénéfice`,
+      page: 'watchlist' as DashboardPage,
+      color: 'text-green-400',
+      bg: 'bg-green-500/10',
+      live: false,
     },
     {
       icon: Search,
-      label: newOpportunities > 0 ? `${newOpportunities} nouvelle${newOpportunities > 1 ? 's' : ''} opportunite${newOpportunities > 1 ? 's' : ''}` : 'Aucune opportunite recente',
-      detail: 'Detectees sur les dernieres 24h',
-      page: 'opportunities' as DashboardPage,
-      color: 'text-blue-400',
-      bg: 'bg-blue-400/10',
+      label: newOpportunities > 0 ? `${newOpportunities} nouvelle${newOpportunities > 1 ? 's' : ''} opportunité${newOpportunities > 1 ? 's' : ''}` : 'Aucune opportunité récente',
+      detail: 'Détectées sur les dernières 24h',
+      page: 'actions' as DashboardPage,
+      color: 'text-yellow-400',
+      bg: 'bg-yellow-400/10',
+      // Petit point pulsant -- signale une vraie detection recente, pas
+      // une decoration permanente (audit personnel utilisateur, 2026-08-04 :
+      // "je voudrais sentir... de nouvelles opportunites").
+      live: newOpportunities > 0,
     },
     {
       icon: Clock,
       label: metrics.agingStockCount > 0 ? `${metrics.agingStockCount} article${metrics.agingStockCount > 1 ? 's' : ''} a surveiller` : 'Stock sain',
-      detail: `En stock depuis plus de ${AGING_STOCK_DAYS} jours`,
-      page: 'stock' as DashboardPage,
+      detail: metrics.agingStockCount > 0
+        ? `En stock depuis plus de ${AGING_STOCK_DAYS} jours`
+        : metrics.hasAnyListing
+          ? 'Aucun article dormant'
+          : 'Génère ta première annonce pour commencer',
+      page: 'watchlist' as DashboardPage,
       color: 'text-amber-400',
       bg: 'bg-amber-400/10',
+      live: false,
     },
   ];
 
@@ -234,101 +278,160 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       {loadError && <ErrorBanner message={loadError} className="mb-6" />}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl sm:text-3xl font-black">
-              {greeting()}, <span className="text-neon-500">{firstName}</span>
-            </h1>
-            {accounts.length > 0 && (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-white/5 px-2.5 py-1 rounded-full">
-                <Layers className="w-3 h-3" />
-                Vue : {selectedAccountId === 'all' ? 'Tous les comptes' : selectedAccount?.label}
-              </span>
-            )}
-          </div>
-          <p className="text-gray-400 text-sm mt-1">Voici ce qui demande ton attention aujourd'hui.</p>
-        </div>
-        <button
-          onClick={() => onNavigate('generator')}
-          className="flex items-center gap-2 bg-neon-500 text-black font-bold px-5 py-2.5 rounded-xl hover:bg-neon-600 transition-all hover:shadow-[0_0_20px_rgba(255,196,0,0.25)] text-sm"
-        >
-          <Sparkles className="w-4 h-4" />
-          Nouvelle annonce
-        </button>
+      <PageHeader
+        title={<>{greeting()}, <span className="text-neon-500">{firstName}</span></>}
+        description="Voici ce qui demande ton attention aujourd'hui."
+        meta={
+          accounts.length > 0 && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-white/5 px-2.5 py-1 rounded-full">
+              <Layers className="w-3 h-3" />
+              Vue : {selectedAccountId === 'all' ? 'Tous les comptes' : selectedAccount?.label}
+            </span>
+          )
+        }
+        action={
+          <Button icon={<Sparkles className="w-4 h-4" />} onClick={handleNewListing}>
+            Nouvelle annonce
+          </Button>
+        }
+      />
+
+      {/* Actions rapides -- acces direct aux 4 taches les plus frequentes,
+          distinct des cartes "Aujourd'hui" ci-dessous qui informent plutot
+          qu'elles n'agissent. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {QUICK_ACTIONS.map(({ icon: Icon, label, page }) => (
+          <button
+            key={label}
+            onClick={() => onNavigate(page)}
+            className="flex items-center gap-2.5 bg-surface border border-white/5 rounded-xl px-4 py-3 text-left hover:border-neon-500/30 hover:bg-neon-500/5 transition-all"
+          >
+            <div className="w-8 h-8 bg-neon-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Icon className="w-4 h-4 text-neon-500" />
+            </div>
+            <span className="text-xs font-semibold text-gray-300">{label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Credits banner */}
-      {(limit !== null || isAdmin) && (
-        <div className="bg-gradient-to-r from-surface to-surface border border-white/5 rounded-2xl p-5 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-neon-500/10 rounded-xl flex items-center justify-center">
-                <Zap className="w-6 h-6 text-neon-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-200">Credits restants</p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  {isAdmin ? (
-                    <span className="text-3xl font-black text-neon-500">Illimité</span>
-                  ) : (
-                    <>
-                      <span className="text-3xl font-black text-neon-500">{credits}</span>
-                      <span className="text-sm text-gray-500">/ {limit} ce mois</span>
-                    </>
-                  )}
-                </div>
-              </div>
+      {showZeroCreditModal && (
+        <Modal onClose={() => setShowZeroCreditModal(false)} size="sm">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-5 h-5 text-red-400" />
             </div>
-            {!isAdmin && limit !== null && (
-              <div className="flex-1 max-w-xs">
-                <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ease-out ${
-                      credits > 3 ? 'bg-neon-500' : credits > 0 ? 'bg-amber-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${Math.min((credits / limit) * 100, 100)}%` }}
-                  />
-                </div>
-                {credits <= 0 && (
-                  <p className="text-xs text-red-400 mt-2">
-                    Limite atteinte.{' '}
-                    <button onClick={() => onNavigate('subscription')} className="underline hover:text-red-300">
-                      Passer au Pro
-                    </button>
-                  </p>
-                )}
-                {credits > 0 && credits <= 3 && (
-                  <p className="text-xs text-amber-400 mt-2">Plus que {credits} credit{credits > 1 ? 's' : ''} disponible{credits > 1 ? 's' : ''}.</p>
-                )}
-              </div>
-            )}
+            <h2 className="font-bold text-lg mb-2">Limite de crédits atteinte</h2>
+            <p className="text-sm text-gray-400 mb-6">
+              Tu as utilisé tous tes crédits {plan === 'free' ? 'du plan Free' : 'de ce mois-ci'}. Passe au plan Pro pour générer des annonces en illimité.
+            </p>
+            <div className="flex flex-col gap-2">
+              <Button onClick={() => { setShowZeroCreditModal(false); onNavigate('subscription'); }}>
+                Passer au Pro
+              </Button>
+              <button
+                onClick={() => setShowZeroCreditModal(false)}
+                className="text-sm text-gray-500 hover:text-gray-300 transition-colors py-2"
+              >
+                Plus tard
+              </button>
+            </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* Information dominante -- une seule chose merite l'attention immediate,
-          voir src/lib/dominantSignal.ts pour la regle deterministe. */}
+      {/* Information dominante -- deplacee en tete de contenu et agrandie
+          (audit personnel utilisateur, 2026-08-04 : "il faudrait davantage
+          guider l'oeil") : c'est la seule chose qui merite l'attention
+          immediate, voir src/lib/dominantSignal.ts pour la regle
+          deterministe -- elle doit donc etre lue avant les anneaux et le
+          reste, pas apres. */}
       {!loading && (
         <button
           onClick={() => onNavigate(dominantSignal.actionPage)}
-          className={`w-full text-left mb-6 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} border ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].border} rounded-2xl p-5 flex items-center gap-4 hover:-translate-y-0.5 transition-all duration-200 group`}
+          className={`w-full text-left mb-6 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} border ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].border} rounded-3xl p-6 flex items-center gap-5 hover:-translate-y-0.5 transition-all duration-200 group`}
         >
-          <div className={`w-11 h-11 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+          <div className={`w-14 h-14 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} rounded-2xl flex items-center justify-center flex-shrink-0`}>
             {(() => {
               const Icon = DOMINANT_SIGNAL_STYLES[dominantSignal.tier].icon;
-              return <Icon className={`w-5 h-5 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text}`} />;
+              return <Icon className={`w-6 h-6 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text}`} />;
             })()}
           </div>
           <div className="flex-1 min-w-0">
             <p className={`text-[10px] font-mono uppercase tracking-wider ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} mb-1`}>
               {DOMINANT_SIGNAL_STYLES[dominantSignal.tier].label}
             </p>
-            <p className="text-base font-bold text-gray-100">{dominantSignal.message}</p>
+            <p className="text-lg sm:text-xl font-black text-gray-100">{dominantSignal.message}</p>
           </div>
-          <ArrowRight className={`w-4 h-4 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`} />
+          <ArrowRight className={`w-5 h-5 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`} />
         </button>
       )}
+
+      {/* Bandeau circulaire -- deux anneaux plutot qu'un (restructuration
+          2026-07-29) : credits ET sante du stock partagent le meme langage
+          visuel (anneau colore par etat, jamais une seconde couleur
+          concurrente ajoutee autour). Volontairement plus compact que le
+          signal dominant ci-dessus : ce sont des jauges de reference,
+          jamais l'element qui doit capter l'oeil en premier. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        {(limit !== null || isAdmin) && (
+          <div className={`bg-surface border border-white/5 rounded-2xl p-4 flex items-center gap-4 ${
+            !loading && !metrics.hasAnyListing ? 'sm:col-span-2' : ''
+          }`}>
+            {isAdmin ? (
+              <div className="w-14 h-14 bg-neon-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+                <Zap className="w-5 h-5 text-neon-500" />
+              </div>
+            ) : (
+              <UsageRing
+                value={limit ? (credits / limit) * 100 : 0}
+                colorClassName={credits > 3 ? 'text-neon-500' : credits > 0 ? 'text-amber-400' : 'text-red-500'}
+                size={56}
+              >
+                <span className="text-base font-black text-gray-100">{credits}</span>
+              </UsageRing>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-200">Crédits restants</p>
+              {isAdmin ? (
+                <p className="text-base font-black text-neon-500 mt-0.5">Illimité</p>
+              ) : (
+                <p className="text-sm text-gray-500 mt-0.5">{credits} / {limit} ce mois</p>
+              )}
+              {isLimitReached && (
+                <p className="text-xs text-red-400 mt-1.5">
+                  Limite atteinte.{' '}
+                  <button onClick={() => onNavigate('subscription')} className="underline hover:text-red-300">
+                    Passer au Pro
+                  </button>
+                </p>
+              )}
+              {!isAdmin && limit !== null && credits > 0 && credits <= 3 && (
+                <p className="text-xs text-amber-400 mt-1.5">Plus que {credits} crédit{credits > 1 ? 's' : ''} disponible{credits > 1 ? 's' : ''}.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!loading && metrics.hasAnyListing && (
+          <div className="bg-surface border border-white/5 rounded-2xl p-4 flex items-center gap-4">
+            <UsageRing
+              value={metrics.stockHealthPct}
+              colorClassName={metrics.stockHealthPct >= 80 ? 'text-neon-500' : metrics.stockHealthPct >= 50 ? 'text-amber-400' : 'text-red-500'}
+              size={56}
+            >
+              <span className="text-base font-black text-gray-100">{metrics.stockHealthPct}%</span>
+            </UsageRing>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-200">Santé du stock</p>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {metrics.agingStockCount > 0
+                  ? `${metrics.agingStockCount} article${metrics.agingStockCount > 1 ? 's' : ''} en stock depuis plus de ${AGING_STOCK_DAYS} jours`
+                  : 'Aucun article dormant'}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Copilote */}
       {showCopilote && (
@@ -353,7 +456,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             <div className="flex items-start gap-2.5 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3 mb-4">
               <p className="text-xs text-amber-300">
                 Données non synchronisées{oldestSync ? ` depuis ${formatRelativeSync(oldestSync)}` : ''} — synchronise
-                depuis Stock pour des chiffres à jour.
+                depuis Mes annonces pour des chiffres à jour.
               </p>
             </div>
           )}
@@ -368,32 +471,33 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         </div>
       )}
 
-      {/* Detail replie par defaut -- l'information dominante ci-dessus porte
-          deja ce qui merite l'attention immediate ; le reste reste
-          accessible sur demande plutot que d'imposer 11 chiffres en meme
-          temps (audit Brand Book, 2026-07-23). */}
-      <button
-        onClick={() => setShowDetail((v) => !v)}
-        className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors mb-6"
-      >
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showDetail ? 'rotate-180' : ''}`} />
-        {showDetail ? 'Masquer le détail' : 'Voir le détail'}
-      </button>
-
-      {showDetail && (
-        <div className="space-y-8 mb-8">
+      {/* Detail toujours visible (restructuration 2026-07-29, remplace
+          l'ancien "Voir le detail" replie) -- l'information dominante
+          ci-dessus reste la premiere lecture, mais le reste n'est plus
+          cache derriere un clic. */}
+      <div className="space-y-8 mb-8">
           {/* Aujourd'hui */}
           <div>
-            <h2 className="font-bold text-sm text-gray-300 mb-4">Aujourd'hui</h2>
+            <SectionLabel className="mb-4">Aujourd'hui</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {todayCards.map(({ icon: Icon, label, detail, page, color, bg }) => (
+              {todayCards.map(({ icon: Icon, label, detail, page, color, bg, live }, i) => (
                 <button
                   key={label}
                   onClick={() => onNavigate(page)}
-                  className="bg-surface border border-white/5 rounded-2xl p-5 text-left hover:border-white/10 hover:-translate-y-0.5 transition-all duration-200 group"
+                  style={{ animationDelay: `${i * 60}ms` }}
+                  className="rise-in bg-surface border border-white/5 rounded-2xl p-5 text-left hover:border-white/10 hover:-translate-y-0.5 transition-all duration-200 group"
                 >
-                  <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
+                  <div className={`relative w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
                     <Icon className={`w-4 h-4 ${color}`} />
+                    {/* Point pulsant -- signale une detection reelle et recente
+                        (nouvelles opportunites), jamais affiche sans fait a
+                        l'appui (audit personnel utilisateur, 2026-08-04). */}
+                    {live && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3" aria-hidden="true">
+                        <span className={`live-ping absolute inline-flex h-full w-full rounded-full ${bg.replace('/10', '')}`} />
+                        <span className={`relative inline-flex rounded-full h-3 w-3 ${bg.replace('/10', '')}`} />
+                      </span>
+                    )}
                   </div>
                   <h3 className="font-semibold text-sm mb-1">{loading ? '...' : label}</h3>
                   <p className="text-xs text-gray-500">{detail}</p>
@@ -405,25 +509,35 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
 
           {/* Vue financiere */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-sm text-gray-300">Ce mois-ci</h2>
-              <button onClick={() => onNavigate('stats')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-                Voir le detail <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <SectionLabel
+              className="mb-3"
+              action={
+                <button onClick={() => onNavigate('accounting')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                  Voir le détail <ArrowRight className="w-3 h-3" />
+                </button>
+              }
+            >
+              Ce mois-ci
+            </SectionLabel>
+            {/* Chiffres de reference, volontairement plus denses que les cartes
+                "Aujourd'hui" ci-dessus (audit personnel utilisateur,
+                2026-08-04) : purement informatifs, jamais l'element qui doit
+                capter l'oeil en premier sur la page. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
               {[
-                { icon: TrendingUp, label: "Chiffre d'affaires", value: loading ? '-' : formatEUR(metrics.revenueMonth), color: 'text-gray-100', bg: 'bg-white/5' },
-                { icon: Sparkles, label: 'Benefice', value: loading ? '-' : formatEUR(metrics.profitMonth), color: 'text-neon-500', bg: 'bg-neon-500/10' },
-                { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
-                { icon: Package, label: 'Valeur du stock', value: loading ? '-' : formatEUR(metrics.stockValue), color: 'text-blue-400', bg: 'bg-blue-400/10' },
+                { icon: TrendingUp, label: "Chiffre d'affaires", value: loading ? '-' : formatEUR(metrics.revenueMonth), color: 'text-green-400', bg: 'bg-green-500/10' },
+                { icon: Sparkles, label: 'Bénéfice', value: loading ? '-' : formatEUR(metrics.profitMonth), color: 'text-green-400', bg: 'bg-green-500/10' },
+                { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-green-400', bg: 'bg-green-500/10' },
+                { icon: Package, label: 'Valeur du stock', value: loading ? '-' : formatEUR(metrics.stockValue), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
               ].map(({ icon: Icon, label, value, color, bg }) => (
-                <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
-                  <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-                    <Icon className={`w-4 h-4 ${color}`} />
+                <div key={label} className="bg-surface/60 border border-white/5 rounded-xl px-3.5 py-3 flex items-center gap-3">
+                  <div className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                    <Icon className={`w-3.5 h-3.5 ${color}`} />
                   </div>
-                  <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
-                  <p className="text-[11px] text-gray-500">{label}</p>
+                  <div className="min-w-0">
+                    <p className={`text-base font-bold ${color} leading-tight truncate`}>{value}</p>
+                    <p className="text-[10px] text-gray-500 truncate">{label}</p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -431,46 +545,61 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
 
           {/* Marché */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-sm text-gray-300">Marché</h2>
-              <button onClick={() => onNavigate('opportunities')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-                Voir les opportunités <ArrowRight className="w-3 h-3" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <SectionLabel
+              className="mb-3"
+              action={
+                <button onClick={() => onNavigate('actions')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                  Voir les opportunités <ArrowRight className="w-3 h-3" />
+                </button>
+              }
+            >
+              Marché
+            </SectionLabel>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
               {[
-                { icon: Search, label: 'Opportunités aujourd\'hui', value: loading ? '-' : opportunityStats.today.toString(), color: 'text-blue-400', bg: 'bg-blue-400/10' },
-                { icon: TrendingUp, label: 'ROI moyen (marché)', value: loading ? '-' : `${opportunityStats.avgRoi} %`, color: 'text-neon-500', bg: 'bg-neon-500/10' },
-                { icon: Sparkles, label: 'Bénéfice estimé (marché)', value: loading ? '-' : formatEUR(opportunityStats.avgProfit), color: 'text-neon-500', bg: 'bg-neon-500/10' },
+                { icon: Search, label: 'Opportunités aujourd\'hui', value: loading ? '-' : opportunityStats.today.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+                { icon: TrendingUp, label: 'ROI moyen (marché)', value: loading ? '-' : `${opportunityStats.avgRoi} %`, color: 'text-green-400', bg: 'bg-green-500/10' },
+                { icon: Sparkles, label: 'Bénéfice estimé (marché)', value: loading ? '-' : formatEUR(opportunityStats.avgProfit), color: 'text-green-400', bg: 'bg-green-500/10' },
                 { icon: Package, label: 'Nouvelles annonces (stock)', value: loading ? '-' : metrics.newListingsToday.toString(), color: 'text-gray-100', bg: 'bg-white/5' },
               ].map(({ icon: Icon, label, value, color, bg }) => (
-                <div key={label} className="bg-surface border border-white/5 rounded-2xl p-5 hover:border-white/10 transition-colors">
-                  <div className={`w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-                    <Icon className={`w-4 h-4 ${color}`} />
+                <div key={label} className="bg-surface/60 border border-white/5 rounded-xl px-3.5 py-3 flex items-center gap-3">
+                  <div className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                    <Icon className={`w-3.5 h-3.5 ${color}`} />
                   </div>
-                  <p className={`text-xl sm:text-2xl font-black ${color} mb-1`}>{value}</p>
-                  <p className="text-[11px] text-gray-500">{label}</p>
+                  <div className="min-w-0">
+                    <p className={`text-base font-bold ${color} leading-tight truncate`}>{value}</p>
+                    <p className="text-[10px] text-gray-500 truncate">{label}</p>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
-      )}
 
       {/* Compte Vinted */}
       <button
         onClick={() => onNavigate('vinted-account')}
         className="w-full bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 mb-8 flex items-center gap-4 text-left hover:border-white/10 transition-colors"
       >
-        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
+        <div className="relative w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
           <Puzzle className="w-4 h-4 text-gray-500" />
+          {/* Point pulsant -- reflete une vraie session Vinted active,
+              retire des qu'aucun compte pertinent n'est connecte (audit
+              personnel utilisateur, 2026-08-04 : "je voudrais sentir...
+              de la synchronisation"). */}
+          {(selectedAccountId === 'all' ? accounts.some((a) => a.connected) : selectedAccount?.connected) && (
+            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5" aria-hidden="true">
+              <span className="live-ping absolute inline-flex h-full w-full rounded-full bg-neon-500" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-neon-500" />
+            </span>
+          )}
         </div>
         <div>
           {accounts.length === 0 ? (
             <>
               <p className="text-sm font-semibold text-gray-300">Synchronisation Vinted</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Messages, offres et republications automatiques apparaitront ici une fois l'extension Chrome connectee.
+                Connecte l'extension Chrome pour synchroniser automatiquement tes annonces Vinted et piloter tes publications depuis Resell OS.
               </p>
             </>
           ) : selectedAccountId === 'all' ? (
@@ -504,28 +633,27 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
 
       {/* Recent listings */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-sm text-gray-300 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-500" />
-            Annonces recentes
-          </h2>
-          {metrics.hasAnyListing && (
-            <button onClick={() => onNavigate('stock')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-              Voir tout <ArrowRight className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        <SectionLabel
+          className="mb-4"
+          action={
+            metrics.hasAnyListing && (
+              <button onClick={() => onNavigate('watchlist')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                Voir tout <ArrowRight className="w-3 h-3" />
+              </button>
+            )
+          }
+        >
+          Annonces récentes
+        </SectionLabel>
         {loading ? (
           <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} shape="block" className="h-14" />)}</div>
         ) : metrics.recentListings.length === 0 ? (
-          <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-10 text-center">
-            <Sparkles className="w-8 h-8 text-gray-700 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-1">Aucune annonce encore</p>
-            <p className="text-xs text-gray-600 mb-4">Lance ton premier generateur et vois le resultat.</p>
-            <button onClick={() => onNavigate('generator')} className="text-sm text-neon-500 hover:underline font-medium">
-              Generer maintenant
-            </button>
-          </div>
+          <EmptyState
+            icon={Sparkles}
+            title="Aucune annonce encore"
+            description="Génère ta première annonce et regarde le résultat."
+            action={{ label: 'Générer maintenant', onClick: () => onNavigate('generator') }}
+          />
         ) : (
           <div className="space-y-2">
             {metrics.recentListings.map((l) => {
