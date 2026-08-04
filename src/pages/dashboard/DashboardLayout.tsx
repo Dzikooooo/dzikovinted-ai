@@ -24,6 +24,8 @@ import AccountSwitcher from '../../components/ui/AccountSwitcher';
 import { Logo } from '../../components/ui/Logo';
 import { DzikoAiBubble } from '../../components/ui/DzikoAiBubble';
 import { NotificationRecapModal } from '../../components/notifications/NotificationRecapModal';
+import { Modal } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
 import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
 import { supabase } from '../../lib/supabase';
 import { runSkuRepair } from '../../lib/sku';
@@ -111,14 +113,36 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   // creee ni trace nulle part (bug confirme le 2026-07-24, audit du
   // parcours Generateur). navigateToPage() confirme avant de partir.
   const [generatorBusy, setGeneratorBusy] = useState(false);
-  const confirmLeaveGenerator = () =>
-    !generatorBusy ||
-    window.confirm(
-      "Une génération est en cours ou n'a pas encore été sauvegardée. Si tu quittes maintenant, le crédit utilisé sera perdu. Continuer ?"
-    );
-  const navigateToPage = (page: DashboardPage) => {
-    if (page === 'generator' || confirmLeaveGenerator()) setActivePage(page);
+  // Remplace l'ancien window.confirm() natif (audit RC, 2026-08-05). Meme
+  // regle de declenchement que l'ancien confirmLeaveGenerator() (quitter le
+  // Generateur pendant generatorBusy), mais differe desormais l'action elle-
+  // meme (changer de page, se deconnecter, ouvrir Parametres...) plutot que
+  // de bloquer sur un confirm() synchrone -- une seule action en attente a
+  // la fois, guardLeaveGenerator() ecrase toujours la precedente plutot que
+  // de les empiler, donc aucune confirmation en attente ne peut rester
+  // bloquee sur une action perimee si l'utilisateur clique plusieurs
+  // commandes avant de repondre a la modale.
+  const [pendingLeaveGeneratorAction, setPendingLeaveGeneratorAction] = useState<(() => void) | null>(null);
+  const guardLeaveGenerator = (action: () => void) => {
+    if (!generatorBusy) {
+      action();
+      return;
+    }
+    setPendingLeaveGeneratorAction(() => action);
   };
+  const navigateToPage = (page: DashboardPage) => {
+    if (page === 'generator') {
+      setActivePage(page);
+      return;
+    }
+    guardLeaveGenerator(() => setActivePage(page));
+  };
+  const confirmLeaveGenerator = () => {
+    const action = pendingLeaveGeneratorAction;
+    setPendingLeaveGeneratorAction(null);
+    action?.();
+  };
+  const cancelLeaveGenerator = () => setPendingLeaveGeneratorAction(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab | undefined>(undefined);
   const [actionsInitialSelectedId, setActionsInitialSelectedId] = useState<string | undefined>(undefined);
@@ -212,17 +236,18 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     navigateToPage('actions');
   };
 
-  const handleSignOut = async () => {
-    if (!confirmLeaveGenerator()) return;
-    await signOut();
-    onNavigate('landing');
+  const handleSignOut = () => {
+    guardLeaveGenerator(() => {
+      void signOut().then(() => onNavigate('landing'));
+    });
   };
 
   const handleManageAccounts = () => {
-    if (!confirmLeaveGenerator()) return;
-    setSettingsInitialTab('accounts');
-    setActivePage('settings');
-    setSidebarOpen(false);
+    guardLeaveGenerator(() => {
+      setSettingsInitialTab('accounts');
+      setActivePage('settings');
+      setSidebarOpen(false);
+    });
   };
 
   const planColors: Record<string, string> = {
@@ -237,7 +262,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-5 border-b border-white/5">
-        <button onClick={() => { if (confirmLeaveGenerator()) onNavigate('landing'); }} className="flex items-center gap-1">
+        <button onClick={() => guardLeaveGenerator(() => onNavigate('landing'))} className="flex items-center gap-1">
           <Logo variant="transparent" size={28} />
           <span className="text-lg font-black">
             <span className="text-white">esell</span>
@@ -400,6 +425,25 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
       <NotificationRecapModal onNavigate={navigateToPage} />
       {DZIKO_AI_ENABLED && <DzikoAiBubble />}
+
+      {pendingLeaveGeneratorAction && (
+        <Modal onClose={cancelLeaveGenerator} size="sm">
+          <h2 className="text-lg font-black mb-2">Quitter le Générateur ?</h2>
+          <p className="text-sm text-gray-400 mb-6">
+            Une génération est en cours ou son résultat n'est pas encore enregistré. Le crédit est déjà utilisé et sera
+            perdu si tu continues — le résultat ne sera pas conservé, il faudra tout recommencer si tu reviens sur cet
+            écran.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Button fullWidth onClick={cancelLeaveGenerator}>
+              Continuer la génération
+            </Button>
+            <Button variant="secondary" fullWidth onClick={confirmLeaveGenerator}>
+              Quitter quand même
+            </Button>
+          </div>
+        </Modal>
+      )}
     </VintedAccountFilterProvider>
   );
 }
