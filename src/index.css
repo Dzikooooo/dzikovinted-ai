@@ -44,6 +44,10 @@
   * {
     scrollbar-width: thin;
     scrollbar-color: #F8FAFC #0F1117;
+    /* Retire le flash gris/bleu par defaut au tap sur mobile (iOS Safari/
+       Android Chrome) -- le retour visuel maison (active:scale-[0.98] sur
+       Button.tsx, hover/active des cartes) suffit deja, audit RC 2026-08-05. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
