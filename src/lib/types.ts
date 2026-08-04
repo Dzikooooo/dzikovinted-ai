@@ -2,19 +2,17 @@ export type Plan = 'free' | 'pro' | 'team';
 export type DashboardPage =
   | 'home'
   | 'generator'
-  | 'opportunities'
   | 'watchlist'
-  | 'stock'
-  | 'expenses'
+  | 'communication'
   | 'accounting'
   | 'vinted-account'
   | 'actions'
-  | 'stats'
   | 'subscription'
   | 'settings'
-  | 'community';
-  export type AppPage = "landing" | "auth" | "dashboard" | "reset-password";
-export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'danger';
+  | 'community'
+  | 'admin';
+  export type AppPage = "landing" | "auth" | "dashboard" | "reset-password" | "blog" | "newsletter" | "cgu" | "confidentialite";
+export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'privacy' | 'danger';
 // Meme mecanisme que SettingsTab (deep-link via initialTab porte par
 // DashboardLayout) -- voir CommunityPage.tsx. 'discord' est une tuile
 // statique (lien externe), pas une vue avec donnees.
@@ -28,7 +26,9 @@ export type CommunityTab =
   | 'suggestions'
   | 'faq'
   | 'support'
-  | 'discord';
+  | 'discord'
+  | 'reviews'
+  | 'newsletter';
 export type AuthMode = 'login' | 'register' | 'forgot';
 
 // Type des lignes community_content (supabase/migrations/20260727100000_add_community_content.sql).
@@ -171,6 +171,20 @@ export interface Profile {
   credits: number;
   role: 'user' | 'admin';
   avatar_url: string | null;
+  banned: boolean;
+  created_at: string;
+}
+
+export type NotificationType = 'sale' | 'community' | 'admin_broadcast';
+
+export interface AppNotification {
+  id: string;
+  user_id: string | null;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  target_page: DashboardPage | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -276,6 +290,13 @@ export interface GeneratedListing {
   premium_price: number;
   keywords: string[];
   vinted_filters: VintedFilter[];
+  // 'market' = mediane de vraies annonces comparables (market_price_observations,
+  // voir supabase/functions/analyze-clothing/index.ts) ; 'ai_estimate' = pure
+  // estimation Gemini, aucune donnee de marche trouvee pour cette marque+
+  // categorie -- la majorite des generations restent honnetement 'ai_estimate'
+  // (la table ne couvre que les recherches suivies en Watchlist).
+  price_source: 'market' | 'ai_estimate';
+  price_comparables_count: number;
 }
 
 export interface UsageRecord {
@@ -299,6 +320,10 @@ export interface MarketOpportunity {
   brand: string | null;
   category: string | null;
   image: string | null;
+  // Galerie photo complete de l'annonce (extraite depuis la page item Vinted
+  // par scripts/vinted-scan.ts) -- null tant que la ligne n'a pas ete
+  // scrapee via ce second passage, ou si la page etait inaccessible.
+  images: string[] | null;
   price_found: number | null;
   market_price: number | null;
   profit: number | null;

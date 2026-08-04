@@ -15,6 +15,11 @@ interface AuthContextValue {
   // dedie au lieu du dashboard, meme si une session valide existe deja.
   passwordRecovery: boolean;
   clearPasswordRecovery: () => void;
+  // true des qu'un profil banni par un admin est detecte -- la session est
+  // deconnectee immediatement (voir fetchProfile), App.tsx affiche un
+  // ecran dedie plutot que de laisser passer vers le dashboard.
+  bannedNotice: boolean;
+  clearBannedNotice: () => void;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null; confirmEmail: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -30,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [bannedNotice, setBannedNotice] = useState(false);
   const initializedRef = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string, retries = 3): Promise<void> => {
@@ -39,6 +45,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('id', userId)
       .maybeSingle();
     if (data) {
+      // Compte bloque par un admin (voir AdminUsersPage.tsx) -- deconnexion
+      // immediate plutot que de laisser une session bannie continuer
+      // d'exister cote client (demande produit 2026-08-04).
+      if ((data as Profile).banned) {
+        setBannedNotice(true);
+        await supabase.auth.signOut();
+        setProfile(null);
+        setUser(null);
+        setSession(null);
+        return;
+      }
       setProfile(data as Profile);
     } else if (retries > 0) {
       await new Promise((r) => setTimeout(r, 500));
@@ -139,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const clearPasswordRecovery = () => setPasswordRecovery(false);
+  const clearBannedNotice = () => setBannedNotice(false);
 
   const refreshProfile = async () => {
     if (user) await fetchProfile(user.id);
@@ -146,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, profile, loading, passwordRecovery, clearPasswordRecovery, signUp, signIn, signOut, resetPassword, refreshProfile }}
+      value={{ user, session, profile, loading, passwordRecovery, clearPasswordRecovery, bannedNotice, clearBannedNotice, signUp, signIn, signOut, resetPassword, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
