@@ -1,23 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Puzzle, MessageSquare, Tag, RotateCw, Bell, Loader2, Eye, Heart, ArrowRight, UserPlus, ExternalLink } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Puzzle, Power, ArrowRight, UserPlus, ExternalLink, Loader2, CheckCircle2, Circle, User, Clock, Package } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
-import type { Listing } from '../../lib/types';
-import { getConfiguredExtensionId, isExtensionConfigured, pingExtension, pairExtension } from '../../lib/extensionBridge';
+import { getConfiguredExtensionId, isExtensionConfigured, getExtensionStatus, pairExtension, unpairExtension } from '../../lib/extensionBridge';
 import AccountAvatar from '../../components/ui/AccountAvatar';
-import VintedStatusBadge from '../../components/ui/VintedStatusBadge';
-import { formatEUR } from '../../lib/currency';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { StatCard } from '../../components/ui/StatCard';
 import { CopyBtn } from '../../components/ui/CopyBtn';
 import { devLog, devWarn } from '../../lib/devLog';
 
-const UPCOMING = [
-  { icon: MessageSquare, label: 'Messages et reponses rapides' },
-  { icon: Tag, label: 'Offres et contre-offres recues' },
-  { icon: RotateCw, label: 'Republication automatique des annonces' },
-  { icon: Bell, label: 'Alertes ventes, offres et annonces expirees' },
-];
-
+// Cette page est dediee exclusivement a la connexion de l'extension --
+// jamais un second endroit pour consulter les annonces (deja dans
+// StockPage.tsx). Recentrage demande le 2026-07-27 : la section "Annonces
+// synchronisees" ici etait un doublon strict de StockPage.tsx.
+//
 // L'etat de l'extension (installee/appairee) est independant du compte Vinted
 // selectionne dans le switcher : l'appairage n'est pas specifique a un
 // compte, seule la detection ulterieure sur vinted.fr cree/relie un compte
@@ -33,12 +30,25 @@ const UPCOMING = [
 type ExtensionState = 'checking' | 'not-configured' | 'not-installed' | 'ready';
 
 export default function VintedAccountPage() {
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const { accounts, loading: accountsLoading, selectedAccountId, selectedAccount, selectAccount, refresh } = useVintedAccountFilter();
-  const [listings, setListings] = useState<Listing[]>([]);
   const [extensionState, setExtensionState] = useState<ExtensionState>('checking');
-  const [pairing, setPairing] = useState(false);
+  // 'paired' = l'extension a une session ResellOS locale valide (chrome.storage.local,
+  // voir extensionBridge.ts::getExtensionStatus) -- DISTINCT de vinted_accounts.connected
+  // (etat "vraie session Vinted detectee", propre a chaque compte).
+  const [paired, setPaired] = useState(false);
+  // P-04 (audit pre-beta 2026-08-03) : l'extension peut rester appairee a un
+  // ResellOS user_id different de celui connecte dans cet onglet (poste
+  // partage, changement de compte) -- si on affichait "Connecte" sans le
+  // detecter, les prochaines synchros ecriraient silencieusement les
+  // donnees Vinted de CET utilisateur sous le compte de l'AUTRE.
+  const [pairedToOtherUser, setPairedToOtherUser] = useState(false);
+  const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Compte des annonces synchronisees pour le compte selectionne -- meme
+  // requete simple (count exact, head) que SettingsPage.tsx::openDeleteConfirm,
+  // uniquement pour affichage (aucune logique metier ajoutee).
+  const [selectedAccountListingsCount, setSelectedAccountListingsCount] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -52,43 +62,21 @@ export default function VintedAccountPage() {
       }
       const expectedId = getConfiguredExtensionId();
       devLog('[ResellOS][pairing] ID attendu :', expectedId);
-      const installed = await pingExtension();
-      // Chrome ne renvoie aucune information exploitable en cas d'echec
-      // (pas de "mauvais id" distinct de "extension absente") -- on ne peut
-      // journaliser que le resultat binaire du ping, jamais un "ID reçu".
-      devLog('[ResellOS][pairing] pingExtension ->', installed, installed ? '(confirme : le pseudo-handshake a atteint exactement cet id)' : '(aucune reponse)');
-      setExtensionState(installed ? 'ready' : 'not-installed');
+      const status = await getExtensionStatus();
+      devLog('[ResellOS][pairing] getExtensionStatus ->', status);
+      if (!status) {
+        setExtensionState('not-installed');
+        return;
+      }
+      setPaired(status.paired);
+      setPairedToOtherUser(!!status.paired && !!status.pairedUserId && status.pairedUserId !== user?.id);
+      setExtensionState('ready');
     })();
-  }, []);
-
-  const loadListings = useCallback(async (accountId: string, isStale: () => boolean): Promise<void> => {
-    const { data } = await supabase
-      .from('listings')
-      .select('*')
-      .eq('vinted_account_id', accountId)
-      .not('vinted_item_id', 'is', null)
-      .neq('vinted_status', 'deleted')
-      .order('synced_at', { ascending: false });
-    if (!isStale()) setListings((data as Listing[] | null) ?? []);
-  }, []);
-
-  useEffect(() => {
-    let ignore = false;
-
-    if (selectedAccountId !== 'all' && selectedAccount) {
-      void loadListings(selectedAccount.id, () => ignore);
-    } else {
-      setListings([]);
-    }
-
-    return () => {
-      ignore = true;
-    };
-  }, [selectedAccountId, selectedAccount, loadListings]);
+  }, [user?.id]);
 
   const handleConnect = async () => {
     if (!session) return;
-    setPairing(true);
+    setWorking(true);
     setError(null);
 
     // Redemande une session fraiche a Supabase (rafraichit si besoin) plutot
@@ -97,31 +85,90 @@ export default function VintedAccountPage() {
     // appairage), le renvoyer tel quel echoue cote extension.
     const { data, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !data.session) {
-      setPairing(false);
+      setWorking(false);
       setError('Session ResellOS invalide, reconnecte-toi et réessaie.');
       return;
     }
 
     const result = await pairExtension(data.session.access_token, data.session.refresh_token);
-    setPairing(false);
+    setWorking(false);
 
     if (!result.ok) {
       setError(result.error ?? "L'appairage a échoué.");
       return;
     }
 
+    setPaired(true);
+    setPairedToOtherUser(false);
     await refresh();
+  };
+
+  const handleDisconnect = async () => {
+    setWorking(true);
+    setError(null);
+
+    const result = await unpairExtension();
+    setWorking(false);
+
+    if (!result.ok) {
+      setError(result.error ?? 'La déconnexion a échoué.');
+      return;
+    }
+
+    setPaired(false);
+    setPairedToOtherUser(false);
   };
 
   const hasAnyAccount = accounts.length > 0;
 
+  useEffect(() => {
+    if (!selectedAccount) {
+      setSelectedAccountListingsCount(null);
+      return;
+    }
+    let ignore = false;
+    (async () => {
+      const { count } = await supabase
+        .from('listings')
+        .select('*', { count: 'exact', head: true })
+        .eq('vinted_account_id', selectedAccount.id);
+      if (!ignore) setSelectedAccountListingsCount(count ?? 0);
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedAccount]);
+
+  // Etapes derivees de l'etat reel du composant (pas de donnee inventee) --
+  // sert a rendre la page lisible meme avant toute connexion (demande
+  // produit 2026-08-02 : "meme sans connexion, je veux une vraie page").
+  const checklistSteps = [
+    { label: 'Extension Chrome installée', done: extensionState === 'ready' },
+    { label: 'Extension appairée à ResellOS', done: extensionState === 'ready' && paired },
+    { label: 'Compte Vinted synchronisé', done: hasAnyAccount },
+  ];
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-black mb-1">Compte Vinted</h1>
-        <p className="text-gray-400 text-sm">
-          Pilote ton compte Vinted directement depuis ResellOS.
-        </p>
+      <PageHeader title="Compte Vinted" description="Connecte ou déconnecte l'extension ResellOS pour Vinted." />
+
+      {/* Checklist de connexion -- toujours visible, meme sans aucune
+          connexion : donne une vraie page a regarder plutot qu'un titre suivi
+          d'un message d'erreur (demande produit 2026-08-02). */}
+      <div className="bg-surface border border-white/5 rounded-2xl p-5 mb-6">
+        <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Étapes de connexion</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {checklistSteps.map(({ label, done }) => (
+            <div key={label} className="flex items-center gap-2.5">
+              {done ? (
+                <CheckCircle2 className="w-4 h-4 text-neon-500 flex-shrink-0" />
+              ) : (
+                <Circle className="w-4 h-4 text-gray-700 flex-shrink-0" />
+              )}
+              <span className={`text-sm ${done ? 'text-gray-200' : 'text-gray-500'}`}>{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {(extensionState === 'checking' || (extensionState === 'ready' && accountsLoading)) && (
@@ -179,28 +226,69 @@ export default function VintedAccountPage() {
         </div>
       )}
 
-      {extensionState === 'ready' && !accountsLoading && !hasAnyAccount && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 text-center">
-          <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Puzzle className="w-5 h-5 text-gray-500" />
+      {extensionState === 'ready' && !accountsLoading && pairedToOtherUser && (
+        <div className="bg-surface border border-amber-500/20 rounded-2xl p-6 flex items-center gap-5">
+          <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Puzzle className="w-5 h-5 text-amber-400" />
           </div>
-          <h2 className="font-bold text-sm mb-1">Extension détectée</h2>
-          <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">
-            Connecte l'extension à ton compte ResellOS, puis ouvre ton profil Vinted dans un onglet pour synchroniser ton compte.
-          </p>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-bold text-sm text-amber-400">Extension appairée à un autre compte</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              L'extension est actuellement liée à un autre compte ResellOS sur ce navigateur -- si tu la laisses ainsi, tes
+              prochaines synchros Vinted seraient enregistrées sur ce mauvais compte. Ré-appaire-la pour la lier à ton compte actuel.
+            </p>
+            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          </div>
           <button
             onClick={handleConnect}
-            disabled={pairing}
-            className="bg-neon-500 text-black text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-600 transition-all disabled:opacity-60"
+            disabled={working}
+            className="flex-shrink-0 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-amber-500/15 transition-colors disabled:opacity-60"
           >
-            {pairing ? 'Connexion...' : "Connecter l'extension"}
+            {working ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Ré-appairer à ce compte'}
           </button>
-          {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
         </div>
       )}
 
-      {extensionState === 'ready' && !accountsLoading && hasAnyAccount && selectedAccountId === 'all' && (
-        <div className="space-y-2">
+      {extensionState === 'ready' && !accountsLoading && !pairedToOtherUser && (
+        <div className="bg-surface border border-white/5 rounded-2xl p-6 flex items-center gap-5">
+          <button
+            onClick={paired ? handleDisconnect : handleConnect}
+            disabled={working}
+            aria-pressed={paired}
+            className={`relative w-14 h-8 rounded-full flex-shrink-0 transition-colors disabled:opacity-60 ${
+              paired ? 'bg-green-500' : 'bg-red-500/80'
+            }`}
+          >
+            <span
+              className={`absolute top-1 w-6 h-6 rounded-full bg-black flex items-center justify-center transition-transform ${
+                paired ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            >
+              {working ? <Loader2 className="w-3 h-3 text-white animate-spin" /> : <Power className={`w-3 h-3 ${paired ? 'text-green-400' : 'text-red-400'}`} />}
+            </span>
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-bold text-sm">{paired ? 'Extension connectée' : 'Extension déconnectée'}</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {paired
+                ? "L'extension synchronise automatiquement tes annonces Vinted vers ResellOS."
+                : "Connecte l'extension pour démarrer la synchronisation de ton compte Vinted."}
+            </p>
+            {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+          </div>
+        </div>
+      )}
+
+      {extensionState === 'ready' && !accountsLoading && paired && !pairedToOtherUser && !hasAnyAccount && (
+        <div className="mt-6 bg-surface border border-white/5 border-dashed rounded-2xl p-8 text-center">
+          <p className="text-sm text-gray-500">
+            Aucun compte Vinted détecté pour l'instant. Ouvre ton profil Vinted dans un onglet pour lancer la synchronisation.
+          </p>
+        </div>
+      )}
+
+      {extensionState === 'ready' && !accountsLoading && paired && hasAnyAccount && selectedAccountId === 'all' && (
+        <div className="mt-6 space-y-2">
           {accounts.map((account) => (
             <button
               key={account.id}
@@ -223,130 +311,56 @@ export default function VintedAccountPage() {
         </div>
       )}
 
-      {extensionState === 'ready' && !accountsLoading && hasAnyAccount && selectedAccountId !== 'all' && selectedAccount && (
-        <>
-          <div className="bg-surface border border-white/5 rounded-2xl p-6 text-center">
+      {extensionState === 'ready' && !accountsLoading && paired && hasAnyAccount && selectedAccountId !== 'all' && selectedAccount && (
+        <div className="mt-6">
+          <div className="flex items-center gap-3 mb-4">
             <AccountAvatar label={selectedAccount.label} size="md" />
-            <h2 className="font-bold text-sm mt-3 mb-1">
-              {selectedAccount.connected ? 'Connecté' : 'Déconnecté'} — {selectedAccount.label}
-            </h2>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto mb-3">
-              {selectedAccount.last_synced_at
-                ? `Dernière synchro : ${new Date(selectedAccount.last_synced_at).toLocaleString('fr-FR')}`
-                : 'Synchronisation en cours...'}
-            </p>
-            <ReconnectLink pairing={pairing} onClick={handleConnect} />
-            {error && <p className="text-xs text-red-400 mt-3">{error}</p>}
+            <div>
+              <h2 className="font-bold text-sm">{selectedAccount.label}</h2>
+              <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${selectedAccount.connected ? 'bg-neon-500' : 'bg-gray-600'}`} />
+                {selectedAccount.connected ? 'Connecté' : 'Déconnecté'}
+              </p>
+            </div>
           </div>
-
-          <div className="mt-6">
-            <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">
-              Annonces synchronisées {listings.length > 0 && `(${listings.length})`}
-            </h2>
-            {listings.length === 0 ? (
-              <div className="bg-surface border border-white/5 border-dashed rounded-2xl p-8 text-center">
-                <p className="text-sm text-gray-500">
-                  Aucune annonce synchronisée pour l'instant. Ouvre ton profil Vinted dans un onglet pour lancer la synchronisation.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2">
-                {listings.map((listing) => (
-                  <div
-                    key={listing.id}
-                    className="flex items-center gap-3 bg-surface border border-white/5 rounded-xl px-4 py-3"
-                  >
-                    {listing.image_urls?.[0] ? (
-                      <img src={listing.image_urls[0]} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-white/5 flex-shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm text-gray-200 truncate">{listing.title}</p>
-                        {listing.vinted_status && <VintedStatusBadge status={listing.vinted_status} />}
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
-                        {listing.views !== null && (
-                          <span className="flex items-center gap-1">
-                            <Eye className="w-3 h-3" /> {listing.views}
-                          </span>
-                        )}
-                        {listing.favourites !== null && (
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-3 h-3" /> {listing.favourites}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {listing.price !== null && (
-                      <p className="text-sm font-bold text-neon-500 flex-shrink-0">{formatEUR(listing.price)}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard icon={User} label="Pseudo Vinted" value={selectedAccount.label} />
+            <StatCard
+              icon={Clock}
+              label="Dernière synchro"
+              value={selectedAccount.last_synced_at ? new Date(selectedAccount.last_synced_at).toLocaleString('fr-FR') : 'En cours...'}
+            />
+            <StatCard
+              icon={Package}
+              label="Annonces synchronisées"
+              value={selectedAccountListingsCount === null ? '—' : selectedAccountListingsCount}
+              highlight
+            />
           </div>
-        </>
+        </div>
       )}
 
-      {extensionState === 'ready' && !accountsLoading && hasAnyAccount && (
-        <div className="mt-6 bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
-            <UserPlus className="w-4 h-4 text-gray-500" />
+      {extensionState === 'ready' && !accountsLoading && paired && hasAnyAccount && (
+        <div className="mt-6 bg-surface/50 border border-white/5 border-dashed rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+          <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <UserPlus className="w-5 h-5 text-gray-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-300">Ajouter un autre compte Vinted</p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-base font-bold text-gray-200">Ajouter un compte Vinted</p>
+            <p className="text-sm text-gray-500 mt-1">
               Connecte-toi à un autre compte Vinted dans ce navigateur, puis ouvre ta page de profil Vinted. Le nouveau compte est détecté et ajouté automatiquement ici et dans le sélecteur — aucune action supplémentaire n'est nécessaire côté ResellOS.
             </p>
-            <a
-              href="https://www.vinted.fr"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-neon-500 hover:underline mt-3"
-            >
-              Ouvrir Vinted <ExternalLink className="w-3 h-3" />
-            </a>
           </div>
+          <a
+            href="https://www.vinted.fr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 bg-neon-600 text-white font-bold px-6 py-3.5 rounded-xl hover:bg-neon-700 hover:shadow-[0_0_20px_rgba(124,92,255,0.3)] transition-all flex-shrink-0"
+          >
+            + Ajouter un compte <ExternalLink className="w-4 h-4" />
+          </a>
         </div>
       )}
-
-      <div className="mt-6">
-        <h2 className="text-[10px] uppercase tracking-wider text-gray-500 font-mono mb-3">
-          Disponible avec la synchronisation
-        </h2>
-        <div className="space-y-2">
-          {UPCOMING.map(({ icon: Icon, label }) => (
-            <div
-              key={label}
-              className="flex items-center gap-3 bg-surface border border-white/5 rounded-xl px-4 py-3"
-            >
-              <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Icon className="w-3.5 h-3.5 text-gray-500" />
-              </div>
-              <p className="text-sm text-gray-400">{label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
-  );
-}
-
-// Toujours disponible : une ligne vinted_accounts en base ne garantit pas que
-// l'extension a encore une session locale valide (dissociation,
-// réinstallation, données de navigateur effacées...). Sans ce bouton de
-// secours, un utilisateur dans cet état serait bloqué sans aucun moyen de
-// ré-appairer.
-function ReconnectLink({ pairing, onClick }: { pairing: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={pairing}
-      className="text-xs text-gray-500 hover:text-neon-500 transition-colors underline underline-offset-2 disabled:opacity-60"
-    >
-      {pairing ? 'Connexion...' : "Ré-appairer l'extension"}
-    </button>
   );
 }

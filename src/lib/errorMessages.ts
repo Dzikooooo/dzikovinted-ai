@@ -14,6 +14,15 @@ export function translateExtensionError(raw: string): string {
   if (/receiving end does not exist|could not establish connection/i.test(raw)) {
     return "L'extension ResellOS ne répond pas. Vérifie qu'elle est bien installée et activée dans Chrome, puis réessaie.";
   }
+  // "Message externe inconnu" = reponse legitime du background (pas un
+  // chrome.runtime.lastError) quand l'extension installee ne reconnait pas
+  // encore ce type de message -- typiquement une extension pas rechargee
+  // apres une mise a jour de ResellOS (voir isExternalMessage, messages.ts).
+  // Bug reel confirme le 2026-07-28 : ce texte technique s'affichait tel
+  // quel a l'utilisateur au lieu d'etre traduit.
+  if (/message externe inconnu/i.test(raw)) {
+    return "L'extension ResellOS installée ne reconnaît pas encore cette action. Recharge-la sur chrome://extensions (bouton actualiser), puis réessaie.";
+  }
   return withCause(
     "Une erreur inattendue est survenue avec l'extension ResellOS. Réessaie, et contacte le support si le problème persiste.",
     raw

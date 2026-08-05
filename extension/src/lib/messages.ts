@@ -237,9 +237,19 @@ export type ActionProgressPortMessage = { type: "progress"; step: PublishStep } 
 
 // App web -> background, via chrome.runtime.sendMessage(EXTENSION_ID, ...)
 // (externally_connectable, limite a l'origine de l'app - voir manifest.config.ts)
+//
+// GET_STATUS/UNPAIR (2026-07-28) : deja geres cote background pour le popup
+// (InternalMessage) depuis le tout debut -- ajoutes ici uniquement pour que
+// VintedAccountPage.tsx (page web) puisse lire l'etat d'appairage reel et
+// dissocier l'extension sans passer par le popup Chrome. Aucune nouvelle
+// logique metier : memes fonctions pair()/unpair()/getStatus() (voir
+// background/index.ts), qui ne lisent/ecrivent jamais que la session locale
+// de l'extension -- aucune donnee sensible supplementaire exposee a l'app.
 export type ExternalMessage =
   | { type: "PING" }
   | { type: "PAIR"; access_token: string; refresh_token: string }
+  | { type: "GET_STATUS" }
+  | { type: "UNPAIR" }
   | { type: "RUN_ACTION"; request: RunActionRequest };
 
 export type ExternalResponse = { ok: true } | { ok: false; error: string };
@@ -316,6 +326,15 @@ export type InternalMessage =
 
 export interface StatusResponse {
   paired: boolean;
+  // P-04 (audit pre-beta 2026-08-03) : id de l'utilisateur ResellOS auquel
+  // l'extension est reellement appairee (chrome.storage.local, voir
+  // session.ts) -- distinct de l'utilisateur connecte dans l'onglet web au
+  // meme instant. Sans ce champ, le web app n'avait aucun moyen de detecter
+  // un appairage "orphelin" d'un compte precedent sur un navigateur partage,
+  // et affichait "Connecte" meme quand les prochaines synchros ecriraient
+  // silencieusement les donnees Vinted d'un utilisateur B dans le compte
+  // ResellOS d'un utilisateur A encore appaire. null si non appaire.
+  pairedUserId: string | null;
   vintedConnected: boolean;
   lastSyncedAt: string | null;
   lastError: string | null;
@@ -326,7 +345,7 @@ export type InternalResponse = StatusResponse | ExternalResponse;
 export function isExternalMessage(msg: unknown): msg is ExternalMessage {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PING" || type === "PAIR" || type === "RUN_ACTION";
+  return type === "PING" || type === "PAIR" || type === "GET_STATUS" || type === "UNPAIR" || type === "RUN_ACTION";
 }
 
 export function isInternalMessage(msg: unknown): msg is InternalMessage {

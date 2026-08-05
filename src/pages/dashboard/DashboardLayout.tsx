@@ -26,7 +26,7 @@ import { DzikoAiBubble } from '../../components/ui/DzikoAiBubble';
 import { NotificationRecapModal } from '../../components/notifications/NotificationRecapModal';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
-import { isExtensionConfigured, pairExtension, pingExtension } from '../../lib/extensionBridge';
+import { isExtensionConfigured, pairExtension, getExtensionStatus } from '../../lib/extensionBridge';
 import { supabase } from '../../lib/supabase';
 import { runSkuRepair } from '../../lib/sku';
 import type { DashboardPage, AppPage, SettingsTab } from '../../lib/types';
@@ -173,6 +173,18 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   // meme regle), que cette premiere version n'appliquait pas. Corrige en
   // redemandant une session fraiche a Supabase juste avant l'appairage,
   // au lieu de faire confiance a l'etat React fige.
+  //
+  // BUG REEL corrige le 2026-08-05 (P-04) : cet effet appairait
+  // inconditionnellement l'extension au compte de CET onglet, meme quand
+  // l'extension etait deja appairee a un AUTRE user_id (poste partage,
+  // changement de compte) -- il gagnait systematiquement la course contre
+  // l'ecran de mismatch de VintedAccountPage.tsx, qui n'avait donc jamais
+  // le temps de s'afficher avant d'etre silencieusement corrige. Un
+  // changement de compte de l'extension passait ainsi inapercu. Corrige en
+  // interrogeant d'abord getExtensionStatus() : si l'extension est deja
+  // appairee a un user_id different de la session actuelle, cet effet
+  // n'y touche plus -- VintedAccountPage.tsx affiche alors le mismatch et
+  // attend une action explicite (bouton "Ré-appairer à ce compte").
   useEffect(() => {
     if (!session) return;
     if (!isExtensionConfigured()) {
@@ -182,10 +194,17 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
     let cancelled = false;
     (async () => {
-      const installed = await pingExtension();
+      const status = await getExtensionStatus();
       if (cancelled) return;
-      if (!installed) {
-        devLog('[ResellOS][pairing] Ré-appairage automatique ignoré : extension non détectée (ping échoué).');
+      if (!status) {
+        devLog('[ResellOS][pairing] Ré-appairage automatique ignoré : extension non détectée (status indisponible).');
+        return;
+      }
+      if (status.paired && status.pairedUserId && status.pairedUserId !== session.user.id) {
+        devWarn(
+          '[ResellOS][pairing] Ré-appairage automatique ignoré : extension déjà appairée à un autre compte ResellOS -- ' +
+            "VintedAccountPage affichera le mismatch, aucune action automatique."
+        );
         return;
       }
 

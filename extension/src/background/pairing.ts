@@ -59,7 +59,7 @@ export async function unpair(): Promise<void> {
 export async function getStatus(): Promise<StatusResponse> {
   const valid = await getValidAccessToken();
   if (!valid) {
-    return { paired: false, vintedConnected: false, lastSyncedAt: null, lastError: null };
+    return { paired: false, pairedUserId: null, vintedConnected: false, lastSyncedAt: null, lastError: null };
   }
 
   // Phase A : un seul compte visible dans le popup (le compte par defaut,
@@ -77,11 +77,12 @@ export async function getStatus(): Promise<StatusResponse> {
 
   if (rowError) {
     logger.warn("Lecture de vinted_accounts impossible", rowError.message);
-    return { paired: true, vintedConnected: false, lastSyncedAt: null, lastError: rowError.message };
+    return { paired: true, pairedUserId: valid.userId, vintedConnected: false, lastSyncedAt: null, lastError: rowError.message };
   }
 
   return {
     paired: true,
+    pairedUserId: valid.userId,
     vintedConnected: row?.connected ?? false,
     lastSyncedAt: row?.last_synced_at ?? null,
     lastError: row?.last_error ?? null,

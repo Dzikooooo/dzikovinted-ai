@@ -69,6 +69,23 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
     return true; // reponse asynchrone : garder le canal ouvert
   }
 
+  if (message.type === "GET_STATUS") {
+    getStatus()
+      .then(sendResponse)
+      .catch((err: unknown) => {
+        logger.error("GET_STATUS (externe) a echoue", errorMessage(err));
+        sendResponse({ paired: false, pairedUserId: null, vintedConnected: false, lastSyncedAt: null, lastError: "Erreur interne" });
+      });
+    return true;
+  }
+
+  if (message.type === "UNPAIR") {
+    unpair()
+      .then(() => sendResponse({ ok: true } satisfies ExternalResponse))
+      .catch((err: unknown) => sendResponse({ ok: false, error: errorMessage(err) } satisfies ExternalResponse));
+    return true;
+  }
+
   if (message.type === "RUN_ACTION") {
     // Etape 3 (reception par le background de l'extension) -- demande
     // explicite du 2026-07-15, diagnostic push ResellOS -> Vinted qui ne
@@ -99,7 +116,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .then(sendResponse)
       .catch((err: unknown) => {
         logger.error("GET_STATUS a echoue", errorMessage(err));
-        sendResponse({ paired: false, vintedConnected: false, lastSyncedAt: null, lastError: "Erreur interne" });
+        sendResponse({ paired: false, pairedUserId: null, vintedConnected: false, lastSyncedAt: null, lastError: "Erreur interne" });
       });
     return true;
   }

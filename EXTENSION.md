@@ -73,7 +73,7 @@ Risque assumé : les tokens transitent une fois par le contexte de la page web (
 
 | De | Vers | Mécanisme | Contenu |
 |---|---|---|---|
-| App web | Background | `chrome.runtime.sendMessage` (`externally_connectable`) | Appairage initial uniquement (§3) |
+| App web | Background | `chrome.runtime.sendMessage` (`externally_connectable`) | Appairage initial, lecture du statut d'appairage (`GET_STATUS`) et dissociation (`UNPAIR`) depuis `VintedAccountPage.tsx` (§3) — mêmes fonctions que celles déjà exposées au popup, exposées en plus à l'app web depuis le 2026-07-28 |
 | Content script | Background | `chrome.runtime.sendMessage` | Résultat d'une lecture DOM (vues/favoris, statut d'une annonce), confirmation d'une action exécutée |
 | Background | Content script | `chrome.tabs.sendMessage` | Ordre d'exécuter une action précise (« republie l'annonce à cette URL ») |
 | Popup / Options | Background | `chrome.runtime.sendMessage` | Lecture du statut courant, changement de préférences |

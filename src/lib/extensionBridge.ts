@@ -31,6 +31,18 @@ export interface PairResult {
   error?: string;
 }
 
+// Le background peut repondre {ok:false, error:"..."} sans jamais passer par
+// chrome.runtime.lastError (ex. "Message externe inconnu" quand l'extension
+// installee ne reconnait pas encore ce type de message -- typiquement pas
+// rechargee apres une mise a jour) -- translateExtensionError() n'etait
+// applique qu'au chemin lastError, laissant ce texte technique fuiter tel
+// quel a l'utilisateur (bug reel confirme le 2026-07-28, voir errorMessages.ts).
+function translateResponseError<T extends { ok: boolean; error?: string }>(response: T | undefined, fallbackError: string): T {
+  if (!response) return { ok: false, error: fallbackError } as T;
+  if (response.ok || !response.error) return response;
+  return { ...response, error: translateExtensionError(response.error) };
+}
+
 function getRuntime(): ExtensionRuntime | null {
   return window.chrome?.runtime ?? null;
 }
@@ -137,7 +149,7 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
             resolve({ ok: false, error: translateExtensionError(raw) });
             return;
           }
-          const result = (response as PairResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" };
+          const result = translateResponseError(response as PairResult | undefined, "Réponse vide de l'extension");
           devLog('[ResellOS][pairing] pairExtension() reponse :', result);
           resolve(result);
         }
@@ -146,6 +158,96 @@ export async function pairExtension(accessToken: string, refreshToken: string): 
       const raw = err instanceof Error ? err.message : String(err);
       devError('[ResellOS][pairing] pairExtension() exception :', raw);
       resolve({ ok: false, error: translateExtensionError(raw) });
+    }
+  });
+}
+
+// Etat d'appairage reel de l'extension (chrome.storage.local, cote
+// background) -- distinct de vinted_accounts.connected (etat Vinted d'UN
+// compte precis, voir VintedAccountPage.tsx). GET_STATUS ne renvoie que le
+// compte par defaut (Phase A du popup, voir extension/background/pairing.ts) --
+// vintedConnected/lastSyncedAt ne servent ici qu'a un affichage de secours,
+// la source de verite multi-comptes reste useVintedAccountFilter().
+export interface ExtensionStatus {
+  paired: boolean;
+  // P-04 (audit pre-beta 2026-08-03) : id de l'utilisateur ResellOS auquel
+  // l'extension est reellement appairee -- a comparer avec l'utilisateur
+  // actuellement connecte dans cet onglet (useAuth().user.id) avant
+  // d'afficher "Connecte". Un appairage orphelin d'un compte precedent (poste
+  // partage, changement de compte ResellOS) ne doit jamais etre presente
+  // comme actif : les prochaines synchros ecriraient les donnees Vinted
+  // detectees sous ce pairedUserId, pas sous l'utilisateur actuel.
+  pairedUserId: string | null;
+  vintedConnected: boolean;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+}
+
+// null = extension non installee/non repondante (meme convention que
+// pingExtension) -- jamais leve, toujours resolu.
+export async function getExtensionStatus(timeoutMs = 1500): Promise<ExtensionStatus | null> {
+  const runtime = getRuntime();
+  if (!EXTENSION_ID || !runtime) return null;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null);
+      }
+    }, timeoutMs);
+
+    try {
+      runtime.sendMessage(EXTENSION_ID, { type: "GET_STATUS" }, (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // Une extension installee mais pas encore rechargee apres une mise a
+        // jour de ResellOS peut repondre {ok:false, error:"Message externe
+        // inconnu"} plutot que la forme ExtensionStatus attendue -- ne
+        // jamais caster aveuglement une reponse qui ne porte pas `paired`
+        // (bug reel confirme le 2026-07-28 : paired devenait `undefined`,
+        // silencieusement traite comme "non apparie" sans aucune trace).
+        if (runtime.lastError || !response || typeof (response as { paired?: unknown }).paired !== "boolean") {
+          if (response) devWarn('[ResellOS][pairing] getExtensionStatus() reponse inattendue :', response);
+          resolve(null);
+          return;
+        }
+        resolve(response as ExtensionStatus);
+      });
+    } catch {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(null);
+      }
+    }
+  });
+}
+
+export interface UnpairResult {
+  ok: boolean;
+  error?: string;
+}
+
+export async function unpairExtension(): Promise<UnpairResult> {
+  const runtime = getRuntime();
+  if (!EXTENSION_ID || !runtime) {
+    return { ok: false, error: "Extension non détectée" };
+  }
+
+  return new Promise((resolve) => {
+    try {
+      runtime.sendMessage(EXTENSION_ID, { type: "UNPAIR" }, (response) => {
+        if (runtime.lastError) {
+          resolve({ ok: false, error: translateExtensionError(runtime.lastError.message ?? "Échec de la connexion à l'extension") });
+          return;
+        }
+        resolve(translateResponseError(response as UnpairResult | undefined, "Réponse vide de l'extension"));
+      });
+    } catch (err) {
+      resolve({ ok: false, error: translateExtensionError(err instanceof Error ? err.message : String(err)) });
     }
   });
 }
