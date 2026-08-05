@@ -8,6 +8,7 @@ import AccountAvatar from '../../components/ui/AccountAvatar';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatCard } from '../../components/ui/StatCard';
 import { CopyBtn } from '../../components/ui/CopyBtn';
+import { formatRelativeSync } from '../../lib/formatRelativeTime';
 import { devLog, devWarn } from '../../lib/devLog';
 
 // Cette page est dediee exclusivement a la connexion de l'extension --
@@ -148,6 +149,36 @@ export default function VintedAccountPage() {
     { label: 'Compte Vinted synchronisé', done: hasAnyAccount },
   ];
 
+  // Synthese "en un coup d'oeil" (demande produit 2026-08-05, test live de
+  // l'extension) : aucune donnee nouvelle, uniquement une lecture combinee
+  // de signaux deja calcules ci-dessus (paired/pairedToOtherUser/accounts) --
+  // objectif : comprendre en une seconde si tout fonctionne, sans avoir a
+  // recouper la checklist + le toggle + la liste de comptes.
+  const extensionConnected = extensionState === 'ready' && paired && !pairedToOtherUser;
+  // Compte a afficher : celui selectionne dans le filtre, sinon le compte
+  // par defaut (vinted_accounts.is_default, deja utilise pour trier
+  // `accounts` dans VintedAccountFilterContext), sinon le premier disponible.
+  const primaryAccount =
+    selectedAccountId !== 'all' && selectedAccount
+      ? selectedAccount
+      : (accounts.find((a) => a.is_default) ?? accounts[0] ?? null);
+  const otherAccountsCount = selectedAccountId === 'all' ? Math.max(accounts.length - 1, 0) : 0;
+  // "Synchronisation automatique" = l'extension est appairee ET une vraie
+  // session Vinted est detectee sur le(s) compte(s) concerne(s) -- c'est
+  // exactement la condition qui declenche recordListings() cote extension
+  // (voir EXTENSION.md §6.3), jamais un etat invente.
+  const autoSyncActive =
+    extensionConnected &&
+    hasAnyAccount &&
+    (selectedAccountId === 'all' ? accounts.some((a) => a.connected) : !!selectedAccount?.connected);
+  const synthesisLastSyncedAt =
+    selectedAccountId === 'all'
+      ? accounts.reduce<string | null>(
+          (latest, a) => (!latest || (a.last_synced_at && a.last_synced_at > latest) ? a.last_synced_at : latest),
+          null
+        )
+      : (selectedAccount?.last_synced_at ?? null);
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader title="Compte Vinted" description="Connecte ou déconnecte l'extension ResellOS pour Vinted." />
@@ -170,6 +201,44 @@ export default function VintedAccountPage() {
           ))}
         </div>
       </div>
+
+      {/* Synthese "en un coup d'oeil" -- uniquement une fois l'extension et
+          les comptes resolus, et jamais en meme temps que l'alerte de
+          mismatch ci-dessous (qui explique deja pourquoi "Extension" ne
+          peut pas etre annoncee "connectee" sans etre trompeuse). */}
+      {extensionState === 'ready' && !accountsLoading && !pairedToOtherUser && (
+        <div className="bg-surface border border-white/5 rounded-2xl p-5 mb-6">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">En un coup d'œil</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[11px] text-gray-500 mb-1">Extension</p>
+              <p className="text-sm font-bold flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${extensionConnected ? 'bg-neon-500' : 'bg-gray-600'}`} />
+                <span className={extensionConnected ? 'text-gray-200' : 'text-gray-500'}>
+                  {extensionConnected ? 'Connectée' : 'Déconnectée'}
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-500 mb-1">Compte Vinted</p>
+              <p className="text-sm font-bold text-gray-200 truncate">
+                {primaryAccount ? primaryAccount.label : 'Aucun compte détecté'}
+                {otherAccountsCount > 0 && ` (+${otherAccountsCount})`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-500 mb-1">Synchronisation automatique</p>
+              <p className={`text-sm font-bold ${autoSyncActive ? 'text-neon-500' : 'text-gray-500'}`}>
+                {autoSyncActive ? 'Active' : 'Inactive'}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-gray-500 mb-1">Dernière synchronisation</p>
+              <p className="text-sm font-bold text-gray-200">{formatRelativeSync(synthesisLastSyncedAt)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(extensionState === 'checking' || (extensionState === 'ready' && accountsLoading)) && (
         <div className="bg-surface border border-white/5 rounded-2xl p-6 text-center">
