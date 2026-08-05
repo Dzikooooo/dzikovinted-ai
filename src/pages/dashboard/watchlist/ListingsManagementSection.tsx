@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb, Pencil, UploadCloud,
-  CheckSquare, Square, Trash2, FileEdit, Layers,
+  CheckSquare, Square, Trash2, FileEdit, Layers, Info, History,
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../../contexts/VintedAccountFilterContext';
@@ -40,6 +40,7 @@ import type { EditableFieldName, EditListingPayload } from '../../../lib/actions
 import { buildEditSuccessSyncFields, formatTitleWithSku, runSkuRepair } from '../../../lib/sku';
 import { formatEUR } from '../../../lib/currency';
 import type { ActionKind } from '../../../lib/actions/types';
+import type { ListingRecommendationResult } from '../../../lib/insights/types';
 import { needsRepublish } from '../../../lib/listingStatus';
 import { devLog, devWarn, devError } from '../../../lib/devLog';
 import { notifySale } from '../../../hooks/useNotifications';
@@ -721,7 +722,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 showAccount={selectedAccountId === 'all'}
                 accountLabel={accountLabel}
                 score={insights?.scores.get(item.id)?.score ?? null}
-                recommendation={insights?.recommendations.find((r) => r.listingId === item.id)?.message ?? null}
+                recommendationState={insights?.listingRecommendations.get(item.id)}
                 aging={isAging(item)}
                 onMarkSold={() => {
                   setSellingItem(item);
@@ -907,12 +908,12 @@ interface ListingCardProps {
   showAccount: boolean;
   accountLabel: (id: string | null) => string;
   score: number | null;
-  recommendation: string | null;
+  recommendationState: ListingRecommendationResult | undefined;
   aging: boolean;
   onMarkSold: () => void;
 }
 
-function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendation, aging, onMarkSold }: ListingCardProps) {
+function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold }: ListingCardProps) {
   const isSold = item.status === 'vendu';
   const hasCost = item.purchase_price !== null;
   const margin = isSold
@@ -985,9 +986,35 @@ function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel
           )}
         </div>
 
-        {recommendation && (
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md mt-2">
-            <Lightbulb className="w-3 h-3" /> {recommendation}
+        {/* 'attendre' reste volontairement silencieux (aucun badge) -- les 3
+            autres etats du Decision Engine (action/donnees_insuffisantes/
+            recommandation_differee) restent visuellement distincts, jamais
+            confondus (voir LOT1_SPEC.md). */}
+        {recommendationState?.status === 'action' && (
+          <span
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md mt-2"
+            title={recommendationState.reason}
+          >
+            <Lightbulb className="w-3 h-3" /> {recommendationState.message}
+            {recommendationState.confidence === 'standard' && (
+              <span className="font-normal text-neon-500/70">· à confirmer</span>
+            )}
+          </span>
+        )}
+        {recommendationState?.status === 'donnees_insuffisantes' && (
+          <span
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-white/5 px-1.5 py-0.5 rounded-md mt-2"
+            title={recommendationState.reason}
+          >
+            <Info className="w-3 h-3" /> Données insuffisantes
+          </span>
+        )}
+        {recommendationState?.status === 'recommandation_differee' && (
+          <span
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400/80 bg-amber-500/10 px-1.5 py-0.5 rounded-md mt-2"
+            title={recommendationState.reason}
+          >
+            <History className="w-3 h-3" /> Action déjà tentée récemment
           </span>
         )}
 
