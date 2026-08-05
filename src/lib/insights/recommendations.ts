@@ -129,7 +129,12 @@ function matchBaisserPrix(listing: Listing, ctx: EngineContext): { reasonText: s
   if (listing.favourites > ctx.activeMedianFavourites * PRICE_ENGAGEMENT_RATIO_THRESHOLD) return null;
 
   return {
-    reasonText: `Peu de vues et de favoris après ${Math.round(age)} jours en ligne (${listing.views} vues, ${listing.favourites} favoris, pour une moyenne de ${Math.round(ctx.activeMedianViews)} sur ton compte) — le prix semble au-dessus du marché.`,
+    // P0 (audit du 2026-08-05) : ce texte ne doit jamais pretendre connaitre
+    // le marche -- la seule donnee reelle ici est la comparaison a la
+    // mediane du COMPTE de l'utilisateur (voir commentaire de regle
+    // ci-dessus). Toute formulation type "au-dessus du marche" serait une
+    // donnee inventee, jamais mesuree par ce Lot 1.
+    reasonText: `Peu de vues et de favoris après ${Math.round(age)} jours en ligne (${listing.views} vues, ${listing.favourites} favoris, pour une moyenne de ${Math.round(ctx.activeMedianViews)} sur ton compte) — nettement en retrait par rapport à tes autres annonces actives, une baisse de prix pourrait relancer l'intérêt.`,
   };
 }
 

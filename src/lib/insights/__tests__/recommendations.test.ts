@@ -201,6 +201,14 @@ describe('baisser_prix', () => {
     expect(result).toMatchObject({ status: 'action', kind: 'baisser_prix' });
   });
 
+  it("le message ne pretend jamais connaitre le marche (P0, audit du 2026-08-05) -- seule la comparaison au compte est une donnee reelle", () => {
+    const { target, ctx } = contextWithMedian({ views: 2, favourites: 1 });
+    const result = computeListingRecommendation(target, ctx);
+    const reason = result && 'reason' in result ? result.reason : '';
+    expect(reason).not.toMatch(/march/i);
+    expect(reason).toContain('sur ton compte');
+  });
+
   it('confiance haute quand la synchro est fraiche, standard sinon', () => {
     const { target, ctx } = contextWithMedian({ views: 2, favourites: 1, synced_at: TENDUE });
     const result = computeListingRecommendation(target, ctx);
