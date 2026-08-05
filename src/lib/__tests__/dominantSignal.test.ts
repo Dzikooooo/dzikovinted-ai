@@ -7,7 +7,13 @@ const BASE = { alerts: [] as Alert[], recommendations: [] as Recommendation[], n
 const criticalAlert: Alert = { kind: 'inactive_listing', severity: 'critical', scope: 'listing', message: 'critique' };
 const warningAlert: Alert = { kind: 'insufficient_margin', severity: 'warning', scope: 'listing', message: 'avertissement' };
 const infoAlert: Alert = { kind: 'high_demand', severity: 'info', scope: 'listing', message: 'info' };
-const recommendation: Recommendation = { listingId: 'l1', kind: 'lower_price', message: 'recommandation', reason: 'x' };
+const recommendation: Recommendation = {
+  listingId: 'l1',
+  kind: 'baisser_prix',
+  message: 'recommandation',
+  reason: 'x',
+  confidence: 'standard',
+};
 
 describe('computeDominantSignal', () => {
   it('tier 1 : une alerte critique domine tout, meme avec opportunites/avertissements/recommandations en attente', () => {

@@ -115,7 +115,7 @@ describe('computeNarratives', () => {
       sold_price: 30,
       purchase_price: 10,
     });
-    const ctx = buildContext([listing], [account], [], now);
+    const ctx = buildContext([listing], [account], [], [], now);
     const narratives = computeNarratives(ctx).map((n) => n.message);
     expect(narratives.some((m) => m.includes('Cette semaine') && m.includes('tzcase'))).toBe(true);
   });
