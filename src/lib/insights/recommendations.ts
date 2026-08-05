@@ -1,59 +1,333 @@
 import type { Listing } from '../types';
-import type { EngineContext, Recommendation } from './types';
-import { REPUBLISH_AFTER_DAYS } from './constants';
+import type { EngineContext, ListingRecommendationResult, Recommendation } from './types';
+import {
+  DORMANT_LISTING_DAYS,
+  PRICE_ENGAGEMENT_RATIO_THRESHOLD,
+  REVIEW_VIEWS_RATIO_THRESHOLD,
+  REVIEW_MAX_FAVOURITES,
+  REPUBLISH_AFTER_DAYS,
+} from './constants';
 import { daysSince } from './math';
+import { getSyncFreshnessTier, hasSufficientSample } from './dataSufficiency';
+import { hasRecentRepublishAttempt, hasRecentPriceChange } from './actionCooldown';
 
-// Registre de regles : chaque regle est une fonction pure et independante.
-// Ajouter une regle = ajouter une entree au tableau LISTING_RULES, sans
-// toucher aux regles existantes - c'est ce qui rend le moteur extensible
-// sans devenir une suite de if/else monolithique.
-type ListingRule = (listing: Listing, ctx: EngineContext) => Recommendation | null;
+// Decision Engine Lot 1 (2026-08-05) -- 4 recommandations "actives" + 1 etat
+// neutre (attendre) + 2 etats explicites de non-recommandation
+// (donnees_insuffisantes/recommandation_differee), arbitres par une chaine
+// deterministe unique (computeListingRecommendation). Voir LOT1_SPEC.md pour
+// la justification complete de chaque regle et de l'ordre d'evaluation.
 
-function ruleRepublishAging(listing: Listing, ctx: EngineContext): Recommendation | null {
-  if (listing.vinted_status !== 'online') return null;
-  const age = Math.round(daysSince(listing.created_at, ctx.now));
-  if (age < REPUBLISH_AFTER_DAYS) return null;
+// -----------------------------------------------------------------------
+// Regle 1 : verifier_annonce -- verification structurelle (photos/catégorie/
+// etat/echec de synchro), independante de la fraicheur de synchro (un champ
+// vide reste vide quel que soit l'age de la derniere synchro). Toujours
+// evaluee en premier dans la chaine d'arbitrage.
+// -----------------------------------------------------------------------
+function evaluateVerifierAnnonce(listing: Listing): ListingRecommendationResult | null {
+  if (!listing.vinted_item_id || !listing.vinted_url) return null; // jamais publiee -- rien a "ouvrir" sur Vinted
+  if (listing.status !== 'en_stock') return null;
+
+  // Priorite : echec de synchro (le plus actionnable) > photo manquante >
+  // categorie/etat manquant -- une seule cause affichee a la fois.
+  let reason: string | null = null;
+  if (listing.vinted_sync_status === 'sync_failed') {
+    reason = "Une modification précédente a échoué — vérifie l'annonce sur Vinted.";
+  } else if (listing.image_urls.length === 0) {
+    reason = "Cette annonce n'a aucune photo sur Vinted.";
+  } else if (!listing.category || !listing.condition) {
+    reason = 'Catégorie ou état manquant sur cette annonce.';
+  }
+  if (!reason) return null;
+
   return {
+    status: 'action',
+    kind: 'verifier_annonce',
+    confidence: 'haute',
+    message: 'Annonce à vérifier',
+    reason,
+    cta: { type: 'open_vinted' },
     listingId: listing.id,
-    kind: 'republish',
-    message: 'Republier conseillé',
-    reason: `En ligne depuis ${age} jours sans vente.`,
   };
 }
 
-function ruleReviewPriceHighViewsLowFavourites(listing: Listing, ctx: EngineContext): Recommendation | null {
+// -----------------------------------------------------------------------
+// Regle 2 : considerer_republication -- DEUX chemins distincts, jamais sur
+// l'age seul (contrainte explicite) :
+//   A. statut Vinted reel indique que l'annonce n'est plus/mal visible
+//      (hidden/deleted = signal net, confiance haute ; unknown = signal
+//      ambigu, confiance standard, degrade en donnees_insuffisantes si la
+//      synchro n'est pas totalement fraiche -- voir l'orchestrateur).
+//   B. dormance totale : en ligne depuis longtemps (DORMANT_LISTING_DAYS)
+//      ET zero vue ET zero favori -- jamais "juste vieille" sans ca.
+// -----------------------------------------------------------------------
+interface RepublicationMatch {
+  path: 'A' | 'B';
+  confidence: 'haute' | 'standard';
+  reasonText: string;
+}
+
+function matchConsidererRepublication(listing: Listing, ctx: EngineContext): RepublicationMatch | null {
+  if (!listing.vinted_item_id) return null; // jamais publiee -- hors perimetre (ce n'est pas une republication)
+  if (listing.status !== 'en_stock') return null;
+
+  if (listing.vinted_status === 'hidden' || listing.vinted_status === 'deleted') {
+    return {
+      path: 'A',
+      confidence: 'haute',
+      reasonText: `Cette annonce n'est plus visible sur Vinted (statut : ${listing.vinted_status}) — la republier redonnerait de la visibilité.`,
+    };
+  }
+
+  if (listing.vinted_status === 'unknown') {
+    return {
+      path: 'A',
+      confidence: 'standard',
+      reasonText:
+        "Le statut réel de cette annonce sur Vinted n'a pas pu être déterminé lors de la dernière synchronisation — vérifie-la avant d'envisager une republication.",
+    };
+  }
+
+  if (listing.vinted_status === 'online') {
+    if (listing.views === null || listing.favourites === null) return null;
+    const age = daysSince(listing.created_at, ctx.now);
+    const noEngagement = listing.views === 0 && listing.favourites === 0;
+    if (age >= DORMANT_LISTING_DAYS && noEngagement) {
+      return {
+        path: 'B',
+        confidence: 'standard',
+        reasonText: `Cette annonce est en ligne depuis ${Math.round(age)} jours sans aucune vue — une republication pourrait relancer sa visibilité.`,
+      };
+    }
+  }
+
+  return null;
+}
+
+const REPUBLICATION_DISCLAIMER =
+  " La republication automatique n'est pas encore disponible dans ResellOS — tu peux la refaire toi-même sur Vinted.";
+
+// -----------------------------------------------------------------------
+// Regle 3 : baisser_prix -- jamais sur l'age seul, jamais si vues/favoris
+// sont a zero absolu (domaine exclusif de considerer_republication), jamais
+// sans un prix affiche valide (defense en profondeur -- ce Lot 1 ne compare
+// jamais a un prix de marche externe, la couverture Watchlist etant trop
+// faible pour la beta, voir DECISION_ENGINE_MVP.md §2 -- "prix marche" n'est
+// donc pas une donnee de ce lot).
+// -----------------------------------------------------------------------
+function matchBaisserPrix(listing: Listing, ctx: EngineContext): { reasonText: string } | null {
+  if (listing.vinted_status !== 'online') return null;
+  if (!listing.price || listing.price <= 0) return null;
+  if (listing.views === null || listing.favourites === null) return null;
+  if (listing.views === 0 && listing.favourites === 0) return null; // -> considerer_republication, pas ici
+  if (ctx.activeMedianViews === null || ctx.activeMedianFavourites === null) return null;
+  if (ctx.activeMedianViews === 0 || ctx.activeMedianFavourites === 0) return null;
+
+  const age = daysSince(listing.created_at, ctx.now);
+  if (age < REPUBLISH_AFTER_DAYS) return null;
+
+  if (listing.views > ctx.activeMedianViews * PRICE_ENGAGEMENT_RATIO_THRESHOLD) return null;
+  if (listing.favourites > ctx.activeMedianFavourites * PRICE_ENGAGEMENT_RATIO_THRESHOLD) return null;
+
+  return {
+    reasonText: `Peu de vues et de favoris après ${Math.round(age)} jours en ligne (${listing.views} vues, ${listing.favourites} favoris, pour une moyenne de ${Math.round(ctx.activeMedianViews)} sur ton compte) — le prix semble au-dessus du marché.`,
+  };
+}
+
+// -----------------------------------------------------------------------
+// Regle 4 : revoir_annonce -- signal ambigu (vues hautes, favoris bas),
+// jamais presente avec une confiance haute puisque la cause reste inconnue.
+// -----------------------------------------------------------------------
+function matchRevoirAnnonce(listing: Listing, ctx: EngineContext): { reasonText: string } | null {
   if (listing.vinted_status !== 'online') return null;
   if (listing.views === null || listing.favourites === null) return null;
   if (ctx.activeMedianViews === null || ctx.activeMedianViews === 0) return null;
-  const viewsAboveAverage = listing.views >= ctx.activeMedianViews * 1.5;
-  const fewFavourites = listing.favourites <= 1;
-  if (!viewsAboveAverage || !fewFavourites) return null;
+  if (listing.views < ctx.activeMedianViews * REVIEW_VIEWS_RATIO_THRESHOLD) return null;
+  if (listing.favourites > REVIEW_MAX_FAVOURITES) return null;
+
   return {
-    listingId: listing.id,
-    kind: 'review_price',
-    message: 'Revoir le prix',
-    reason: `${listing.views} vues mais seulement ${listing.favourites} favori${listing.favourites > 1 ? 's' : ''} — le prix freine peut-être la conversion.`,
+    reasonText: `Beaucoup de vues (${listing.views}) mais peu de favoris (${listing.favourites}) — quelque chose freine peut-être la conversion (prix, photos, description). Le moteur ne peut pas identifier la cause précise.`,
   };
 }
 
-function ruleLowerPriceStale(listing: Listing, ctx: EngineContext): Recommendation | null {
-  if (listing.vinted_status !== 'online') return null;
-  const age = daysSince(listing.created_at, ctx.now);
-  if (age < REPUBLISH_AFTER_DAYS) return null;
-  if (listing.views === null || listing.favourites === null) return null;
-  if (ctx.activeMedianViews === null || ctx.activeMedianFavourites === null) return null;
-  const lowEngagement =
-    listing.views <= ctx.activeMedianViews * 0.5 && listing.favourites <= ctx.activeMedianFavourites * 0.5;
-  if (!lowEngagement) return null;
+// -----------------------------------------------------------------------
+// Chaine d'arbitrage -- codee explicitement comme une suite d'etapes
+// ordonnees et commentees (demande explicite : l'ordre de priorite doit
+// etre lisible et teste en tant que tel, jamais deduit implicitement d'un
+// enchainement de if disperses). Une seule sortie par annonce, jamais
+// d'empilement de plusieurs recommandations.
+// -----------------------------------------------------------------------
+export function computeListingRecommendation(listing: Listing, ctx: EngineContext): ListingRecommendationResult | null {
+  // Etape 0 : hors champ (brouillon jamais publie, annonce deja vendue) --
+  // aucun resultat produit du tout, pas meme "attendre".
+  if (listing.status !== 'en_stock') return null;
+
+  // Etape 1 : verification structurelle, prioritaire, independante de la
+  // fraicheur de synchro.
+  const structural = evaluateVerifierAnnonce(listing);
+  if (structural) return structural;
+
+  // Etape 2 : fraicheur globale des donnees d'engagement (vinted_status/
+  // vues/favoris). Perimee (> 48h) = aucune recommandation d'engagement
+  // possible, quelle que soit la severite apparente du signal brut.
+  const freshness = getSyncFreshnessTier(listing, ctx.now);
+  if (freshness === 'perimee') {
+    return {
+      status: 'donnees_insuffisantes',
+      reason: 'Dernière synchronisation trop ancienne (plus de 48h) pour évaluer cette annonce de façon fiable.',
+      listingId: listing.id,
+    };
+  }
+
+  // Etape 3 : republication (deux chemins) -- avant tout signal
+  // d'engagement relatif, car c'est le signal le plus severe quand il
+  // matche (statut reellement invisible, ou dormance totale).
+  const republicationMatch = matchConsidererRepublication(listing, ctx);
+  if (republicationMatch) {
+    // Statut 'unknown' + synchro pas totalement fraiche (>=24h) : signal deja
+    // ambigu en soi, aggrave par une donnee pas toute recente -- basculer sur
+    // "donnees insuffisantes" plutot qu'une recommandation a confiance
+    // standard (garde-fou explicite de la validation utilisateur).
+    if (listing.vinted_status === 'unknown' && freshness !== 'fraiche') {
+      return {
+        status: 'donnees_insuffisantes',
+        reason: "Le statut Vinted de cette annonce est incertain et la dernière synchronisation n'est plus toute récente.",
+        listingId: listing.id,
+      };
+    }
+
+    if (hasRecentRepublishAttempt(listing.id, ctx)) {
+      return {
+        status: 'recommandation_differee',
+        kind: 'considerer_republication',
+        reason: 'Une republication a déjà été tentée récemment sur cette annonce.',
+        listingId: listing.id,
+      };
+    }
+
+    return {
+      status: 'action',
+      kind: 'considerer_republication',
+      confidence: republicationMatch.confidence,
+      message: 'Republication à envisager',
+      reason: republicationMatch.reasonText + REPUBLICATION_DISCLAIMER,
+      cta: { type: 'open_vinted' },
+      listingId: listing.id,
+    };
+  }
+
+  // Etape 4 : echantillon suffisant pour les comparaisons relatives --
+  // baisser_prix/revoir_annonce en dependent, considerer_republication non
+  // (deja evaluee et ecartee a l'etape 3).
+  if (!hasSufficientSample(ctx)) {
+    return {
+      status: 'donnees_insuffisantes',
+      reason: "Pas assez d'annonces actives sur ce compte pour comparer de façon fiable (minimum 3).",
+      listingId: listing.id,
+    };
+  }
+
+  // Etape 5 : baisse de prix.
+  const priceMatch = matchBaisserPrix(listing, ctx);
+  if (priceMatch) {
+    if (hasRecentPriceChange(listing.id, ctx)) {
+      return {
+        status: 'recommandation_differee',
+        kind: 'baisser_prix',
+        reason: 'Le prix de cette annonce a déjà été modifié récemment.',
+        listingId: listing.id,
+      };
+    }
+    return {
+      status: 'action',
+      kind: 'baisser_prix',
+      confidence: freshness === 'fraiche' ? 'haute' : 'standard',
+      message: 'Baisse de prix conseillée',
+      reason: priceMatch.reasonText,
+      cta: { type: 'edit_listing', field: 'price' },
+      listingId: listing.id,
+    };
+  }
+
+  // Etape 6 : signal ambigu (vues hautes, favoris bas).
+  const reviewMatch = matchRevoirAnnonce(listing, ctx);
+  if (reviewMatch) {
+    return {
+      status: 'action',
+      kind: 'revoir_annonce',
+      confidence: 'standard',
+      message: 'Annonce à revoir',
+      reason: reviewMatch.reasonText,
+      cta: { type: 'edit_listing', field: null },
+      listingId: listing.id,
+    };
+  }
+
+  // Etape 7 : rien a signaler -- on a verifie avec des donnees suffisantes
+  // et fraiches, aucune regle ne matche.
   return {
+    status: 'attendre',
+    message: "Cette annonce n'a besoin de rien pour l'instant.",
     listingId: listing.id,
-    kind: 'lower_price',
-    message: 'Baisse de prix conseillée',
-    reason: `Peu de vues et de favoris après ${Math.round(age)} jours en ligne — le prix semble au-dessus du marché.`,
   };
 }
 
-function ruleRaisePriceUndervalued(listing: Listing, ctx: EngineContext): Recommendation | null {
+// Etat complet par annonce (les 4 statuts possibles), pour l'affichage
+// explicite de "attendre"/"donnees_insuffisantes"/"recommandation_differee"
+// dans l'interface (voir ListingsManagementSection.tsx). N'inclut que les
+// annonces status='en_stock' (les autres ne produisent aucun etat, cf.
+// etape 0 ci-dessus).
+export function computeListingStates(ctx: EngineContext): Map<string, ListingRecommendationResult> {
+  const states = new Map<string, ListingRecommendationResult>();
+  for (const listing of ctx.listings) {
+    const result = computeListingRecommendation(listing, ctx);
+    if (result) states.set(listing.id, result);
+  }
+  return states;
+}
+
+// Sous-ensemble filtre (status='action' uniquement) sous la forme historique
+// `Recommendation[]`, pour compatibilite descendante avec dominantSignal.ts
+// et tout consommateur existant qui attend un tableau plat de
+// recommandations actives.
+export function computeRecommendations(ctx: EngineContext): Recommendation[] {
+  const results: Recommendation[] = [];
+  for (const listing of ctx.listings) {
+    const result = computeListingRecommendation(listing, ctx);
+    if (result && result.status === 'action') {
+      results.push({
+        listingId: result.listingId,
+        kind: result.kind,
+        message: result.message,
+        reason: result.reason,
+        confidence: result.confidence,
+      });
+    }
+  }
+  return results;
+}
+
+// -----------------------------------------------------------------------
+// HORS PERIMETRE MVP (Lot 1, 2026-08-05) -- decision explicite de
+// l'utilisateur : desactivee du moteur et de l'interface, code CONSERVE
+// (pas supprime brutalement) le temps d'une reevaluation apres la beta.
+// Plus jamais appelee par computeListingRecommendation/computeRecommendations
+// ci-dessus -- aucune valeur 'raise_price' ne peut donc plus etre produite.
+// Verifie par grep avant ce lot : aucun appelant en dehors de ce fichier et
+// de ses propres tests. Type de retour volontairement DISJOINT de
+// `Recommendation` (RecommendationKind ne contient plus 'raise_price') pour
+// que le systeme de types lui-meme empeche toute reconnexion accidentelle.
+// Candidate a suppression definitive ou a reintegration reflechie apres la
+// beta -- jamais reintroduite dans la chaine d'arbitrage sans decision
+// explicite.
+// -----------------------------------------------------------------------
+export interface DisabledRaisePriceRecommendation {
+  listingId: string;
+  kind: 'raise_price';
+  message: string;
+  reason: string;
+}
+
+export function ruleRaisePriceUndervalued(listing: Listing, ctx: EngineContext): DisabledRaisePriceRecommendation | null {
   if (listing.vinted_status !== 'online') return null;
   if (listing.views === null || listing.favourites === null) return null;
   if (ctx.activeMedianViews === null || ctx.activeMedianFavourites === null) return null;
@@ -67,28 +341,4 @@ function ruleRaisePriceUndervalued(listing: Listing, ctx: EngineContext): Recomm
     message: 'Prix augmentable sans risque',
     reason: `${listing.views} vues et ${listing.favourites} favoris, nettement au-dessus de la moyenne — cette annonce est probablement sous-évaluée.`,
   };
-}
-
-const LISTING_RULES: ListingRule[] = [
-  ruleRepublishAging,
-  ruleReviewPriceHighViewsLowFavourites,
-  ruleLowerPriceStale,
-  ruleRaisePriceUndervalued,
-];
-
-// Une seule recommandation par annonce (la premiere regle qui matche) :
-// eviter d'empiler des conseils contradictoires (ex. "baisser le prix" et
-// "republier" en meme temps) sur la meme carte.
-export function computeRecommendations(ctx: EngineContext): Recommendation[] {
-  const recommendations: Recommendation[] = [];
-  for (const listing of ctx.listings) {
-    for (const rule of LISTING_RULES) {
-      const result = rule(listing, ctx);
-      if (result) {
-        recommendations.push(result);
-        break;
-      }
-    }
-  }
-  return recommendations;
 }

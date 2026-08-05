@@ -1,5 +1,5 @@
 import type { Listing, ListingMetricSnapshot, VintedAccount } from '../types';
-import type { EngineContext, GroupStats } from './types';
+import type { EngineContext, GroupStats, RecentActionSummary } from './types';
 import { MIN_SAMPLE_SIZE_FOR_COMPARISON } from './constants';
 import { daysBetween, median, normalizeKey } from './math';
 
@@ -60,6 +60,7 @@ export function buildContext(
   listings: Listing[],
   accounts: VintedAccount[],
   snapshots: ListingMetricSnapshot[],
+  recentActions: RecentActionSummary[] = [],
   now: Date = new Date()
 ): EngineContext {
   const soldItems = listings.filter((l) => l.status === 'vendu');
@@ -93,6 +94,13 @@ export function buildContext(
     activeListings.map((l) => l.favourites).filter((v): v is number => v !== null)
   );
 
+  const actionsByListingId = new Map<string, RecentActionSummary[]>();
+  for (const action of recentActions) {
+    const bucket = actionsByListingId.get(action.listingId);
+    if (bucket) bucket.push(action);
+    else actionsByListingId.set(action.listingId, [action]);
+  }
+
   return {
     now,
     listings,
@@ -104,5 +112,6 @@ export function buildContext(
     byAccount,
     activeMedianViews,
     activeMedianFavourites,
+    actionsByListingId,
   };
 }
