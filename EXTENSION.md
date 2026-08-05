@@ -45,7 +45,7 @@ Manifest V3 (obligatoire, V2 est déprécié). Quatre surfaces de code :
 
 - **Background (service worker)** — le seul composant qui parle à Supabase. Détient la session (via `chrome.storage.local`), reçoit les commandes `RUN_ACTION` du Action Engine (§5), orchestre l'ouverture d'onglets vinted.fr quand une action doit s'exécuter.
 - **Content scripts** — injectés uniquement sur `*.vinted.fr/*`. Lisent/manipulent le DOM (déjà le cas pour `scripts/vinted-scan.ts` en scraping anonyme — ici avec une vraie session). Ne parlent jamais directement à Supabase, ils passent par `chrome.runtime.sendMessage` vers le background.
-- **Popup** — statut de connexion, dernière synchro, actions rapides. Petite app React, cohérente avec le design system de l'app principale (tokens `neon-*`/`dark-*`).
+- **Popup** — statut de connexion, dernière synchro, actions rapides. Petite app React avec ses propres fondations CSS (`popup.css`, valeurs recopiées des tokens `neon-*`/`dark-*` de l'app principale — pas de pipeline Tailwind dans `extension/`), composants dédiés (`StatusCard`/`PopupButton`/`Spinner`/`DiagnosticPanel`), messages d'erreur toujours traduits en langage client (`lib/popupErrorMessages.ts`, jamais `status.lastError` brut), journal technique complet disponible dans un panneau Diagnostic replié par défaut. Refonte visuelle 2026-08-05, voir §10.
 - **Options** — préférences (fréquence de sync, autoriser l'ouverture d'onglets en arrière-plan ou non — voir §8).
 
 ## 3. Authentification et appairage
@@ -477,8 +477,26 @@ extension/
                                        (MutationObserver) - attentes DOM sans délai arbitraire
       matchOption.ts                  [réalisé Phase 3.1] correspondance texte robuste
                                         (brand/size/condition/color), jamais de choix inventé
-    popup/                     [réalisé, étape 1.1]
-      Popup.tsx                    statut connexion, journal (React, styles inline)
+    popup/                     [réalisé, étape 1.1 ; refonte visuelle 2026-08-05]
+      Popup.tsx                    orchestre les états dérivés de StatusResponse (non-apparié,
+                                     apparié sans Vinted détecté, apparié+connecté, erreur) —
+                                     aucun état inventé (pas de "mismatch"/"session expirée"
+                                     popup-side, pas de "synchronisation en cours" : GET_STATUS
+                                     est un instantané sans polling)
+      popup.css                     fondations visuelles (custom properties recopiées des
+                                     tokens `neon-*`/`dark-*`/rayons/ombres du dashboard —
+                                     source de vérité = tailwind.config.js + Button.tsx,
+                                     répercuter manuellement si la palette du dashboard change)
+      components/
+        StatusCard.tsx                carte de statut à 3 tons (neutral/connected/warning)
+        PopupButton.tsx                bouton avec variantes primary/ghost/danger + loading
+        Spinner.tsx                    loader cohérent (lucide-react Loader2)
+        DiagnosticPanel.tsx             journal technique complet, replié par défaut (<details>
+                                          natif, focusable au clavier), jamais affiché par défaut
+      lib/
+        popupErrorMessages.ts           traduit status.lastError en message client générique
+                                          (mini-mapping local, fallback toujours présent) —
+                                          status.lastError brut n'atteint jamais l'écran principal
     options/                   [pas encore fait]
       Options.tsx                   préférences (§8) - dont la préférence "ouvrir Vinted en
                                       arrière-plan" pas encore ajoutée malgré publish_listing (§8)
@@ -493,6 +511,8 @@ extension/
 **`selectors.ts` centralisé** : Vinted peut changer son DOM/ses `data-testid` sans préavis — c'est déjà arrivé pour `scripts/vinted-scan.ts`. Regrouper tous les sélecteurs DOM dans un seul fichier par surface de code (extension vs script Node, qui restent deux environnements d'exécution distincts et ne peuvent pas littéralement partager le même fichier) limite la casse à un seul endroit à corriger de chaque côté.
 
 ## 10. Phasage
+
+**Refonte visuelle du popup (2026-08-05)** — ✅ version minimale premium bêta faite : fondations CSS + composants partagés (StatusCard/PopupButton/Spinner/DiagnosticPanel) + réécriture de `Popup.tsx` sur les états réels de `StatusResponse`, vérifié par typecheck/lint/build/test + vérification visuelle des 5 états réels à 320px. Zéro changement de logique métier, de protocole extension↔app, ou de comportement de pairing/unpairing (§3) — travail purement visuel. **Explicitement pas traité** (hors périmètre validé) : un champ `lastDisconnectReason` pour distinguer une vraie dissociation d'une expiration de session, une détection de mismatch compte côté popup (le popup n'a aujourd'hui aucun signal pour ça — seul `VintedAccountPage.tsx`, côté app, peut le détecter, voir le fix P-04), et des animations avancées au-delà d'un simple fade-in respectant `prefers-reduced-motion`.
 
 **Action Engine (§5/§6.0, ARCHITECTURE.md §4.6)** — ✅ socle générique terminé le 2026-07-10 : cycle checks → préparation → validation → exécution → résultat → resynchronisation → historique, canal `RUN_ACTION`, table `action_log`. Prérequis architectural pour toute action d'écriture ci-dessous — chacune n'ajoute qu'une entrée `ActionDefinition` au registre existant.
 
