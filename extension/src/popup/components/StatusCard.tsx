@@ -1,9 +1,9 @@
-import type { ComponentType } from "react";
+import type { LucideIcon } from "lucide-react";
 
 export type StatusTone = "neutral" | "connected" | "warning";
 
 interface StatusCardProps {
-  icon: ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   tone: StatusTone;
   title: string;
   description?: string;

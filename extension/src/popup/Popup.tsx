@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
+import { Puzzle, CheckCircle2, AlertTriangle } from "lucide-react";
 import type { StatusResponse } from "../lib/messages";
 import { logger, type LogEntry } from "../background/logger";
-import logoGlyph from "./assets/logo-glyph.png";
+import { StatusCard } from "./components/StatusCard";
+import { PopupButton } from "./components/PopupButton";
+import { DiagnosticPanel } from "./components/DiagnosticPanel";
+import { Spinner } from "./components/Spinner";
+import { toClientErrorMessage } from "./lib/popupErrorMessages";
+import logoGlyphTransparent from "./assets/logo-glyph-transparent.png";
+import "./popup.css";
 
-// Popup volontairement en styles inline plutot qu'avec Tailwind : pas besoin
-// d'un second pipeline Tailwind pour un ecran aussi simple. Couleurs reprises
-// en dur depuis tailwind.config.js (neon-500 #FFC400, dark-400 #0a0a0a) pour
-// rester coherent visuellement avec l'app principale sans dupliquer l'outillage.
-
+// Etats derives uniquement des champs REELS de StatusResponse (voir
+// lib/messages.ts) -- aucun etat invente qui ne serait pas observable
+// aujourd'hui (ex. pas de "synchronisation en cours" : GET_STATUS est un
+// instantane a l'ouverture du popup, sans polling, donc rien ne prouverait
+// honnetement un tel etat). lastError ne peut etre non-null QUE si paired
+// est deja true (voir pairing.ts::getStatus -- le cas non-apparie renvoie
+// toujours lastError: null), donc le controler en premier ne masque jamais
+// le cas "jamais apparie".
 function useStatus() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,94 +39,103 @@ function useStatus() {
 export default function Popup() {
   const { status, loading, refresh } = useStatus();
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [working, setWorking] = useState(false);
 
   useEffect(() => {
     logger.getRecent().then((entries) => setLogs(entries.slice().reverse()));
   }, [status]);
 
   const handleUnpair = async () => {
+    setWorking(true);
     await chrome.runtime.sendMessage({ type: "UNPAIR" });
     await refresh();
+    setWorking(false);
   };
 
   return (
-    <div style={{ width: 320, padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#0a0a0a", color: "#e5e5e5" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <img src={logoGlyph} alt="ResellOS" width={24} height={24} style={{ objectFit: "contain", flexShrink: 0 }} />
-        <strong>ResellOS</strong>
+    <div className="popup">
+      {/* Wordmark : le glyphe (le "R") + "esell" + "OS", meme construction
+          que la sidebar du dashboard (voir DashboardLayout.tsx) -- jamais
+          de "R" textuel en plus du glyphe. Variante "transparente" de
+          l'asset (deja generee au rebrand du 2026-07-28, aucun nouvel
+          asset) : concue pour se coller directement au mot, pas la
+          variante "carree" (icone autonome, reservee aux favicons/icones
+          d'action). */}
+      <div className="popup-header">
+        <img src={logoGlyphTransparent} alt="ResellOS" width={26} height={26} className="popup-logo" />
+        <span className="popup-wordmark">
+          <span className="brand-white">esell</span>
+          <span className="brand-accent">OS</span>
+        </span>
       </div>
 
-      {loading && <p style={{ fontSize: 13, color: "#888" }}>Chargement...</p>}
-
-      {!loading && status && (
-        <>
-          <StatusRow label="App ResellOS" ok={status.paired} okText="Appairé" koText="Non appairé" />
-          <StatusRow label="Compte Vinted" ok={status.vintedConnected} okText="Connecté" koText="Non détecté" />
-
-          {status.lastSyncedAt && (
-            <p style={{ fontSize: 11, color: "#888", marginTop: 8 }}>
-              Dernière synchro : {new Date(status.lastSyncedAt).toLocaleString("fr-FR")}
-            </p>
-          )}
-
-          {status.lastError && <p style={{ fontSize: 11, color: "#f87171", marginTop: 8 }}>{status.lastError}</p>}
-
-          {!status.paired && (
-            <p style={{ fontSize: 12, color: "#888", marginTop: 12 }}>
-              Ouvre ResellOS et clique sur « Connecter l'extension » pour t'appairer.
-            </p>
-          )}
-
-          {status.paired && (
-            <button
-              onClick={handleUnpair}
-              style={{
-                marginTop: 12,
-                width: "100%",
-                padding: "8px 0",
-                borderRadius: 8,
-                border: "1px solid rgba(255,255,255,0.1)",
-                background: "transparent",
-                color: "#f87171",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              Se dissocier
-            </button>
-          )}
-        </>
-      )}
-
-      {logs.length > 0 && (
-        <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
-          <p style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: "#666", marginBottom: 6 }}>
-            Journal
-          </p>
-          <div style={{ maxHeight: 140, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-            {logs.slice(0, 12).map((entry, i) => (
-              <div
-                key={i}
-                style={{ fontSize: 10, color: entry.level === "error" ? "#f87171" : entry.level === "warn" ? "#facc15" : "#888" }}
-              >
-                <div>{entry.message}</div>
-                {entry.detail && (
-                  <div style={{ color: "#555", fontSize: 9, marginLeft: 8, wordBreak: "break-all" }}>{entry.detail}</div>
-                )}
-              </div>
-            ))}
-          </div>
+      {loading && (
+        <div className="card fade-in status-row">
+          <Spinner size={16} />
+          <p className="status-desc">Vérification du statut…</p>
         </div>
       )}
+
+      {!loading && status && <StatusSection status={status} />}
+
+      {!loading && status?.paired && (
+        <PopupButton variant="danger" loading={working} onClick={() => void handleUnpair()}>
+          Dissocier de ResellOS
+        </PopupButton>
+      )}
+
+      <DiagnosticPanel logs={logs} />
     </div>
   );
 }
 
-function StatusRow({ label, ok, okText, koText }: { label: string; ok: boolean; okText: string; koText: string }) {
+// Vocabulaire repris a l'identique de VintedAccountPage.tsx (app web) --
+// "Extension connectée"/"Extension déconnectée" et les deux descriptions
+// (connectee+vinted / non-appariee) sont les memes chaines exactes que la
+// page Compte Vinted du dashboard, pour que popup et app parlent le meme
+// langage. lastError traduit systematiquement via toClientErrorMessage()
+// (jamais la chaine technique brute) -- voir lib/popupErrorMessages.ts.
+function StatusSection({ status }: { status: StatusResponse }) {
+  if (status.lastError) {
+    return (
+      <StatusCard
+        icon={AlertTriangle}
+        tone="warning"
+        title="Synchronisation impossible"
+        description={toClientErrorMessage(status.lastError)}
+      />
+    );
+  }
+
+  if (!status.paired) {
+    return (
+      <StatusCard
+        icon={Puzzle}
+        tone="neutral"
+        title="Extension déconnectée"
+        description="Connecte l'extension pour démarrer la synchronisation de ton compte Vinted."
+      />
+    );
+  }
+
+  if (!status.vintedConnected) {
+    return (
+      <StatusCard
+        icon={CheckCircle2}
+        tone="connected"
+        title="Extension connectée"
+        description="Aucun compte Vinted détecté pour l'instant. Ouvre ton profil Vinted dans un onglet pour lancer la synchronisation."
+      />
+    );
+  }
+
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "6px 0" }}>
-      <span style={{ color: "#aaa" }}>{label}</span>
-      <span style={{ color: ok ? "#FFC400" : "#666", fontWeight: 600 }}>{ok ? okText : koText}</span>
-    </div>
+    <StatusCard
+      icon={CheckCircle2}
+      tone="connected"
+      title="Extension connectée"
+      description="L'extension synchronise automatiquement tes annonces Vinted vers ResellOS."
+      meta={status.lastSyncedAt ? `Dernière synchro : ${new Date(status.lastSyncedAt).toLocaleString("fr-FR")}` : undefined}
+    />
   );
 }
