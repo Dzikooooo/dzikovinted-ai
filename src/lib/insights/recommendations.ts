@@ -154,6 +154,35 @@ function matchRevoirAnnonce(listing: Listing, ctx: EngineContext): { reasonText:
   };
 }
 
+// Construit le resultat 'action'/'recommandation_differee' pour un match de
+// considerer_republication -- factorise pour etre appele depuis les deux
+// points de la chaine d'arbitrage qui peuvent produire cette recommandation
+// (etape 0.5 hidden/deleted prioritaire, et etape 3 pour le reste), sans
+// dupliquer la construction du texte/CTA.
+function buildRepublicationResult(
+  listing: Listing,
+  ctx: EngineContext,
+  match: RepublicationMatch
+): ListingRecommendationResult {
+  if (hasRecentRepublishAttempt(listing.id, ctx)) {
+    return {
+      status: 'recommandation_differee',
+      kind: 'considerer_republication',
+      reason: 'Une republication a déjà été tentée récemment sur cette annonce.',
+      listingId: listing.id,
+    };
+  }
+  return {
+    status: 'action',
+    kind: 'considerer_republication',
+    confidence: match.confidence,
+    message: 'Republication à envisager',
+    reason: match.reasonText + REPUBLICATION_DISCLAIMER,
+    cta: { type: 'open_vinted' },
+    listingId: listing.id,
+  };
+}
+
 // -----------------------------------------------------------------------
 // Chaine d'arbitrage -- codee explicitement comme une suite d'etapes
 // ordonnees et commentees (demande explicite : l'ordre de priorite doit
@@ -166,15 +195,37 @@ export function computeListingRecommendation(listing: Listing, ctx: EngineContex
   // aucun resultat produit du tout, pas meme "attendre".
   if (listing.status !== 'en_stock') return null;
 
-  // Etape 1 : verification structurelle, prioritaire, independante de la
-  // fraicheur de synchro.
+  const freshness = getSyncFreshnessTier(listing, ctx.now);
+  const republicationMatch = matchConsidererRepublication(listing, ctx);
+
+  // Etape 0.5 (P0, audit du 2026-08-05) : un statut hidden/deleted est un
+  // signal fort et immediat (invisibilite totale sur le marketplace) --
+  // prioritaire sur la verification structurelle (etape 1). Sans cette
+  // priorite, une annonce cachee/supprimee mais avec aussi un defaut
+  // structurel (photo/categorie manquante) restait bloquee indefiniment sur
+  // "verifie cette annonce", qui ne se corrige jamais tout seul : ces
+  // champs structurels ne sont PAS rafraichis par la synchro passive une
+  // fois l'annonce deja liee (voir sync.ts, seul price/vinted_status/
+  // favourites/views/synced_at/vinted_url sont reecrits). Uniquement si la
+  // synchro n'est pas perimee -- au-dela, comportement inchange (etape 2 :
+  // "donnees insuffisantes" generique, y compris pour hidden/deleted).
+  if (
+    freshness !== 'perimee' &&
+    republicationMatch?.path === 'A' &&
+    (listing.vinted_status === 'hidden' || listing.vinted_status === 'deleted')
+  ) {
+    return buildRepublicationResult(listing, ctx, republicationMatch);
+  }
+
+  // Etape 1 : verification structurelle, independante de la fraicheur de
+  // synchro (mais desormais dominee par l'etape 0.5 ci-dessus pour
+  // hidden/deleted).
   const structural = evaluateVerifierAnnonce(listing);
   if (structural) return structural;
 
   // Etape 2 : fraicheur globale des donnees d'engagement (vinted_status/
   // vues/favoris). Perimee (> 48h) = aucune recommandation d'engagement
   // possible, quelle que soit la severite apparente du signal brut.
-  const freshness = getSyncFreshnessTier(listing, ctx.now);
   if (freshness === 'perimee') {
     return {
       status: 'donnees_insuffisantes',
@@ -183,10 +234,9 @@ export function computeListingRecommendation(listing: Listing, ctx: EngineContex
     };
   }
 
-  // Etape 3 : republication (deux chemins) -- avant tout signal
-  // d'engagement relatif, car c'est le signal le plus severe quand il
-  // matche (statut reellement invisible, ou dormance totale).
-  const republicationMatch = matchConsidererRepublication(listing, ctx);
+  // Etape 3 : republication restante (chemin A "unknown", chemin B
+  // dormance totale) -- le chemin A hidden/deleted a deja ete traite a
+  // l'etape 0.5 ci-dessus et ne peut plus atteindre ce bloc.
   if (republicationMatch) {
     // Statut 'unknown' + synchro pas totalement fraiche (>=24h) : signal deja
     // ambigu en soi, aggrave par une donnee pas toute recente -- basculer sur
@@ -200,24 +250,7 @@ export function computeListingRecommendation(listing: Listing, ctx: EngineContex
       };
     }
 
-    if (hasRecentRepublishAttempt(listing.id, ctx)) {
-      return {
-        status: 'recommandation_differee',
-        kind: 'considerer_republication',
-        reason: 'Une republication a déjà été tentée récemment sur cette annonce.',
-        listingId: listing.id,
-      };
-    }
-
-    return {
-      status: 'action',
-      kind: 'considerer_republication',
-      confidence: republicationMatch.confidence,
-      message: 'Republication à envisager',
-      reason: republicationMatch.reasonText + REPUBLICATION_DISCLAIMER,
-      cta: { type: 'open_vinted' },
-      listingId: listing.id,
-    };
+    return buildRepublicationResult(listing, ctx, republicationMatch);
   }
 
   // Etape 4 : echantillon suffisant pour les comparaisons relatives --

@@ -84,11 +84,39 @@ describe('verifier_annonce', () => {
     expect(result?.status).toBe('action');
   });
 
-  it('prioritaire sur considerer_republication -- matche meme si le statut Vinted est hidden', () => {
+  it("cede la priorite a considerer_republication quand le statut Vinted est hidden/deleted (P0, audit du 2026-08-05) -- un defaut de fiche ne doit plus masquer indefiniment une invisibilite reelle", () => {
     const listing = published({ vinted_status: 'hidden', image_urls: [] });
     const ctx = buildContext([listing], [], []);
     const result = computeListingRecommendation(listing, ctx);
+    expect(result).toMatchObject({ status: 'action', kind: 'considerer_republication', confidence: 'haute' });
+  });
+
+  it('meme priorite pour le statut deleted', () => {
+    const listing = published({ vinted_status: 'deleted', category: '' });
+    const ctx = buildContext([listing], [], []);
+    const result = computeListingRecommendation(listing, ctx);
+    expect(result).toMatchObject({ status: 'action', kind: 'considerer_republication' });
+  });
+
+  it("reste prioritaire quand le statut est online -- la priorite hidden/deleted ne s'applique qu'a ces deux statuts", () => {
+    const listing = published({ vinted_status: 'online', image_urls: [] });
+    const ctx = buildContext([listing], [], []);
+    const result = computeListingRecommendation(listing, ctx);
     expect(result && 'kind' in result ? result.kind : null).toBe('verifier_annonce');
+  });
+
+  it("reste prioritaire quand le statut est unknown -- signal trop ambigu pour justifier la meme priorite que hidden/deleted", () => {
+    const listing = published({ vinted_status: 'unknown', image_urls: [] });
+    const ctx = buildContext([listing], [], []);
+    const result = computeListingRecommendation(listing, ctx);
+    expect(result && 'kind' in result ? result.kind : null).toBe('verifier_annonce');
+  });
+
+  it('la priorite hidden/deleted ne bypasse pas la synchro perimee (le fix ne touche pas ce garde-fou) -- sans defaut structurel par ailleurs, retombe en donnees_insuffisantes comme avant', () => {
+    const listing = published({ vinted_status: 'hidden', synced_at: PERIMEE });
+    const ctx = buildContext([listing], [], []);
+    const result = computeListingRecommendation(listing, ctx);
+    expect(result?.status).toBe('donnees_insuffisantes');
   });
 });
 
