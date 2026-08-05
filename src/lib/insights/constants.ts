@@ -35,3 +35,51 @@ export const MIN_TREND_INTERVAL_DAYS = 3;
 export const LOW_MARGIN_THRESHOLD_EUR = 5;
 
 export const MAX_PRIORITIES = 5;
+
+// ---------------------------------------------------------------------------
+// Decision Engine — Lot 1 (2026-08-05)
+//
+// Tous les seuils ci-dessous sont des valeurs de DEPART pour la beta, pas une
+// verite figee. Ils sont soit derives d'une constante deja validee ailleurs
+// dans le produit (DORMANT_LISTING_DAYS, STALE_SYNC_THRESHOLD_HOURS), soit un
+// point de depart raisonnable jamais encore calibre sur un usage reel
+// (PRICE_ENGAGEMENT_RATIO_THRESHOLD, REVIEW_*, les deux cooldowns). Ils
+// doivent etre revus explicitement avec les retours d'Albin et de vraies
+// donnees de synchro/engagement -- voir LOT1_SPEC.md. Ne jamais les presenter
+// a l'utilisateur comme un seuil scientifique ("exactement 60 jours"), les
+// messages generes ne citent que les chiffres reels de l'annonce, jamais le
+// seuil lui-meme.
+// ---------------------------------------------------------------------------
+
+// Au-dela de ce seuil ET avec un engagement nul (0 vue, 0 favori), une
+// annonce online est consideree en dormance totale (considerer_republication,
+// chemin B) -- deja le seuil utilise par ruleInactiveListing dans alerts.ts
+// (REPUBLISH_AFTER_DAYS * 2), repris ici tel quel plutot qu'un nouveau
+// chiffre invente.
+export const DORMANT_LISTING_DAYS = REPUBLISH_AFTER_DAYS * 2;
+
+// baisser_prix : vues/favoris consideres "faibles" en dessous de ce ratio de
+// la mediane du compte. Point de depart, jamais calibre.
+export const PRICE_ENGAGEMENT_RATIO_THRESHOLD = 0.5;
+
+// revoir_annonce : vues considerees "elevees" au-dessus de ce ratio de la
+// mediane du compte, combine a un nombre de favoris tres bas.
+export const REVIEW_VIEWS_RATIO_THRESHOLD = 1.5;
+export const REVIEW_MAX_FAVOURITES = 1;
+
+// Fraicheur de synchro (listing.synced_at) : sous ce seuil, confiance haute
+// possible. Entre ce seuil et STALE_SYNC_THRESHOLD_HOURS, confiance degradee
+// a "standard". Au-dela de STALE_SYNC_THRESHOLD_HOURS, aucune recommandation
+// d'engagement -- deja la valeur utilisee cote UI (DashboardHome.tsx
+// STALE_SYNC_THRESHOLD_HOURS, ListingsManagementSection.tsx
+// syncFreshnessClass), centralisee ici plutot que dupliquee une troisieme
+// fois.
+export const FRESH_SYNC_THRESHOLD_HOURS = 24;
+export const STALE_SYNC_THRESHOLD_HOURS = 48;
+
+// Anti-boucle : ne jamais re-suggerer une action deja tentee recemment.
+// Deux constantes nommees distinctement (meme valeur de depart) car ce sont
+// deux concepts differents -- republication vs changement de prix -- qui
+// pourraient diverger independamment apres calibration.
+export const ACTION_RETRY_COOLDOWN_DAYS = 7;
+export const PRICE_CHANGE_COOLDOWN_DAYS = 7;
