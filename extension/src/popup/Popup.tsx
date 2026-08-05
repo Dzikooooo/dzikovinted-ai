@@ -80,7 +80,7 @@ export default function Popup() {
 
       {!loading && status?.paired && (
         <PopupButton variant="danger" loading={working} onClick={() => void handleUnpair()}>
-          Dissocier de ResellOS
+          Déconnecter l'extension
         </PopupButton>
       )}
 
