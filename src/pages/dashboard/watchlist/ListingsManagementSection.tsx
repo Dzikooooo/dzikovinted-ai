@@ -489,6 +489,17 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     return 'text-gray-600';
   };
 
+  // Bandeau de sync plus discret une fois l'etat stable (demande produit
+  // 2026-08-05, test live) : aucun nouveau signal, uniquement une
+  // combinaison de ceux deja calcules ci-dessus. "Besoin d'attention" =
+  // extension pas prete, derniere synchro pas fraiche (<24h, meme classe
+  // que syncFreshnessClass), compte selectionne non detecte cote Vinted, ou
+  // un hint de synchro deja affiche (echec/action requise).
+  const accountNotDetected =
+    selectedAccountId === 'all' ? accounts.every((a) => !a.connected) : !!selectedAccount && !selectedAccount.connected;
+  const syncNeedsAttention =
+    extensionState !== 'ready' || syncFreshnessClass(lastSyncedAt) !== 'text-gray-600' || accountNotDetected || !!syncHint;
+
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -574,7 +585,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       </div>
 
       {accounts.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 bg-surface border border-white/5 rounded-2xl p-4">
+        <div
+          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 transition-colors ${
+            syncNeedsAttention ? 'bg-surface border border-white/5 rounded-2xl p-4' : 'border-b border-white/5 py-2.5'
+          }`}
+        >
           <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
             <span
               className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
@@ -592,6 +607,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
               onClick={handleSync}
               disabled={syncing || extensionState !== 'ready'}
               size="sm"
+              variant={syncNeedsAttention ? 'primary' : 'ghost'}
               icon={<RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />}
             >
               {syncing ? 'Synchronisation...' : selectedAccountId === 'all' ? 'Ouvrir Vinted' : 'Synchroniser maintenant'}
