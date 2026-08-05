@@ -1,0 +1,327 @@
+/* Fondations visuelles du popup ResellOS -- valeurs recopiees EXACTEMENT des
+   tokens du dashboard (racine du projet, aucune valeur inventee) :
+   - couleurs : tailwind.config.js theme.extend.colors (neon/dark/surface)
+   - glow CTA : src/components/ui/Button.tsx (variante primary)
+   - couleurs d'erreur : src/components/ui/ErrorBanner.tsx
+   - anneau de focus : focus-visible:ring-2 ring-neon-500/50 (Button.tsx)
+   Pas de pipeline Tailwind ici (extension/ reste un paquet independant sans
+   tooling monorepo, choix deja assume avant cette passe) -- si la palette du
+   dashboard change, repercuter manuellement ces valeurs ici. */
+
+:root {
+  --neon-500: #7C5CFF;
+  --neon-600: #5B3FD9;
+  --neon-700: #3B258F;
+
+  --dark-400: #0F1117;
+  --surface: #1A1E28;
+
+  --gray-200: #E5E7EB;
+  --gray-400: #9CA3AF;
+  --gray-500: #6B7280;
+  --gray-600: #4B5563;
+  --gray-700: #374151;
+
+  --red-300: #FCA5A5;
+  --red-400: #F87171;
+  --red-bg: rgba(239, 68, 68, 0.1);
+  --red-border: rgba(239, 68, 68, 0.2);
+
+  --green-500: #22C55E;
+
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.1);
+
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  --glow-cta: 0 0 25px rgba(124, 92, 255, 0.18);
+  --glow-cta-hover: 0 0 35px rgba(124, 92, 255, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: var(--dark-400);
+  color: var(--gray-200);
+}
+
+/* prefers-reduced-motion (exigence deja appliquee au reste du produit) --
+   neutralise toute animation/transition CSS de ce fichier. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.popup {
+  width: 320px;
+  padding: 16px;
+  overflow-x: hidden;
+}
+
+/* Equivalent de focus-visible:ring-2 ring-neon-500/50 ring-offset-2
+   ring-offset-dark-400 (Button.tsx) en CSS simple -- applique explicitement
+   a chaque element interactif (bouton, <summary>), jamais laisse au style
+   par defaut du navigateur seul. */
+.focus-ring:focus-visible {
+  outline: 2px solid rgba(124, 92, 255, 0.6);
+  outline-offset: 2px;
+}
+
+/* Header / wordmark -- meme construction que DashboardLayout.tsx :
+   glyphe (le "R") + "esell" (blanc) + "OS" (violet), pour lire "ResellOS".
+   Jamais de "R" textuel en plus du glyphe. */
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.popup-logo {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.popup-wordmark {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.popup-wordmark .brand-white {
+  color: #fff;
+}
+
+.popup-wordmark .brand-accent {
+  color: var(--neon-500);
+}
+
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-2xl);
+  padding: 16px;
+}
+
+.card + .card,
+.card + .btn {
+  margin-top: 12px;
+}
+
+.card.fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Status card */
+.status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.status-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.status-icon.tone-neutral {
+  color: var(--gray-500);
+}
+
+.status-icon.tone-connected {
+  color: var(--green-500);
+}
+
+.status-icon.tone-warning {
+  color: var(--red-400);
+}
+
+.status-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gray-200);
+  margin: 0 0 2px;
+}
+
+.status-desc {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin: 0;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.status-meta {
+  font-size: 11px;
+  color: var(--gray-600);
+  margin: 8px 0 0;
+  word-break: break-word;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 0;
+  border-radius: var(--radius-xl);
+  font-size: 13px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  font-family: inherit;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--neon-600);
+  color: #fff;
+  box-shadow: var(--glow-cta);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--neon-700);
+  box-shadow: var(--glow-cta-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--gray-400);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: rgba(124, 92, 255, 0.4);
+  color: var(--gray-200);
+}
+
+.btn-danger {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  color: var(--red-300);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+/* Diagnostic -- replie par defaut (<details> natif, focusable et
+   actionnable au clavier sans JS). Contenu strictement identique a l'ancien
+   bloc "Journal" (voir DiagnosticPanel.tsx), seule sa visibilite change. */
+.diagnostic {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+}
+
+.diagnostic-summary {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-600);
+  cursor: pointer;
+  user-select: none;
+}
+
+.diagnostic-summary::-webkit-details-marker {
+  color: var(--gray-600);
+}
+
+.diagnostic-summary:hover {
+  color: var(--gray-400);
+}
+
+.diagnostic-body {
+  margin-top: 8px;
+}
+
+.diagnostic-copy {
+  background: transparent;
+  border: none;
+  color: var(--gray-500);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 0 6px;
+  font-family: inherit;
+}
+
+.diagnostic-copy:hover {
+  color: var(--gray-200);
+}
+
+.diagnostic-log {
+  max-height: 140px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.diagnostic-entry {
+  font-size: 10px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.diagnostic-entry.level-error {
+  color: var(--red-400);
+}
+
+.diagnostic-entry.level-warn {
+  color: #facc15;
+}
+
+.diagnostic-entry.level-info,
+.diagnostic-entry.level-debug {
+  color: var(--gray-500);
+}
+
+.diagnostic-detail {
+  color: var(--gray-700);
+  font-size: 9px;
+  margin-left: 8px;
+  word-break: break-all;
+}
+
+/* Spinner */
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
