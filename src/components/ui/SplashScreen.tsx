@@ -12,13 +12,7 @@ export function SplashScreen() {
         <div className="absolute inset-3 rounded-full border-2 border-dashed border-neon-500/50 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }} />
         <Logo variant="square" size={46} />
       </div>
-      <div className="text-center">
-        <p className="text-2xl font-black tracking-tight">
-          <span className="text-white">esell</span>
-          <span className="text-neon-500">OS</span>
-        </p>
-        <p className="text-[11px] text-gray-600 mt-1.5 font-mono uppercase tracking-wider">by Dziko</p>
-      </div>
+      <p className="text-[11px] text-gray-600 font-mono uppercase tracking-wider">by Dziko</p>
     </div>
   );
 }
