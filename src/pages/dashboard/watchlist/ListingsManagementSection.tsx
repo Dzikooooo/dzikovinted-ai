@@ -916,7 +916,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   );
 }
 
-interface ListingCardProps {
+export interface ListingCardProps {
   item: Listing;
   selected: boolean;
   onToggleSelect: () => void;
@@ -929,7 +929,7 @@ interface ListingCardProps {
   onOpenDetail: () => void;
 }
 
-function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold, onOpenDetail }: ListingCardProps) {
+export function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold, onOpenDetail }: ListingCardProps) {
   const isSold = item.status === 'vendu';
   const hasCost = item.purchase_price !== null;
   const margin = isSold
@@ -939,7 +939,17 @@ function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel
 
   return (
     <div
-      className={`group bg-surface-alt rounded-2xl border overflow-hidden transition-all duration-300 ${
+      role="button"
+      tabIndex={0}
+      onClick={onOpenDetail}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenDetail();
+        }
+      }}
+      aria-label={`Voir le détail de ${item.title}`}
+      className={`group bg-surface-alt rounded-2xl border overflow-hidden transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-neon-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-500 ${
         selected ? 'border-neon-500/60 shadow-[0_0_0_1px_rgba(124,92,255,0.3),0_20px_50px_rgba(0,0,0,0.35)]' : 'border-white/5 hover:border-neon-500/30'
       }`}
     >
@@ -952,7 +962,10 @@ function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel
           </div>
         )}
         <button
-          onClick={onToggleSelect}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
           aria-label={selected ? 'Désélectionner' : 'Sélectionner'}
           className={`absolute top-2 left-2 w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors ${
             selected ? 'bg-neon-600 text-white' : 'bg-black/60 text-white hover:bg-black/80'
@@ -969,14 +982,7 @@ function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel
 
       <div className="p-4">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <button
-            type="button"
-            onClick={onOpenDetail}
-            className="font-semibold text-sm text-gray-100 truncate text-left hover:text-neon-400 transition-colors"
-            title="Voir le détail de l'annonce"
-          >
-            {item.title}
-          </button>
+          <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
         </div>
         {item.sku !== null && <p className="text-[11px] text-gray-500 font-mono mb-1">#{item.sku}</p>}
         <p className="text-xs text-gray-500 truncate">{[item.brand, item.category, item.size].filter(Boolean).join(' · ') || '—'}</p>
@@ -1051,7 +1057,16 @@ function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel
         </div>
 
         {!isSold && (
-          <Button variant="secondary" size="sm" fullWidth className="mt-3" onClick={onMarkSold}>
+          <Button
+            variant="secondary"
+            size="sm"
+            fullWidth
+            className="mt-3"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkSold();
+            }}
+          >
             Marquer vendu
           </Button>
         )}
