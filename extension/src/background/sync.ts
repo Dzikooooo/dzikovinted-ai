@@ -476,16 +476,19 @@ export async function checkItemAlreadyLinked(vintedUsername: string, vintedItemI
 const MAX_SKU_INSERT_ATTEMPTS = 3;
 const SKU_UNIQUE_CONSTRAINT = "listings_user_sku_unique";
 
+// Retourne l'id de la ligne creee -- necessaire depuis le 2026-08-06 pour
+// que recordSingleItemImport puisse y rattacher un premier point
+// d'historique (listing_metric_snapshots), voir plus bas.
 async function insertListingWithSkuRetry(
   client: ReturnType<typeof supabaseWithToken>,
   row: Record<string, unknown>
-): Promise<void> {
+): Promise<string> {
   const allowRetry = row.sku === null || row.sku === undefined;
   const attempts = allowRetry ? MAX_SKU_INSERT_ATTEMPTS : 1;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const { error } = await client.from("listings").insert(row);
-    if (!error) return;
+    const { data, error } = await client.from("listings").insert(row).select("id").single();
+    if (!error) return data.id as string;
 
     const isSkuCollision = error.code === "23505" && error.message?.includes(SKU_UNIQUE_CONSTRAINT);
     if (isSkuCollision && attempt < attempts) {
@@ -499,6 +502,33 @@ async function insertListingWithSkuRetry(
       );
     }
     throw error;
+  }
+  // Inatteignable (la boucle retourne ou leve a chaque iteration) -- satisfait le typage.
+  throw new Error("insertListingWithSkuRetry: boucle de tentatives epuisee sans resultat");
+}
+
+// Best-effort strict, meme principe que reportSkuRepair ci-dessus : un
+// import individuel est une action explicite de l'utilisateur, son succes
+// ne doit jamais dependre de ce point d'historique secondaire -- contraste
+// deliberement avec recordListings ci-dessus (synchro passive de masse),
+// qui propage une erreur d'ecriture de snapshot puisqu'elle n'a aucun
+// utilisateur en attente d'un retour de succes/echec immediat.
+async function recordImportSnapshot(
+  client: ReturnType<typeof supabaseWithToken>,
+  listingId: string,
+  snapshot: { views: number | null; favourites: number | null; price: number | null; vintedStatus: string | null },
+  capturedAt: string
+): Promise<void> {
+  const { error } = await client.from("listing_metric_snapshots").insert({
+    listing_id: listingId,
+    views: snapshot.views,
+    favourites: snapshot.favourites,
+    price: snapshot.price,
+    vinted_status: snapshot.vintedStatus,
+    captured_at: capturedAt,
+  });
+  if (error) {
+    logger.warn("Enregistrement de l'historique a echoue (import individuel, best-effort)", error.message);
   }
 }
 
@@ -535,7 +565,7 @@ export async function recordSingleItemImport(
 
   const { data: existing, error: selectError } = await client
     .from("listings")
-    .select("id, vinted_sync_status")
+    .select("id, vinted_sync_status, views, favourites, vinted_status")
     .eq("vinted_account_id", vintedAccountId)
     .eq("vinted_item_id", item.vintedItemId)
     .maybeSingle();
@@ -602,11 +632,22 @@ export async function recordSingleItemImport(
       throw updateError;
     }
     logger.info("Article Vinted reimporte (mis a jour, reconciliation complete)", { vintedItemId: item.vintedItemId });
+    // vues/favoris/statut ne sont PAS rafraichis par ce chemin (import
+    // individuel ne touche que titre/description/prix/photos/... -- voir
+    // vintedFields ci-dessus) : le snapshot reflete donc les dernieres
+    // valeurs connues (inchangees), pas une lecture fraiche, mais reste un
+    // vrai point d'historique daté plutot qu'aucun point du tout.
+    await recordImportSnapshot(
+      client,
+      existing.id,
+      { views: existing.views, favourites: existing.favourites, price: item.price ?? 0, vintedStatus: existing.vinted_status },
+      syncedAt
+    );
     await reportSkuRepair(client, valid.userId, "post-import");
     return { created: false, draftProtected: false };
   }
 
-  await insertListingWithSkuRetry(client, {
+  const insertedId = await insertListingWithSkuRetry(client, {
     user_id: valid.userId,
     vinted_account_id: vintedAccountId,
     vinted_item_id: item.vintedItemId,
@@ -631,6 +672,11 @@ export async function recordSingleItemImport(
   });
 
   logger.info("Article Vinted importe", { vintedItemId: item.vintedItemId });
+  // Premier point d'historique de cette annonce -- vues/favoris/statut
+  // volontairement null (voir commentaire au-dessus de l'insertion :
+  // reellement inconnus a l'import, jamais devines), coherent avec ce qui
+  // vient d'etre ecrit sur `listings` elle-meme.
+  await recordImportSnapshot(client, insertedId, { views: null, favourites: null, price: item.price ?? 0, vintedStatus: null }, syncedAt);
   await reportSkuRepair(client, valid.userId, "post-import");
   return { created: true, draftProtected: false };
 }
