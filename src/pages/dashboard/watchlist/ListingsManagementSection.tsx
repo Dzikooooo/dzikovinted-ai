@@ -26,6 +26,7 @@ import { OneScoreBar } from '../../../components/ui/OneScoreBar';
 import PublishConfirmationModal, { type PackageSize } from '../../../components/publish/PublishConfirmationModal';
 import PublishProgressModal from '../../../components/publish/PublishProgressModal';
 import { EditListingModal } from '../../../components/stock/EditListingModal';
+import { ListingDetailModal } from '../../../components/listings/ListingDetailModal';
 import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR } from '../../../lib/extensionBridge';
 import { formatRelativeSync } from '../../../lib/formatRelativeTime';
 import { AGING_STOCK_DAYS } from '../../../lib/insights/constants';
@@ -155,6 +156,10 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
 
   const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
   const [editingItem, setEditingItem] = useState<Listing | null>(null);
+  // Fiche annonce (Lot "Suivi des annonces") -- distincte de editingItem
+  // (formulaire d'edition) : ouvre une vue lecture-seule (etat courant +
+  // historique), jamais un formulaire.
+  const [detailItem, setDetailItem] = useState<Listing | null>(null);
   // Etape d'explication avant ouverture de l'onglet Vinted pour edit_listing
   // (audit RC, 2026-08-05) -- meme principe que PublishConfirmationModal
   // pour publish/republish, qui elle existait deja. Jusqu'ici "Enregistrer
@@ -729,6 +734,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                   setSoldPrice(String(item.price ?? ''));
                   setFees('0');
                 }}
+                onOpenDetail={() => setDetailItem(item)}
               />
             ))}
           </div>
@@ -858,6 +864,15 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         />
       )}
 
+      {detailItem && (
+        <ListingDetailModal
+          listing={detailItem}
+          score={insights?.scores.get(detailItem.id)?.score ?? null}
+          recommendationState={insights?.listingRecommendations.get(detailItem.id)}
+          onClose={() => setDetailItem(null)}
+        />
+      )}
+
       {pendingUpdate && (
         <Modal onClose={() => setPendingUpdate(null)} size="sm">
           <h2 className="text-lg font-black mb-2">Mettre à jour sur Vinted ?</h2>
@@ -911,9 +926,10 @@ interface ListingCardProps {
   recommendationState: ListingRecommendationResult | undefined;
   aging: boolean;
   onMarkSold: () => void;
+  onOpenDetail: () => void;
 }
 
-function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold }: ListingCardProps) {
+function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold, onOpenDetail }: ListingCardProps) {
   const isSold = item.status === 'vendu';
   const hasCost = item.purchase_price !== null;
   const margin = isSold
@@ -953,7 +969,14 @@ function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel
 
       <div className="p-4">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
+          <button
+            type="button"
+            onClick={onOpenDetail}
+            className="font-semibold text-sm text-gray-100 truncate text-left hover:text-neon-400 transition-colors"
+            title="Voir le détail de l'annonce"
+          >
+            {item.title}
+          </button>
         </div>
         {item.sku !== null && <p className="text-[11px] text-gray-500 font-mono mb-1">#{item.sku}</p>}
         <p className="text-xs text-gray-500 truncate">{[item.brand, item.category, item.size].filter(Boolean).join(' · ') || '—'}</p>
