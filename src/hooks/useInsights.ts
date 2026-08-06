@@ -4,6 +4,8 @@ import { useVintedAccountFilter } from '../contexts/VintedAccountFilterContext';
 import { supabase } from '../lib/supabase';
 import { computeInsights } from '../lib/insights/engine';
 import { ACTION_RETRY_COOLDOWN_DAYS, PRICE_CHANGE_COOLDOWN_DAYS } from '../lib/insights/constants';
+import { syncRecommendationLog } from '../lib/recommendationLogSync';
+import type { ResolvableAction } from '../lib/insights/recommendationLog';
 import type { InsightsReport, RecentActionSummary } from '../lib/insights/types';
 import type { Listing, ListingMetricSnapshot } from '../lib/types';
 
@@ -17,6 +19,7 @@ const RECENT_ACTIONS_LOOKBACK_DAYS = Math.max(ACTION_RETRY_COOLDOWN_DAYS, PRICE_
 const RECENT_ACTION_KINDS = ['edit_listing', 'publish_listing', 'republish_listing'] as const;
 
 interface RawActionLogRow {
+  id: string;
   listing_id: string | null;
   kind: string;
   completed_at: string | null;
@@ -31,6 +34,27 @@ function mapRecentAction(row: RawActionLogRow): RecentActionSummary | null {
     completedAt: row.completed_at,
     changedFields: row.payload?.changedFields,
   };
+}
+
+// Variante avec id (voir recommendationLog.ts::ResolvableAction) -- utilisee
+// uniquement pour la resolution 'suivie' de listing_recommendation_log,
+// jamais passee a computeInsights() (qui continue de recevoir exactement
+// RecentActionSummary[], sans id, comme avant -- zero changement de contrat
+// pour le Lot 1 du Decision Engine).
+function mapResolvableAction(row: RawActionLogRow): ResolvableAction | null {
+  const base = mapRecentAction(row);
+  if (!base) return null;
+  return { ...base, id: row.id };
+}
+
+function groupByListingId<T extends { listingId: string }>(items: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const bucket = map.get(item.listingId);
+    if (bucket) bucket.push(item);
+    else map.set(item.listingId, [item]);
+  }
+  return map;
 }
 
 export function useInsights() {
@@ -57,7 +81,7 @@ export function useInsights() {
         supabase.from('listing_metric_snapshots').select('*').gte('captured_at', historyStart),
         supabase
           .from('action_log')
-          .select('listing_id, kind, completed_at, payload')
+          .select('id, listing_id, kind, completed_at, payload')
           .eq('user_id', user.id)
           .eq('status', 'success')
           .in('kind', RECENT_ACTION_KINDS)
@@ -68,9 +92,9 @@ export function useInsights() {
 
       const listings = (allListings ?? []) as Listing[];
       const listingSnapshots = (snapshots ?? []) as ListingMetricSnapshot[];
-      const recentActions = ((recentActionRows ?? []) as RawActionLogRow[])
-        .map(mapRecentAction)
-        .filter((a): a is RecentActionSummary => a !== null);
+      const rawActionRows = (recentActionRows ?? []) as RawActionLogRow[];
+      const recentActions = rawActionRows.map(mapRecentAction).filter((a): a is RecentActionSummary => a !== null);
+      const resolvableActions = rawActionRows.map(mapResolvableAction).filter((a): a is ResolvableAction => a !== null);
 
       // Les recommandations/alertes/priorites/scores sont calcules sur le
       // sous-ensemble du compte selectionne (coherent avec le badge "Vue :
@@ -93,6 +117,19 @@ export function useInsights() {
         setReport({ ...scopedReport, narratives: fullReport.narratives });
         setLoading(false);
       }
+
+      // Persistance des recommandations (Lot "Suivi des annonces", voir
+      // LOT_SUIVI_ANNONCES_SPEC.md) -- best effort, jamais attendue avant
+      // setReport/setLoading ci-dessus : une erreur d'ecriture ne doit
+      // jamais retarder ni casser l'affichage des insights. Sourcee sur
+      // `fullReport.listingRecommendations` (TOUJOURS l'ensemble complet
+      // des annonces, meme quand un compte precis est filtre a l'ecran) --
+      // jamais `scopedReport`, qui ne couvrirait pas les annonces des
+      // comptes non selectionnes et laisserait leurs episodes ouverts
+      // orphelins. Ne depend d'aucun etat derive de ce meme effet (report/
+      // log) : ne peut donc jamais se re-declencher elle-meme en boucle,
+      // seul [user, accounts, selectedAccountId] fait re-tourner cet effet.
+      void syncRecommendationLog(user.id, listings, fullReport.listingRecommendations, groupByListingId(resolvableActions), new Date());
     })();
 
     return () => {

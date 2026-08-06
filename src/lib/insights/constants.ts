@@ -83,3 +83,17 @@ export const STALE_SYNC_THRESHOLD_HOURS = 48;
 // pourraient diverger independamment apres calibration.
 export const ACTION_RETRY_COOLDOWN_DAYS = 7;
 export const PRICE_CHANGE_COOLDOWN_DAYS = 7;
+
+// ---------------------------------------------------------------------------
+// Suivi des annonces (2026-08-06) -- listing_recommendation_log
+//
+// Garde-fous d'expiration d'un episode de recommandation (voir
+// recommendationLog.ts) : jamais sur une seule disparition de la regle,
+// jamais sur une synchro perimee/donnees insuffisantes -- uniquement apres
+// PLUSIEURS evaluations fraiches consecutives sans rematch ET une duree
+// minimale ecoulee depuis le premier "miss". Valeurs de depart pour la
+// beta, non calibrees sur un usage reel -- a revoir avec les retours
+// d'Albin, comme les seuils du Lot 1 (voir bloc ci-dessus).
+// ---------------------------------------------------------------------------
+export const MIN_CONSECUTIVE_FRESH_MISSES_BEFORE_EXPIRY = 3;
+export const MIN_DAYS_BEFORE_EXPIRY = 3;
