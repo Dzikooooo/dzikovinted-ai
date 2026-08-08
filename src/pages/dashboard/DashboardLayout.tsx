@@ -14,7 +14,8 @@ import {
   Activity,
   Eye,
   Users,
-  ShieldAlert
+  ShieldAlert,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
@@ -67,12 +68,12 @@ const navItems: { page: DashboardPage; icon: React.ElementType; label: string; d
   { page: 'home', icon: LayoutDashboard, label: 'Dashboard', description: 'Vue d\'ensemble de ton activité' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA', description: 'Photo -> annonce en quelques secondes' },
   { page: 'watchlist', icon: Eye, label: 'Mes annonces', description: 'Modifier, supprimer, surveiller le marché' },
-  // 'communication' volontairement absente de cette liste : CommunicationPage.tsx
-  // reste un mockup non fonctionnel (bouton d'envoi desactive en dur, bandeau
-  // "Pas encore construit" en page) -- le code et la route (ci-dessous)
-  // restent en place pour la reprise du chantier, mais aucun utilisateur
-  // beta ne doit pouvoir l'atteindre via la navigation tant que ce n'est
-  // pas reellement fonctionnel.
+  // Reactivee dans la nav (reprise du chantier Communication, 2026-08-08) :
+  // CommunicationPage.tsx n'est plus un mockup -- modeles de message reels
+  // + preparation de texte a partir d'une annonce reelle + lien "Ouvrir sur
+  // Vinted", envoi toujours manuel (voir le commentaire d'en-tete du
+  // fichier pour le perimetre exact et pourquoi aucune automatisation).
+  { page: 'communication', icon: MessageSquare, label: 'Communication', description: 'Modèles de message, prêts à envoyer' },
   { page: 'actions', icon: Activity, label: 'Niches', description: 'Opportunités détectées et historique des actions' },
   { page: 'accounting', icon: Receipt, label: 'Comptabilité', description: 'Chiffre d\'affaires, marge, stats' },
   { page: 'subscription', icon: CreditCard, label: 'Abonnement', description: 'Ton plan, factures, résiliation' },

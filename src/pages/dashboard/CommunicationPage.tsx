@@ -1,101 +1,351 @@
-import { MessageSquare, Heart, Tag, Clock, Bot, CheckCircle2, ArrowRight, Send } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { MessageSquare, Plus, Pencil, Trash2, Copy, ExternalLink, Check, Info } from 'lucide-react';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { useMessageTemplates, type MessageTemplateInput } from '../../hooks/useMessageTemplates';
+import { resolveMessageTemplate, MESSAGE_TEMPLATE_VARIABLES } from '../../lib/messageTemplate';
+import type { MessageTemplate } from '../../lib/types';
 
-const WORKFLOW = [
-  { icon: Heart, label: 'Un favori ou une offre arrive sur Vinted' },
-  { icon: Bot, label: 'ResellOS prépare une réponse adaptée' },
-  { icon: CheckCircle2, label: 'Tu relis et tu valides en un clic' },
-  { icon: Send, label: 'Le message part sur Vinted, avec ton nom' },
-];
+// Chantier Communication, reprise 2026-08-08 (voir AUDIT_SUIVI_COMMUNICATION.md
+// + le diagnostic livre avant ce code) -- perimetre volontairement etroit,
+// tel que decide : modeles de message que l'utilisateur ecrit lui-meme,
+// resolution de variables reelles (jamais inventees, voir
+// src/lib/messageTemplate.ts), et un lien "Ouvrir sur Vinted" vers
+// l'annonce concernee. Aucune automatisation : ni extraction de
+// destinataire (l'API wardrobe Vinted ne retourne qu'un compteur de
+// favoris, jamais une identite), ni envoi (aucun content script Vinted ne
+// touche l'inbox/une conversation/une offre -- construire ca necessiterait
+// une phase d'exploration DOM/reseau dediee, hors perimetre ici). Chaque
+// envoi reste un copier-coller manuel de l'utilisateur sur Vinted.
 
-const UPCOMING = [
-  { icon: Heart, title: 'Message automatique aux favoris', desc: 'Préviens automatiquement les utilisateurs qui ont mis un article en favori quand tu baisses son prix.' },
-  { icon: Tag, title: 'Réponse aux offres', desc: 'Accepte, refuse ou contre une offre directement depuis Resell OS, sans ouvrir Vinted.' },
-  { icon: Clock, title: 'Programmation', desc: 'Planifie l\'envoi de messages à l\'avance plutôt que de les envoyer un par un manuellement.' },
-];
+interface ListingOption {
+  id: string;
+  title: string;
+  brand: string | null;
+  category: string | null;
+  size: string | null;
+  price: number;
+  vinted_url: string | null;
+}
 
-// Refonte presentation (audit personnel utilisateur, 2026-08-02) : la
-// fonctionnalite n'est toujours pas construite (voir bandeau honnete en bas
-// de page, inchange sur le fond), mais la page doit maintenant "vendre" ce
-// qui arrive plutot que se limiter a un EmptyState. Workflow + apercu de
-// conversation sont des mockups purement visuels (donnees fictives,
-// etiquetees comme telles) -- aucun bouton ici n'envoie quoi que ce soit.
+function useListingOptions() {
+  const { user } = useAuth();
+  const [listings, setListings] = useState<ListingOption[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    let ignore = false;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from('listings')
+        .select('id, title, brand, category, size, price, vinted_url')
+        .eq('user_id', user.id)
+        .not('vinted_item_id', 'is', null)
+        .or('vinted_status.neq.deleted,vinted_status.is.null')
+        .order('title');
+      if (!ignore) {
+        setListings((data ?? []) as ListingOption[]);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [user]);
+
+  return { listings, loading };
+}
+
+function TemplateFormModal({
+  initial,
+  onClose,
+  onSave,
+}: {
+  initial: MessageTemplate | null;
+  onClose: () => void;
+  onSave: (input: MessageTemplateInput) => Promise<boolean>;
+}) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [body, setBody] = useState(initial?.body ?? '');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit() {
+    setSaving(true);
+    const ok = await onSave({ name: name.trim(), body: body.trim() });
+    setSaving(false);
+    if (ok) onClose();
+  }
+
+  return (
+    <Modal onClose={onClose} size="md">
+      <h2 className="text-lg font-black mb-5">{initial ? 'Modifier le modèle' : 'Nouveau modèle de message'}</h2>
+      <div className="space-y-4">
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">Nom du modèle</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex. Baisse de prix"
+            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">Texte du message</label>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={5}
+            placeholder="Bonjour, {titre} est maintenant à {prix} !"
+            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-none"
+          />
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {MESSAGE_TEMPLATE_VARIABLES.map((v) => (
+              <button
+                key={v.token}
+                type="button"
+                onClick={() => setBody((b) => `${b}${v.token}`)}
+                title={v.description}
+                className="text-[11px] font-mono px-2 py-1 rounded-md bg-white/5 text-gray-400 hover:text-neon-400 hover:bg-neon-500/10 transition-colors"
+              >
+                {v.token}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Button fullWidth loading={saving} disabled={!name.trim() || !body.trim()} onClick={handleSubmit}>
+          {saving ? 'Enregistrement...' : initial ? 'Enregistrer' : 'Créer le modèle'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 export default function CommunicationPage() {
+  const { templates, loading: templatesLoading, error, createTemplate, updateTemplate, deleteTemplate } =
+    useMessageTemplates();
+  const { listings, loading: listingsLoading } = useListingOptions();
+
+  const [formTemplate, setFormTemplate] = useState<MessageTemplate | 'new' | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const [selectedListingId, setSelectedListingId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [editedText, setEditedText] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const selectedListing = listings.find((l) => l.id === selectedListingId) ?? null;
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+
+  const resolvedText = useMemo(() => {
+    if (!selectedTemplate || !selectedListing) return '';
+    return resolveMessageTemplate(selectedTemplate.body, selectedListing);
+  }, [selectedTemplate, selectedListing]);
+
+  useEffect(() => {
+    setEditedText(resolvedText);
+    setCopied(false);
+  }, [resolvedText]);
+
+  async function handleCopy() {
+    if (!editedText) return;
+    await navigator.clipboard.writeText(editedText);
+    setCopied(true);
+  }
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader
-        title="0 message envoyé aujourd'hui"
-        description="Chaque réponse à un favori ou une offre Vinted, préparée pour toi — jamais envoyée sans ton accord."
+        title="Communication"
+        description="Prépare un message à partir d'un modèle et d'une annonce réelle — l'envoi reste toujours manuel, sur Vinted."
+        action={
+          <Button size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setFormTemplate('new')}>
+            Nouveau modèle
+          </Button>
+        }
       />
 
-      <div className="bg-surface border border-white/5 rounded-2xl p-6 mb-6">
-        <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-5">Comment ça fonctionnera</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-4">
-          {WORKFLOW.map(({ icon: Icon, label }, i) => (
-            <div key={label} className="relative flex flex-col items-center text-center gap-3">
-              <div className="w-11 h-11 bg-yellow-400/10 rounded-2xl flex items-center justify-center">
-                <Icon className="w-5 h-5 text-yellow-400" />
-              </div>
-              <p className="text-xs text-gray-400 leading-snug">{label}</p>
-              {i < WORKFLOW.length - 1 && (
-                <ArrowRight className="hidden sm:block absolute top-4 -right-3 w-4 h-4 text-gray-700" />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      {error && <ErrorBanner message={error} className="mb-6" />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-surface border border-white/5 rounded-2xl p-5">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Aperçu — exemple fictif</p>
-          <div className="space-y-3">
-            <div className="flex justify-start">
-              <div className="max-w-[85%] bg-dark-400 border border-white/5 rounded-2xl rounded-tl-sm px-4 py-2.5">
-                <p className="text-sm text-gray-200">Bonjour, le pull est-il toujours disponible ?</p>
-                <p className="text-[10px] text-gray-600 mt-1">Acheteur · 14:02</p>
-              </div>
+          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Tes modèles</p>
+          {templatesLoading ? (
+            <div className="space-y-2">
+              <Skeleton shape="block" className="h-14" />
+              <Skeleton shape="block" className="h-14" />
             </div>
-            <div className="flex justify-end">
-              <div className="max-w-[85%] bg-yellow-400/10 border border-yellow-400/20 rounded-2xl rounded-tr-sm px-4 py-2.5">
-                <p className="text-sm text-gray-200">Oui, toujours dispo ! Je te fais -10% si tu prends aussi le jean 👖</p>
-                <p className="text-[10px] text-yellow-400/70 mt-1">Suggestion ResellOS — à valider</p>
-              </div>
+          ) : templates.length === 0 ? (
+            <EmptyState
+              icon={MessageSquare}
+              title="Aucun modèle pour l'instant"
+              description="Crée un premier modèle pour préparer tes messages plus vite."
+              action={{ label: 'Créer un modèle', onClick: () => setFormTemplate('new') }}
+            />
+          ) : (
+            <div className="space-y-2">
+              {templates.map((t) => (
+                <div
+                  key={t.id}
+                  className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
+                    selectedTemplateId === t.id ? 'border-neon-500/50 bg-neon-500/5' : 'border-white/5 hover:border-white/10'
+                  }`}
+                >
+                  <button type="button" onClick={() => setSelectedTemplateId(t.id)} className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-semibold text-gray-200 truncate">{t.name}</p>
+                    <p className="text-xs text-gray-500 truncate mt-0.5">{t.body}</p>
+                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setFormTemplate(t)}
+                      aria-label="Modifier"
+                      className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/5"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(t.id)}
+                      aria-label="Supprimer"
+                      className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-          <button
-            disabled
-            className="w-full mt-4 flex items-center justify-center gap-2 bg-white/5 text-gray-500 text-xs font-semibold px-4 py-2.5 rounded-xl cursor-not-allowed"
-          >
-            <Send className="w-3.5 h-3.5" /> Valider et envoyer
-          </button>
+          )}
         </div>
 
         <div className="bg-surface border border-white/5 rounded-2xl p-5">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Ce que ça changera</p>
-          <div className="space-y-4">
-            {UPCOMING.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-yellow-400/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-3.5 h-3.5 text-yellow-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-200">{title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-                </div>
-              </div>
+          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Préparer un message</p>
+
+          {listingsLoading ? (
+            <Skeleton shape="block" className="h-11 mb-3" />
+          ) : listings.length === 0 ? (
+            <p className="text-xs text-gray-600">Aucune annonce publiée sur Vinted pour l'instant.</p>
+          ) : (
+            <select
+              value={selectedListingId}
+              onChange={(e) => setSelectedListingId(e.target.value)}
+              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3"
+            >
+              <option value="">Choisir une annonce...</option>
+              {listings.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.title}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <select
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+            disabled={templates.length === 0}
+            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3 disabled:opacity-50"
+          >
+            <option value="">Choisir un modèle...</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
             ))}
-          </div>
+          </select>
+
+          {selectedListing && selectedTemplate ? (
+            <>
+              <textarea
+                value={editedText}
+                onChange={(e) => {
+                  setEditedText(e.target.value);
+                  setCopied(false);
+                }}
+                rows={5}
+                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-none mb-3"
+              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                  icon={copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  onClick={handleCopy}
+                >
+                  {copied ? 'Copié' : 'Copier le texte'}
+                </Button>
+                {selectedListing.vinted_url ? (
+                  <a
+                    href={selectedListing.vinted_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-neon-600 text-white text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-neon-700 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Ouvrir sur Vinted
+                  </a>
+                ) : (
+                  <Button variant="secondary" size="sm" fullWidth disabled>
+                    Lien Vinted indisponible
+                  </Button>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-600">Choisis une annonce et un modèle pour préparer ton message.</p>
+          )}
         </div>
       </div>
 
       <div className="flex items-start gap-3 bg-white/[0.03] border border-white/5 rounded-2xl px-5 py-4">
-        <MessageSquare className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+        <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-gray-500 leading-relaxed">
-          <span className="text-gray-300 font-medium">Pas encore construit.</span> Comme pour la publication
-          d'annonces, chaque message restera une action que tu déclenches et confirmes toi-même — jamais un envoi
-          automatique silencieux sur ton compte Vinted.
+          <span className="text-gray-300 font-medium">Toujours manuel.</span> ResellOS ne connaît jamais l'identité
+          des acheteurs intéressés (Vinted ne fournit qu'un nombre de favoris, pas de liste) et n'envoie rien à ta
+          place — tu copies le texte préparé et tu l'envoies toi-même une fois sur Vinted.
         </p>
       </div>
+
+      {formTemplate && (
+        <TemplateFormModal
+          initial={formTemplate === 'new' ? null : formTemplate}
+          onClose={() => setFormTemplate(null)}
+          onSave={(input) => (formTemplate === 'new' ? createTemplate(input) : updateTemplate(formTemplate.id, input))}
+        />
+      )}
+
+      {confirmDeleteId && (
+        <Modal onClose={() => setConfirmDeleteId(null)} size="sm">
+          <h2 className="text-lg font-black mb-2">Supprimer ce modèle ?</h2>
+          <p className="text-sm text-gray-400 mb-5">Cette action est irréversible.</p>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setConfirmDeleteId(null)}>
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              fullWidth
+              onClick={async () => {
+                const id = confirmDeleteId;
+                setConfirmDeleteId(null);
+                if (selectedTemplateId === id) setSelectedTemplateId('');
+                await deleteTemplate(id);
+              }}
+            >
+              Supprimer
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
