@@ -37,16 +37,21 @@ interface ListingDetailModalProps {
   score: number | null;
   recommendationState: ListingRecommendationResult | undefined;
   onClose: () => void;
+  onEditListing: () => void;
 }
 
 function CurrentRecommendationSection({
   recommendationState,
   openRecommendationLogId,
   onIgnored,
+  vintedUrl,
+  onEditListing,
 }: {
   recommendationState: ListingRecommendationResult | undefined;
   openRecommendationLogId: string | null;
   onIgnored: () => void;
+  vintedUrl: string | null;
+  onEditListing: () => void;
 }) {
   const [ignoring, setIgnoring] = useState(false);
 
@@ -98,13 +103,17 @@ function CurrentRecommendationSection({
         </div>
       </div>
       <div className="flex items-center gap-2 mt-3">
-        {recommendationState.cta.type === 'open_vinted' && (
-          <Button size="sm" variant="secondary">
+        {recommendationState.cta.type === 'open_vinted' && vintedUrl && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => window.open(vintedUrl, '_blank', 'noopener,noreferrer')}
+          >
             Ouvrir sur Vinted
           </Button>
         )}
         {recommendationState.cta.type === 'edit_listing' && (
-          <Button size="sm" variant="secondary">
+          <Button size="sm" variant="secondary" onClick={onEditListing}>
             Modifier l'annonce
           </Button>
         )}
@@ -123,7 +132,7 @@ function CurrentRecommendationSection({
   );
 }
 
-export function ListingDetailModal({ listing, score, recommendationState, onClose }: ListingDetailModalProps) {
+export function ListingDetailModal({ listing, score, recommendationState, onClose, onEditListing }: ListingDetailModalProps) {
   const { timeline, loading, openRecommendationLogId, refetch } = useListingTimeline(listing);
   const [showTimeline, setShowTimeline] = useState(false);
   const age = Math.round(daysSince(listing.created_at, new Date()));
@@ -171,6 +180,8 @@ export function ListingDetailModal({ listing, score, recommendationState, onClos
           recommendationState={recommendationState}
           openRecommendationLogId={openRecommendationLogId}
           onIgnored={refetch}
+          vintedUrl={listing.vinted_url}
+          onEditListing={onEditListing}
         />
       </div>
 

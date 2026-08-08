@@ -870,6 +870,10 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           score={insights?.scores.get(detailItem.id)?.score ?? null}
           recommendationState={insights?.listingRecommendations.get(detailItem.id)}
           onClose={() => setDetailItem(null)}
+          onEditListing={() => {
+            setEditingItem(detailItem);
+            setDetailItem(null);
+          }}
         />
       )}
 
