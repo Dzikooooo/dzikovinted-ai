@@ -12,6 +12,29 @@ import type { AppPage } from './lib/types';
 // ouverture/lancement/refresh, pas juste un spinner nu).
 const SPLASH_MIN_MS = 900;
 
+// Retour Stripe Checkout/Portal (Lot 5, freeze beta 2026-08-08) --
+// success_url/cancel_url/return_url (create-checkout-session,
+// create-portal-session) pointent tous vers le domaine racine + un query
+// param, aucune route reelle n'existant dans ce SPA. Consomme une seule
+// fois au montage (StrictMode-safe : setItem/replaceState sont idempotents,
+// contrairement a un clear qui devrait etre a part -- voir AuthPage.tsx
+// pour ce cas different) puis relaye vers Abonnement via le meme mecanisme
+// de deep-link que resellos:dashboardPage (BlogPage.tsx -> Communaute).
+const BILLING_RETURN_MARKERS = new Set(['success', 'cancelled', 'return']);
+
+function consumeBillingReturnMarker(): void {
+  const params = new URLSearchParams(window.location.search);
+  const marker = params.get('billing');
+  if (!marker || !BILLING_RETURN_MARKERS.has(marker)) return;
+
+  sessionStorage.setItem('resellos:billingReturn', marker);
+  sessionStorage.setItem('resellos:dashboardPage', 'subscription');
+
+  params.delete('billing');
+  const query = params.toString();
+  window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
+}
+
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const DashboardLayout = lazy(() => import('./pages/dashboard/DashboardLayout'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
@@ -31,6 +54,11 @@ function AppContent() {
   const { user, loading, passwordRecovery, bannedNotice, clearBannedNotice } = useAuth();
   const [page, setPage] = useState<AppPage>('landing');
   const [splashMinDone, setSplashMinDone] = useState(false);
+  // Valeur elle-meme inutilisee -- useState(initializer) garantit une seule
+  // execution synchrone avant le premier rendu (meme idiome que
+  // readInitialAuthMode() dans AuthPage.tsx), avant que DashboardLayout ne
+  // puisse jamais lire resellos:dashboardPage.
+  useState(consumeBillingReturnMarker);
 
   useEffect(() => {
     const t = setTimeout(() => setSplashMinDone(true), SPLASH_MIN_MS);

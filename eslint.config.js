@@ -23,6 +23,17 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      // Convention deja utilisee dans le repo (ex. scanMarket.ts::execute,
+      // params `_request`/`_ctx`/`_deps`) mais qui ne declenchait jamais la
+      // regle par defaut (args:'after-used' ignore un unused suivi d'un
+      // param utilise). Les fakes de test Deno du chantier Stripe (Lots 2-4,
+      // supabase/functions/**) exposent des parametres intentionnellement
+      // inutilises en toute fin de signature -- ce cas n'etait pas couvert,
+      // d'ou ce pattern explicite plutot que de renommer chaque parametre.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   }
 );
