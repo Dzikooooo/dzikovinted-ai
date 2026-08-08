@@ -133,7 +133,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   const isAdmin = useIsAdmin();
   const photoLimit = isAdmin ? PLAN_PHOTO_LIMITS.pro : PLAN_PHOTO_LIMITS[profile?.plan ?? 'free'];
   const { accounts, selectedAccountId, selectedAccount, refresh: refreshAccounts } = useVintedAccountFilter();
-  const { report: insights } = useInsights();
+  const { report: insights, refetch: refetchInsights } = useInsights();
 
   const [items, setItems] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -335,6 +335,15 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       }
       setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields, listing });
       await load();
+      // Sans ce refetch, la recommandation affichee restait celle calculee
+      // avant l'action (perimee jusqu'a la prochaine synchro passive) --
+      // useInsights() n'a aucun moyen de savoir qu'une action vient de
+      // reussir sans qu'on le lui dise explicitement (audit beta
+      // 2026-08-08, P1-C). Uniquement sur un succes CONFIRME (on est deja
+      // dans la branche status === 'success' ci-dessus) ; le cooldown est
+      // deja respecte de facto, puisque action_log.completed_at est ecrit
+      // avant ce point et que useInsights relit action_log a chaque appel.
+      void refetchInsights();
       setPublishState({ step: 'done', error: null, historyId, kind, changedFields, listing });
     } else if (result.outcome.status === 'error') {
       await load();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVintedAccountFilter } from '../contexts/VintedAccountFilterContext';
 import { supabase } from '../lib/supabase';
@@ -63,13 +63,21 @@ export function useInsights() {
   const [report, setReport] = useState<InsightsReport | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
-    let ignore = false;
+  // requestIdRef remplace le flag `ignore` par-effet -- necessaire car
+  // fetchInsights() est desormais aussi appelable manuellement (refetch,
+  // voir P1-C audit beta 2026-08-08 : apres le succes confirme d'une action
+  // Vinted sur une annonce, ListingsManagementSection.tsx appelle refetch()
+  // pour que la recommandation affichee ne reste pas perimee jusqu'a la
+  // prochaine synchro passive). "Dernier appel gagne" couvre a la fois les
+  // reexecutions automatiques (changement de compte filtre) ET un refetch()
+  // manuel qui chevaucherait un appel automatique en cours.
+  const requestIdRef = useRef(0);
 
-    (async () => {
-      setLoading(true);
-      const historyStart = new Date(Date.now() - SNAPSHOT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const fetchInsights = useCallback(async () => {
+    if (!user) return;
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    const historyStart = new Date(Date.now() - SNAPSHOT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
       const actionsStart = new Date(Date.now() - RECENT_ACTIONS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
       const [{ data: allListings }, { data: snapshots }, { data: recentActionRows }] = await Promise.all([
@@ -88,7 +96,7 @@ export function useInsights() {
           .gte('completed_at', actionsStart),
       ]);
 
-      if (ignore) return;
+      if (requestIdRef.current !== requestId) return;
 
       const listings = (allListings ?? []) as Listing[];
       const listingSnapshots = (snapshots ?? []) as ListingMetricSnapshot[];
@@ -113,7 +121,7 @@ export function useInsights() {
           ? scopedReport
           : computeInsights(listings, accounts, listingSnapshots, recentActions);
 
-      if (!ignore) {
+      if (requestIdRef.current === requestId) {
         setReport({ ...scopedReport, narratives: fullReport.narratives });
         setLoading(false);
       }
@@ -126,16 +134,16 @@ export function useInsights() {
       // des annonces, meme quand un compte precis est filtre a l'ecran) --
       // jamais `scopedReport`, qui ne couvrirait pas les annonces des
       // comptes non selectionnes et laisserait leurs episodes ouverts
-      // orphelins. Ne depend d'aucun etat derive de ce meme effet (report/
-      // log) : ne peut donc jamais se re-declencher elle-meme en boucle,
-      // seul [user, accounts, selectedAccountId] fait re-tourner cet effet.
-      void syncRecommendationLog(user.id, listings, fullReport.listingRecommendations, groupByListingId(resolvableActions), new Date());
-    })();
-
-    return () => {
-      ignore = true;
-    };
+      // orphelins.
+    void syncRecommendationLog(user.id, listings, fullReport.listingRecommendations, groupByListingId(resolvableActions), new Date());
   }, [user, accounts, selectedAccountId]);
 
-  return { report, loading };
+  // fetchInsights() ne depend que de [user, accounts, selectedAccountId] --
+  // un refetch() manuel ne peut donc jamais se re-declencher lui-meme en
+  // boucle (il ne modifie aucune de ces trois dependances).
+  useEffect(() => {
+    void fetchInsights();
+  }, [fetchInsights]);
+
+  return { report, loading, refetch: fetchInsights };
 }
