@@ -142,13 +142,25 @@ Deno.serve(async (req: Request) => {
     // (supabase/functions/).
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("plan, role")
+      .select("plan, role, banned")
       .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {
       return new Response(JSON.stringify({ error: "Profil introuvable" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // reserve_credit/consume_credit_reservation tournent via supabaseAdmin
+    // (service_role, bypass RLS) -- la RLS de profiles seule ne suffit donc
+    // pas a bloquer un compte banni ici, contrairement aux tables lues via
+    // le client anon+JWT ailleurs dans l'app (voir migration
+    // 20260808110000_enforce_banned_flag.sql). Verification explicite.
+    if (profile.banned) {
+      return new Response(JSON.stringify({ error: "Compte suspendu" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
