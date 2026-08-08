@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover : permet à l'app de couvrir l'encoche / la home bar sur iPhone -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>ASCENSEUR</title>
+
+  <!-- PWA : installable sur l'écran d'accueil -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0b0b0d" />
+
+  <!-- Mode "app" plein écran sur iOS quand ajoutée à l'écran d'accueil -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ASCENSEUR" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- ===== EN-TÊTE ===== -->
+    <header class="header">
+      <h1 class="brand">ASCENSEUR</h1>
+      <p class="tagline">Le business est mon ascenseur.<br />La musique est ma destination.</p>
+    </header>
+
+    <main>
+
+      <!-- ===== VUE 1 : AUJOURD'HUI ===== -->
+      <section id="view-today" class="view">
+
+        <div class="day-info">
+          <span id="day-number" class="day-number">Jour 1/90</span>
+          <span id="day-date" class="day-date">–</span>
+        </div>
+
+        <!-- Cercle de progression du score du jour -->
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120">
+            <circle class="ring-track" cx="60" cy="60" r="52" />
+            <circle id="ring-progress" class="ring-progress" cx="60" cy="60" r="52" />
+          </svg>
+          <div class="ring-center">
+            <span id="ring-score">0/5</span>
+            <small id="ring-percent">0%</small>
+          </div>
+        </div>
+
+        <!-- Stats de série -->
+        <div class="streaks">
+          <div class="streak-card">
+            <span class="streak-value" id="streak-current">0</span>
+            <span class="streak-label">Série actuelle</span>
+          </div>
+          <div class="streak-card">
+            <span class="streak-value" id="streak-best">0</span>
+            <span class="streak-label">Meilleure série</span>
+          </div>
+        </div>
+
+        <!-- Boutons habitudes du jour, générés en JS -->
+        <div id="habit-list" class="habit-list"></div>
+
+        <p class="note">La cigarette électronique est tolérée comme transition — elle ne compte pas comme un échec.</p>
+
+      </section>
+
+      <!-- ===== VUE 2 : HISTORIQUE ===== -->
+      <section id="view-history" class="view hidden">
+        <h2 class="view-title">Historique</h2>
+        <div id="history-list" class="history-list"></div>
+      </section>
+
+    </main>
+
+    <!-- ===== BARRE DE NAVIGATION BASSE ===== -->
+    <nav class="tabbar">
+      <button id="tab-today" class="tab-btn active" data-tab="today">Aujourd'hui</button>
+      <button id="tab-history" class="tab-btn" data-tab="history">Historique</button>
+      <button id="tab-reset" class="tab-btn tab-danger">Réinitialiser</button>
+    </nav>
+
+  </div>
+
+  <!-- ===== MODALE : ÉDITION D'UNE JOURNÉE PASSÉE ===== -->
+  <div id="edit-modal" class="modal hidden">
+    <div class="modal-sheet">
+      <h2 id="edit-modal-date" class="view-title">–</h2>
+      <div id="edit-habit-list" class="habit-list"></div>
+      <button id="edit-close" class="btn-primary">Terminé</button>
+    </div>
+  </div>
+
+  <!-- ===== MODALE : CONFIRMATION DE RÉINITIALISATION ===== -->
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-sheet modal-sheet-small">
+      <h2 class="view-title">Tout réinitialiser ?</h2>
+      <p class="note">Les 90 jours d'historique seront définitivement effacés. Action irréversible.</p>
+      <button id="confirm-yes" class="btn-primary btn-danger">Réinitialiser</button>
+      <button id="confirm-no" class="btn-secondary">Annuler</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
