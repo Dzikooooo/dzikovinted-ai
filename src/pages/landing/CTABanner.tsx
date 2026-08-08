@@ -10,7 +10,10 @@ export function CTABanner({ onNavigate }: { onNavigate: (page: AppPage) => void 
         <h2 className="text-4xl sm:text-5xl font-black mb-4">Arrête de perdre du temps sur tes annonces.</h2>
         <p className="text-gray-400 text-lg mb-8">Une photo, une annonce prête. Stock, prix et comptabilité se mettent à jour tout seuls.</p>
         <button
-          onClick={() => onNavigate('auth')}
+          onClick={() => {
+            sessionStorage.setItem('resellos:authMode', 'register');
+            onNavigate('auth');
+          }}
           className="bg-neon-600 text-white font-bold text-lg px-10 py-4 rounded-2xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] hover:bg-neon-700 hover:shadow-[0_0_40px_rgba(124,92,255,0.3)] inline-flex items-center gap-3"
         >
           Créer mon compte gratuitement <ArrowRight className="w-5 h-5" />

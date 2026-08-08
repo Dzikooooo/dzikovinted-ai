@@ -54,7 +54,10 @@ export default function NewsletterPage({ onNavigate }: NewsletterPageProps) {
                 <p className="text-sm text-gray-500 mt-1">Tu recevras nos prochaines actualités à {email}.</p>
               </div>
               <button
-                onClick={() => onNavigate('auth')}
+                onClick={() => {
+                  sessionStorage.setItem('resellos:authMode', 'register');
+                  onNavigate('auth');
+                }}
                 className="w-full bg-neon-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-neon-700 transition-all mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-400"
               >
                 Créer mon compte gratuitement

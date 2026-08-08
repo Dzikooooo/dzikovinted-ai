@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import type { AuthMode, AppPage } from '../lib/types';
@@ -9,8 +9,28 @@ interface AuthPageProps {
   onNavigate: (page: AppPage) => void;
 }
 
+// Deep-link d'intention d'inscription (audit beta 2026-08-08) : les CTA de
+// la landing/Navbar/Pricing/Newsletter promettent tous "Créer un compte" /
+// "Commencer gratuitement" mais atterrissaient sur l'écran Connexion --
+// onNavigate('auth') ne transportait aucune information de mode. Meme
+// technique que resellos:dashboardPage (sessionStorage lu une seule fois au
+// montage, StrictMode-safe) plutot que d'etendre AppPage avec un mode.
+function readInitialAuthMode(): AuthMode {
+  const stored = sessionStorage.getItem('resellos:authMode');
+  return stored === 'register' ? 'register' : 'login';
+}
+
 export default function AuthPage({ onNavigate }: AuthPageProps) {
-  const [mode, setMode] = useState<AuthMode>('login');
+  const [mode, setMode] = useState<AuthMode>(readInitialAuthMode);
+
+  // Nettoyage a part (jamais dans l'initializer lui-meme) : StrictMode
+  // invoque readInitialAuthMode() deux fois au montage en dev, un clear
+  // fait depuis l'initializer ferait lire 'null' au second appel et
+  // retomberait silencieusement sur 'login'.
+  useEffect(() => {
+    sessionStorage.removeItem('resellos:authMode');
+  }, []);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

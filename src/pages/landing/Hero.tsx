@@ -25,7 +25,10 @@ Suivez vos annonces, votre stock et votre comptabilité depuis une seule platefo
 </p>
         <div className="flex flex-col items-center justify-center gap-3">
           <button
-            onClick={() => onNavigate('auth')}
+            onClick={() => {
+              sessionStorage.setItem('resellos:authMode', 'register');
+              onNavigate('auth');
+            }}
             className="group w-full sm:w-auto bg-neon-600 text-white font-bold text-lg px-10 py-5 rounded-2xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:bg-neon-700 hover:shadow-[0_20px_60px_rgba(124,92,255,.35)]"
           >
             <span className="flex items-center gap-3">

@@ -102,7 +102,14 @@ export function Pricing({ onNavigate }: { onNavigate: (page: AppPage) => void })
                 ))}
               </ul>
               <button
-                onClick={() => (plan.action === 'contact' ? setContactOpen(true) : onNavigate('auth'))}
+                onClick={() => {
+                  if (plan.action === 'contact') {
+                    setContactOpen(true);
+                    return;
+                  }
+                  sessionStorage.setItem('resellos:authMode', 'register');
+                  onNavigate('auth');
+                }}
                 className={`w-full py-4 rounded-2xl font-bold text-base transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] ${plan.highlighted ? 'bg-neon-600 text-white hover:bg-neon-700 hover:shadow-[0_0_30px_rgba(124,92,255,0.3)]' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
               >
                 {plan.cta}

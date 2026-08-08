@@ -87,7 +87,10 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
             </button>
 
             <button
-              onClick={() => onNavigate("auth")}
+              onClick={() => {
+                sessionStorage.setItem('resellos:authMode', 'register');
+                onNavigate("auth");
+              }}
               className="bg-neon-600 text-white font-bold px-7 py-3.5 rounded-2xl hover:bg-neon-700 hover:shadow-[0_0_35px_rgba(124,92,255,.35)] transition-all duration-300 hover:scale-[1.02]"
             >
               Commencer
@@ -150,7 +153,10 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
             </button>
 
             <button
-              onClick={() => onNavigate("auth")}
+              onClick={() => {
+                sessionStorage.setItem('resellos:authMode', 'register');
+                onNavigate("auth");
+              }}
               className="w-full bg-neon-600 text-white font-bold py-3 rounded-2xl"
             >
               Commencer
