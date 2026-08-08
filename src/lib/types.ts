@@ -378,6 +378,19 @@ export interface WatchlistEntry {
   created_at: string;
 }
 
+// Modele de message (chantier Communication, reprise 2026-08-08) --
+// propriete pure de l'utilisateur, jamais envoye pour lui : ResellOS
+// resout uniquement les variables {titre}/{prix}/... a l'affichage (voir
+// src/lib/messageTemplate.ts), l'envoi reste 100% manuel sur Vinted.
+export interface MessageTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface VintedAccount {
   id: string;
   user_id: string;
