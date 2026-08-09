@@ -21,6 +21,8 @@ import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { toLocalDateString } from '../../lib/date';
 import { formatEUR } from '../../lib/currency';
+import { isDuplicateFeeRiskCategory } from '../../lib/feeDuplicateRisk';
+import { toneForValue } from '../../lib/statTone';
 
 const VAT_RATE = 0.2;
 const URSSAF_RATE = 0.123;
@@ -236,9 +238,9 @@ export default function AccountingPage() {
         <>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <StatCard label="Chiffre d'affaires" value={formatEUR(stats.revenue)} highlight tone="positive" />
-            <StatCard label="Marge brute" value={formatEUR(stats.margin)} highlight tone="positive" />
-            <StatCard label="Bénéfice net" value={formatEUR(stats.netProfit)} highlight tone="positive" />
-            <StatCard label="ROI moyen" value={`${stats.roi} %`} highlight tone="positive" />
+            <StatCard label="Marge brute" value={formatEUR(stats.margin)} highlight tone={toneForValue(stats.margin)} />
+            <StatCard label="Bénéfice net" value={formatEUR(stats.netProfit)} highlight tone={toneForValue(stats.netProfit)} />
+            <StatCard label="ROI moyen" value={`${stats.roi} %`} highlight tone={toneForValue(stats.roi)} />
             <StatCard
               label="Pertes"
               value={stats.losses > 0 ? `-${formatEUR(stats.losses)}` : formatEUR(0)}
@@ -517,6 +519,21 @@ export default function AccountingPage() {
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
+              {/* P1-4 (Freeze Audit correctif) : le champ "Frais" saisi lors
+                  d'une vente (ListingsManagementSection.tsx) est deja deduit
+                  automatiquement de la marge de cette vente -- sans
+                  identifiant commun entre une depense et une vente precise,
+                  aucune deduplication automatique fiable n'est possible ici
+                  (choix assume : avertir au bon moment plutot qu'inventer un
+                  rapprochement incertain). */}
+              {isDuplicateFeeRiskCategory(expenseCategory) && (
+                <div className="flex items-start gap-2 mt-3 bg-yellow-400/5 border border-yellow-400/15 rounded-xl px-3 py-2.5">
+                  <Info className="w-3.5 h-3.5 text-yellow-400/80 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-yellow-200/80 leading-relaxed">
+                    As-tu déjà renseigné ce frais dans le champ « Frais » au moment de marquer la vente correspondante comme vendue ? Si oui, ne l'ajoute pas ici aussi — ça compterait le même coût deux fois.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>

@@ -7,7 +7,7 @@ import type { LucideIcon } from 'lucide-react';
 // 2026-07-28 : "le violet doit rester la couleur signature ET d'action du
 // site -- ne pas utiliser vert/rouge/jaune comme couleurs principales,
 // uniquement comme indicateurs d'etat").
-type StatCardTone = 'brand' | 'positive' | 'attention' | 'negative';
+export type StatCardTone = 'brand' | 'positive' | 'attention' | 'negative';
 
 const TONE_STYLES: Record<StatCardTone, { text: string; iconBg: string; iconText: string; borderLg: string; shadowLg: string; borderSm: string; shadowSm: string }> = {
   brand: {

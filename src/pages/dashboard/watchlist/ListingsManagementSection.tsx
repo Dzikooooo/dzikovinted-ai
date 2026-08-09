@@ -778,13 +778,22 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
               />
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">Frais</label>
+              <label className="text-[10px] uppercase tracking-wider text-gray-500 block mb-2">Frais (commission Vinted, port à ta charge...)</label>
               <input
                 type="number"
                 value={fees}
                 onChange={(e) => setFees(e.target.value)}
                 className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
               />
+              {/* P1-4 (Freeze Audit correctif) : ce montant est deja soustrait
+                  de la marge de cette vente (voir AccountingPage.tsx::stats.fees)
+                  -- aucun identifiant commun ne relie une depense a une vente
+                  precise, donc pas de deduplication automatique fiable
+                  possible (choix assume : avertir plutot qu'inventer un
+                  rapprochement incertain). */}
+              <p className="text-[10px] text-gray-600 mt-1.5">
+                Déjà déduit automatiquement de la marge de cette vente — ne le rajoute pas aussi comme dépense « Frais Vinted » en Comptabilité, ça compterait le même coût deux fois.
+              </p>
             </div>
             <Button fullWidth loading={sellSaving} onClick={markAsSold}>
               {sellSaving ? 'Enregistrement...' : 'Confirmer la vente'}
