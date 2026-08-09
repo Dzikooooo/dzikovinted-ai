@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Puzzle, Power, ArrowRight, UserPlus, ExternalLink, Loader2, CheckCircle2, Circle, User, Clock, Package } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { supabase } from '../../lib/supabase';
 import { getConfiguredExtensionId, isExtensionConfigured, getExtensionStatus, pairExtension, unpairExtension } from '../../lib/extensionBridge';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StatCard } from '../../components/ui/StatCard';
@@ -51,29 +52,38 @@ export default function VintedAccountPage() {
   // uniquement pour affichage (aucune logique metier ajoutee).
   const [selectedAccountListingsCount, setSelectedAccountListingsCount] = useState<number | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      if (!isExtensionConfigured()) {
-        devWarn(
-          '[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build -- ' +
-            "l'app ne peut adresser aucun message a l'extension (voir extension/README.md §appairage)."
-        );
-        setExtensionState('not-configured');
-        return;
-      }
-      const expectedId = getConfiguredExtensionId();
-      devLog('[ResellOS][pairing] ID attendu :', expectedId);
-      const status = await getExtensionStatus();
-      devLog('[ResellOS][pairing] getExtensionStatus ->', status);
-      if (!status) {
-        setExtensionState('not-installed');
-        return;
-      }
-      setPaired(status.paired);
-      setPairedToOtherUser(!!status.paired && !!status.pairedUserId && status.pairedUserId !== user?.id);
-      setExtensionState('ready');
-    })();
+  // P1-2 (Freeze Audit correctif) : extrait en fonction reutilisable pour
+  // pouvoir etre appelee aussi bien au montage qu'au retour de focus sur
+  // l'onglet (useRefreshOnFocus ci-dessous) -- meme cause racine que
+  // VintedAccountFilterContext.tsx (aucun rafraichissement apres le montage
+  // initial), meme hook partage, applique ici a l'etat local de l'extension.
+  const checkExtensionStatus = useCallback(async () => {
+    if (!isExtensionConfigured()) {
+      devWarn(
+        '[ResellOS][pairing] VITE_RESELLOS_EXTENSION_ID absent de cette build -- ' +
+          "l'app ne peut adresser aucun message a l'extension (voir extension/README.md §appairage)."
+      );
+      setExtensionState('not-configured');
+      return;
+    }
+    const expectedId = getConfiguredExtensionId();
+    devLog('[ResellOS][pairing] ID attendu :', expectedId);
+    const status = await getExtensionStatus();
+    devLog('[ResellOS][pairing] getExtensionStatus ->', status);
+    if (!status) {
+      setExtensionState('not-installed');
+      return;
+    }
+    setPaired(status.paired);
+    setPairedToOtherUser(!!status.paired && !!status.pairedUserId && status.pairedUserId !== user?.id);
+    setExtensionState('ready');
   }, [user?.id]);
+
+  useEffect(() => {
+    void checkExtensionStatus();
+  }, [checkExtensionStatus]);
+
+  useRefreshOnFocus(() => void checkExtensionStatus());
 
   const handleConnect = async () => {
     if (!session) return;

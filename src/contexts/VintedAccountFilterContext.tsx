@@ -1,6 +1,7 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
+import { useRefreshOnFocus } from '../hooks/useRefreshOnFocus';
 import type { VintedAccount } from '../lib/types';
 
 const STORAGE_KEY = 'resellos_selected_vinted_account';
@@ -47,6 +48,12 @@ export function VintedAccountFilterProvider({ children }: { children: ReactNode 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // P1-2 (Freeze Audit correctif) : sans ceci, `accounts` (et donc le badge
+  // "Connecte" de DashboardHome.tsx) ne se rafraichit qu'au montage --
+  // aucune trace d'une deconnexion Vinted survenue pendant que l'onglet
+  // restait ouvert tant que l'utilisateur ne recharge pas la page.
+  useRefreshOnFocus(() => void load());
 
   const selectAccount = useCallback((id: SelectedAccountId) => {
     setSelectedAccountId(id);
