@@ -95,6 +95,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [fetchProfile]);
 
+  // P1-6 (audit pre-lancement Stripe LIVE, 2026-08-09) : sans ceci, un
+  // changement de plan traite par stripe-webhook (upgrade, downgrade,
+  // resiliation) ne se reflete dans l'UI qu'au prochain rechargement de
+  // page ou re-login -- l'utilisateur peut rester affiche avec un plan
+  // perime pendant toute la duree de sa session. Reutilise fetchProfile()
+  // (meme source de verite qu'au chargement initial, y compris la garde
+  // banned) plutot que de faire confiance au contenu du payload Realtime --
+  // celui-ci ne sert que de SIGNAL "quelque chose a change", jamais de
+  // donnee appliquee directement. Necessite que "profiles" soit dans la
+  // publication supabase_realtime (migration 20260809100000) ; RLS
+  // s'applique normalement a la connexion Realtime, un utilisateur ne peut
+  // recevoir que les evenements sur SA PROPRE ligne (meme mecanisme deja
+  // en place pour action_log, voir scanMarket.ts).
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`profile_sync_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        () => void fetchProfile(user.id)
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user, fetchProfile]);
+
   const signUp = async (email: string, password: string, fullName: string): Promise<{ error: string | null; confirmEmail: boolean }> => {
     const { data, error } = await supabase.auth.signUp({
       email,
