@@ -19,6 +19,7 @@ import { FilterPill } from "../../components/ui/FilterPill";
 import { SearchInput } from "../../components/ui/SearchInput";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { useActionEngine } from "../../hooks/useActionEngine";
+import { buildScanFailureState } from "../../lib/actions/scanFailureState";
 import ScanProgressModal from "../../components/opportunities/ScanProgressModal";
 import OpportunityFilterPanel from "../../components/opportunities/OpportunityFilterPanel";
 
@@ -203,7 +204,21 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
     }
 
     setScanState({ historyId: prepared.prepared.id, done: false, error: null, opportunitiesFound: null, failedSearches: null });
-    const result = await confirmAction(prepared.prepared);
+
+    // P1-6 (Freeze Audit correctif) : confirmAction() peut rejeter (ex.
+    // updateHistoryRow leve si l'ecriture action_log echoue, useActionEngine.ts)
+    // -- sans ce try/catch, isScanning restait bloque a `true` pour toujours
+    // (scanState.done jamais mis a jour), bouton "Scanner maintenant" fige
+    // sans aucun message d'erreur. Jamais de message technique brut affiche
+    // (meme discipline que translateExtensionError/translateAuthError).
+    let result;
+    try {
+      result = await confirmAction(prepared.prepared);
+    } catch {
+      setScanState(buildScanFailureState(prepared.prepared.id));
+      await loadLastScanRun();
+      return;
+    }
 
     if (result.outcome.status === "success") {
       const found = (result.outcome.resultPayload?.opportunitiesFound as number | undefined) ?? 0;
