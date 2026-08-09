@@ -37,7 +37,9 @@ export interface PairResult {
 // rechargee apres une mise a jour) -- translateExtensionError() n'etait
 // applique qu'au chemin lastError, laissant ce texte technique fuiter tel
 // quel a l'utilisateur (bug reel confirme le 2026-07-28, voir errorMessages.ts).
-function translateResponseError<T extends { ok: boolean; error?: string }>(response: T | undefined, fallbackError: string): T {
+// Exportee uniquement pour les tests (voir __tests__/extensionBridge.test.ts) --
+// aucun autre appelant hors ce fichier.
+export function translateResponseError<T extends { ok: boolean; error?: string }>(response: T | undefined, fallbackError: string): T {
   if (!response) return { ok: false, error: fallbackError } as T;
   if (response.ok || !response.error) return response;
   return { ...response, error: translateExtensionError(response.error) };
@@ -354,7 +356,13 @@ export async function runAction(
             resolve({ ok: false, error: translateExtensionError(runtime.lastError.message ?? "Échec de la connexion à l'extension") });
             return;
           }
-          resolve((response as RunActionResult | undefined) ?? { ok: false, error: "Réponse vide de l'extension" });
+          // P1-3 (Freeze Audit correctif) : le chemin lastError ci-dessus
+          // etait deja traduit, mais pas une reponse normale {ok:false,
+          // error:"..."} venant directement du background (meme cause que le
+          // bug du 2026-07-28 deja corrige pour pairExtension/unpairExtension,
+          // jamais applique ici) -- translateResponseError() laisse passer
+          // outcome/timedOut inchanges, ne traduit que le champ error.
+          resolve(translateResponseError(response as RunActionResult | undefined, "Réponse vide de l'extension"));
         }
       );
     } catch (err) {

@@ -4,6 +4,8 @@ import LandingPage from './pages/LandingPage';
 import { SplashScreen } from './components/ui/SplashScreen';
 import { Logo } from './components/ui/Logo';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { devWarn } from './lib/devLog';
+import { translatePasswordRecoveryHashError } from './lib/errorMessages';
 import type { AppPage } from './lib/types';
 
 // Duree minimale de l'ecran de demarrage -- evite un flash si la session
@@ -35,6 +37,30 @@ function consumeBillingReturnMarker(): void {
   window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
 }
 
+// P1-1 (Freeze Audit correctif) : un lien de reinitialisation de mot de passe
+// expire/deja utilise renvoie Supabase avec l'erreur dans le HASH de l'URL
+// (#error=access_denied&error_code=otp_expired&error_description=...), jamais
+// dans le query string -- et aucune session n'est creee dans ce cas, donc
+// l'evenement PASSWORD_RECOVERY (AuthContext.tsx) ne se declenche jamais.
+// Jusqu'ici totalement ignore (seul consumeBillingReturnMarker lisait l'URL,
+// et uniquement le query string) : l'utilisateur atterrissait silencieusement
+// sur la landing sans aucun message. Un lien VALIDE ne porte jamais de
+// parametre `error` dans son hash (uniquement access_token/type=recovery,
+// consomme par le SDK Supabase lui-meme) : cette fonction ne peut donc jamais
+// interferer avec un recovery qui fonctionne. Idempotent comme
+// consumeBillingReturnMarker (le hash est vide au second appel StrictMode).
+function consumePasswordRecoveryHashError(): void {
+  const message = translatePasswordRecoveryHashError(window.location.hash);
+  if (!message) return;
+
+  devWarn('[ResellOS][auth] lien de recuperation invalide detecte dans le hash :', window.location.hash);
+
+  sessionStorage.setItem('resellos:authMode', 'forgot');
+  sessionStorage.setItem('resellos:authNotice', message);
+
+  window.history.replaceState({}, '', window.location.pathname + window.location.search);
+}
+
 const AuthPage = lazy(() => import('./pages/AuthPage'));
 const DashboardLayout = lazy(() => import('./pages/dashboard/DashboardLayout'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
@@ -52,13 +78,23 @@ function PageFallback() {
 
 function AppContent() {
   const { user, loading, passwordRecovery, bannedNotice, clearBannedNotice } = useAuth();
-  const [page, setPage] = useState<AppPage>('landing');
-  const [splashMinDone, setSplashMinDone] = useState(false);
   // Valeur elle-meme inutilisee -- useState(initializer) garantit une seule
   // execution synchrone avant le premier rendu (meme idiome que
   // readInitialAuthMode() dans AuthPage.tsx), avant que DashboardLayout ne
   // puisse jamais lire resellos:dashboardPage.
   useState(consumeBillingReturnMarker);
+  // Doit s'executer avant l'initializer de `page` juste en dessous (l'ordre
+  // des hooks dans un meme rendu est garanti, y compris sous StrictMode) :
+  // pose resellos:authNotice en sessionStorage AVANT que `page` ne decide de
+  // router directement vers l'ecran de connexion.
+  useState(consumePasswordRecoveryHashError);
+  // Lecture simple (jamais de suppression ici) : robuste au double-appel
+  // StrictMode, contrairement a une detection qui consommerait le hash dans
+  // ce meme initializer (voir consumePasswordRecoveryHashError ci-dessus).
+  const [page, setPage] = useState<AppPage>(() =>
+    sessionStorage.getItem('resellos:authNotice') ? 'auth' : 'landing'
+  );
+  const [splashMinDone, setSplashMinDone] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setSplashMinDone(true), SPLASH_MIN_MS);

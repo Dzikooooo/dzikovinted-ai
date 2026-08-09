@@ -29,6 +29,26 @@ export function translateExtensionError(raw: string): string {
   );
 }
 
+// --- Lien de recuperation de mot de passe (hash d'URL renvoye par Supabase) ---
+// P1-1 (Freeze Audit correctif) : un lien expire/deja utilise renvoie l'erreur
+// dans le hash (#error=access_denied&error_code=otp_expired&...), jamais dans
+// le query string, et sans jamais creer de session (donc sans jamais
+// declencher l'evenement PASSWORD_RECOVERY -- voir AuthContext.tsx). Pure et
+// testable independamment du DOM (window.location, sessionStorage) : App.tsx
+// ne fait que lui passer le hash brut et appliquer les effets de bord.
+// Retourne null si le hash ne porte aucune erreur (cas normal, y compris un
+// lien de recuperation VALIDE : celui-ci ne porte jamais de parametre
+// `error`, uniquement access_token/type=recovery).
+export function translatePasswordRecoveryHashError(hash: string): string | null {
+  if (!hash || !hash.includes('error=')) return null;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  if (!params.get('error')) return null;
+
+  return params.get('error_code') === 'otp_expired'
+    ? 'Ce lien de réinitialisation a expiré. Demande un nouveau lien ci-dessous.'
+    : "Ce lien de réinitialisation n'est plus valide. Demande un nouveau lien ci-dessous.";
+}
+
 // --- Supabase Auth (inscription, connexion, mot de passe) ---
 const AUTH_ERROR_PATTERNS: { pattern: RegExp; message: string }[] = [
   {

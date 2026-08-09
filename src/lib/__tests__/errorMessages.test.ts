@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { translateAuthError, translateExtensionError, translateGeneratorError } from '../errorMessages';
+import {
+  translateAuthError,
+  translateExtensionError,
+  translateGeneratorError,
+  translatePasswordRecoveryHashError,
+} from '../errorMessages';
 
 describe('translateExtensionError', () => {
   it('recognizes a Chrome "receiving end does not exist" error', () => {
@@ -70,5 +75,36 @@ describe('translateGeneratorError', () => {
   it('passes through the missing GEMINI_API_KEY message unchanged', () => {
     const raw = 'GEMINI_API_KEY manquante. Impossible de générer une annonce réelle.';
     expect(translateGeneratorError(raw)).toBe(raw);
+  });
+});
+
+describe('translatePasswordRecoveryHashError', () => {
+  it('returns null for an empty hash', () => {
+    expect(translatePasswordRecoveryHashError('')).toBeNull();
+  });
+
+  it('returns null for a valid recovery hash (access_token, no error)', () => {
+    const hash = '#access_token=abc123&refresh_token=def456&type=recovery';
+    expect(translatePasswordRecoveryHashError(hash)).toBeNull();
+  });
+
+  it('recognizes an expired link (otp_expired) with a dedicated message', () => {
+    const hash = '#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired';
+    const result = translatePasswordRecoveryHashError(hash);
+    expect(result).toContain('a expiré');
+    expect(result).not.toContain('Email+link+is+invalid+or+has+expired');
+  });
+
+  it('recognizes any other Supabase hash error with a generic clean message', () => {
+    const hash = '#error=access_denied&error_code=some_other_code&error_description=Something+technical';
+    const result = translatePasswordRecoveryHashError(hash);
+    expect(result).toContain("n'est plus valide");
+    expect(result).not.toContain('Something+technical');
+  });
+
+  it('never leaks the raw technical error_description to the user', () => {
+    const hash = '#error=server_error&error_code=unexpected_failure&error_description=raw+supabase+internals';
+    const result = translatePasswordRecoveryHashError(hash) ?? '';
+    expect(result).not.toMatch(/raw|supabase|internals/i);
   });
 });

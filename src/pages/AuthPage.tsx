@@ -17,18 +17,28 @@ interface AuthPageProps {
 // montage, StrictMode-safe) plutot que d'etendre AppPage avec un mode.
 function readInitialAuthMode(): AuthMode {
   const stored = sessionStorage.getItem('resellos:authMode');
-  return stored === 'register' ? 'register' : 'login';
+  return stored === 'register' ? 'register' : stored === 'forgot' ? 'forgot' : 'login';
+}
+
+// P1-1 (Freeze Audit correctif) : message pose par App.tsx quand un lien de
+// reinitialisation expire/invalide est detecte dans le hash de l'URL (voir
+// consumePasswordRecoveryHashError, App.tsx) -- meme idiome StrictMode-safe
+// que readInitialAuthMode ci-dessus (lu une seule fois a l'initialisation,
+// nettoye a part dans le useEffect ci-dessous, jamais dans l'initializer).
+function readInitialAuthNotice(): string | null {
+  return sessionStorage.getItem('resellos:authNotice');
 }
 
 export default function AuthPage({ onNavigate }: AuthPageProps) {
   const [mode, setMode] = useState<AuthMode>(readInitialAuthMode);
 
   // Nettoyage a part (jamais dans l'initializer lui-meme) : StrictMode
-  // invoque readInitialAuthMode() deux fois au montage en dev, un clear
-  // fait depuis l'initializer ferait lire 'null' au second appel et
-  // retomberait silencieusement sur 'login'.
+  // invoque readInitialAuthMode()/readInitialAuthNotice() deux fois au
+  // montage en dev, un clear fait depuis l'initializer ferait lire 'null' au
+  // second appel et retomberait silencieusement sur 'login'/aucun message.
   useEffect(() => {
     sessionStorage.removeItem('resellos:authMode');
+    sessionStorage.removeItem('resellos:authNotice');
   }, []);
 
   const [email, setEmail] = useState('');
@@ -36,7 +46,11 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Initialise avec le message de lien expire (voir readInitialAuthNotice)
+  // s'il y en a un -- s'affiche donc immediatement au premier rendu, dans le
+  // meme bandeau que toute autre erreur d'authentification (jamais de texte
+  // technique Supabase brut, voir consumePasswordRecoveryHashError).
+  const [error, setError] = useState<string | null>(readInitialAuthNotice);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { signIn, signUp, resetPassword } = useAuth();
