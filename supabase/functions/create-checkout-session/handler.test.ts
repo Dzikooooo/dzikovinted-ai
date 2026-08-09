@@ -2,21 +2,25 @@ import { assertEquals, assertExists } from "jsr:@std/assert";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { createCheckoutSessionForPlan, type StripeClientForCheckout } from "./handler.ts";
 
-interface FakeSubscriptionRow {
+interface ReserveResult {
+  reserved: boolean;
+  reason: "reserved" | "already_subscribed" | "checkout_in_progress";
   stripe_customer_id: string | null;
-  status: string | null;
 }
 
-// Fake couvrant exactement les deux methodes reellement appelees par
-// handler.ts sur "subscriptions" (select/eq/maybeSingle, upsert) --
-// `fromCalls` capture chaque table interrogee pour prouver structurellement
-// que profiles n'est jamais touche par create-checkout-session (aucune
-// modification profiles.plan exigee par le Lot 2).
+// Fake du RPC reserve_checkout_slot/release_checkout_reservation (P1-1,
+// migration 20260809100000) -- simule exactement ce que l'UPSERT atomique
+// cote Postgres renverrait pour CE test (reservation reussie, deja abonne,
+// ou "en cours" -- ce dernier cas represente ce que verrait une DEUXIEME
+// requete concurrente si l'UPSERT reel avait deja serialise la premiere).
+// L'atomicite elle-meme vit dans la clause SQL (ON CONFLICT ... WHERE),
+// verifiee par construction/relecture, pas testable ici sans Postgres reel.
 function fakeSupabaseAdmin(opts: {
-  existingRow?: FakeSubscriptionRow | null;
-  fetchError?: unknown;
+  reserveResult?: ReserveResult;
+  reserveError?: unknown;
   upsertError?: unknown;
   onUpsert?: (row: Record<string, unknown>) => void;
+  rpcCalls?: { name: string; params: Record<string, unknown> }[];
   fromCalls?: string[];
 }): SupabaseClient {
   return {
@@ -26,22 +30,23 @@ function fakeSupabaseAdmin(opts: {
         throw new Error(`create-checkout-session ne doit jamais interroger la table ${table}`);
       }
       return {
-        select(_columns: string) {
-          return {
-            eq(_col: string, _val: string) {
-              return {
-                async maybeSingle() {
-                  return { data: opts.existingRow ?? null, error: opts.fetchError ?? null };
-                },
-              };
-            },
-          };
-        },
         async upsert(row: Record<string, unknown>, _conflict: { onConflict: string }) {
           opts.onUpsert?.(row);
           return { error: opts.upsertError ?? null };
         },
       };
+    },
+    async rpc(name: string, params: Record<string, unknown>) {
+      opts.rpcCalls?.push({ name, params });
+      if (name === "reserve_checkout_slot") {
+        if (opts.reserveError) return { data: null, error: opts.reserveError };
+        const row = opts.reserveResult ?? { reserved: true, reason: "reserved", stripe_customer_id: null };
+        return { data: [row], error: null };
+      }
+      if (name === "release_checkout_reservation") {
+        return { data: null, error: null };
+      }
+      throw new Error(`RPC inattendue dans ce test: ${name}`);
     },
   } as unknown as SupabaseClient;
 }
@@ -52,6 +57,7 @@ function fakeStripe(opts: {
   createdCustomerId?: string;
   onCustomerCreate?: (params: { metadata: Record<string, string>; email?: string }) => void;
   sessionUrl?: string | null;
+  sessionThrows?: boolean;
   onSessionCreate?: (params: Record<string, unknown>) => void;
 }): StripeClientForCheckout {
   return {
@@ -69,6 +75,7 @@ function fakeStripe(opts: {
       sessions: {
         async create(params) {
           opts.onSessionCreate?.(params);
+          if (opts.sessionThrows) throw new Error("Stripe indisponible (test)");
           return { url: opts.sessionUrl === undefined ? "https://checkout.stripe.com/fake" : opts.sessionUrl };
         },
       },
@@ -78,12 +85,13 @@ function fakeStripe(opts: {
 
 const NOW = () => new Date("2026-08-08T12:00:00.000Z");
 
-Deno.test("secret Price ID absent -> erreur 500 generique, message ne contient jamais le nom du secret", async () => {
-  // STRIPE_PRO_PRICE_ID delibrement non defini dans l'environnement Deno du
-  // test -- resolvePriceId() leve, handler.ts doit intercepter et repondre
+Deno.test("secret Price ID absent -> erreur 500 generique, aucun appel RPC/Stripe", async () => {
+  // STRIPE_PRO_PRICE_ID delibrement non defini -- resolvePriceId() leve
+  // AVANT toute tentative de reservation, handler.ts doit repondre
   // proprement sans jamais renvoyer le nom de la variable manquante.
+  const rpcCalls: { name: string; params: Record<string, unknown> }[] = [];
   const result = await createCheckoutSessionForPlan(
-    { stripe: fakeStripe({}), supabaseAdmin: fakeSupabaseAdmin({}), now: NOW },
+    { stripe: fakeStripe({}), supabaseAdmin: fakeSupabaseAdmin({ rpcCalls }), now: NOW },
     "user-1",
     "user@example.invalid",
     "pro"
@@ -93,60 +101,16 @@ Deno.test("secret Price ID absent -> erreur 500 generique, message ne contient j
     assertEquals(result.status, 500);
     assertEquals(result.error.includes("STRIPE_PRO_PRICE_ID"), false);
   }
+  assertEquals(rpcCalls.length, 0);
 });
 
-Deno.test("abonnement deja actif -> Checkout refuse (409), aucun appel Stripe", async () => {
-  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
-  let stripeWasCalled = false;
-  const stripe = fakeStripe({
-    onCustomerCreate: () => {
-      stripeWasCalled = true;
-    },
-    onSessionCreate: () => {
-      stripeWasCalled = true;
-    },
-  });
-  const result = await createCheckoutSessionForPlan(
-    {
-      stripe,
-      supabaseAdmin: fakeSupabaseAdmin({ existingRow: { stripe_customer_id: "cus_existing", status: "active" } }),
-      now: NOW,
-    },
-    "user-1",
-    "user@example.invalid",
-    "pro"
-  );
-  assertEquals(result.ok, false);
-  if (!result.ok) {
-    assertEquals(result.status, 409);
-  }
-  assertEquals(stripeWasCalled, false);
-  Deno.env.delete("STRIPE_PRO_PRICE_ID");
-});
-
-Deno.test("statut 'trialing' compte aussi comme abonnement actif (refuse)", async () => {
-  Deno.env.set("STRIPE_TEAM_PRICE_ID", "price_team_test");
-  const result = await createCheckoutSessionForPlan(
-    {
-      stripe: fakeStripe({}),
-      supabaseAdmin: fakeSupabaseAdmin({ existingRow: { stripe_customer_id: "cus_existing", status: "trialing" } }),
-      now: NOW,
-    },
-    "user-1",
-    "user@example.invalid",
-    "team"
-  );
-  assertEquals(result.ok, false);
-  if (!result.ok) assertEquals(result.status, 409);
-  Deno.env.delete("STRIPE_TEAM_PRICE_ID");
-});
-
-Deno.test("aucun abonnement existant + aucun Customer -> Customer cree, subscriptions upsert, Checkout cree", async () => {
+Deno.test("requete normale : reservation reussie -> Customer cree, subscriptions upsert, Checkout cree", async () => {
   Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
   let createdCustomerParams: { metadata: Record<string, string>; email?: string } | null = null;
   let upsertedRow: Record<string, unknown> | null = null;
   let sessionParams: Record<string, unknown> | null = null;
   const fromCalls: string[] = [];
+  const rpcCalls: { name: string; params: Record<string, unknown> }[] = [];
 
   const result = await createCheckoutSessionForPlan(
     {
@@ -160,11 +124,12 @@ Deno.test("aucun abonnement existant + aucun Customer -> Customer cree, subscrip
         },
       }),
       supabaseAdmin: fakeSupabaseAdmin({
-        existingRow: null,
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: null },
         onUpsert: (row) => {
           upsertedRow = row;
         },
         fromCalls,
+        rpcCalls,
       }),
       now: NOW,
     },
@@ -177,6 +142,10 @@ Deno.test("aucun abonnement existant + aucun Customer -> Customer cree, subscrip
   if (result.ok) {
     assertEquals(result.url, "https://checkout.stripe.com/fake");
   }
+
+  assertEquals(rpcCalls.length, 1);
+  assertEquals(rpcCalls[0].name, "reserve_checkout_slot");
+  assertEquals(rpcCalls[0].params.p_user_id, "user-1");
 
   assertExists(createdCustomerParams);
   assertEquals((createdCustomerParams as { metadata: Record<string, string> }).metadata.user_id, "user-1");
@@ -203,6 +172,170 @@ Deno.test("aucun abonnement existant + aucun Customer -> Customer cree, subscrip
   Deno.env.delete("STRIPE_PRO_PRICE_ID");
 });
 
+Deno.test("utilisateur deja abonne (active) -> reservation refusee, 409, aucun appel Stripe", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  let stripeWasCalled = false;
+  const stripe = fakeStripe({
+    onCustomerCreate: () => {
+      stripeWasCalled = true;
+    },
+    onSessionCreate: () => {
+      stripeWasCalled = true;
+    },
+  });
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe,
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: false, reason: "already_subscribed", stripe_customer_id: "cus_existing" },
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.status, 409);
+    assertEquals(result.error.includes("déjà actif"), true);
+  }
+  assertEquals(stripeWasCalled, false);
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
+Deno.test("deux tentatives concurrentes : la 2e voit checkout_in_progress -> 409 distinct, aucun appel Stripe", async () => {
+  // Represente ce que la 2e des deux requetes concurrentes recevrait
+  // reellement de reserve_checkout_slot une fois la 1re serialisee par
+  // Postgres (ON CONFLICT ... WHERE, migration 20260809100000) : la
+  // reservation de la 1re est encore fraiche (< 5 min), la clause WHERE de
+  // la 2e ne matche donc pas -> reason='checkout_in_progress'.
+  Deno.env.set("STRIPE_TEAM_PRICE_ID", "price_team_test");
+  let stripeWasCalled = false;
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({
+        onCustomerCreate: () => {
+          stripeWasCalled = true;
+        },
+        onSessionCreate: () => {
+          stripeWasCalled = true;
+        },
+      }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: false, reason: "checkout_in_progress", stripe_customer_id: null },
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "team"
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.status, 409);
+    assertEquals(result.error.includes("déjà en cours"), true);
+    // Message distinct de celui d'un abonnement deja actif -- l'utilisateur
+    // n'est pas encore abonne, juste bloque le temps d'une premiere
+    // tentative en cours.
+    assertEquals(result.error.includes("déjà actif"), false);
+  }
+  assertEquals(stripeWasCalled, false);
+  Deno.env.delete("STRIPE_TEAM_PRICE_ID");
+});
+
+Deno.test("statut 'trialing'/'past_due' comptent aussi comme deja abonne (reserve_checkout_slot le gere cote SQL)", async () => {
+  // La distinction active/trialing/past_due vit desormais entierement dans
+  // la clause WHERE SQL de reserve_checkout_slot -- ce test verifie que le
+  // handler respecte fidelement la reponse de la RPC quel que soit le
+  // statut Stripe exact a l'origine du refus.
+  Deno.env.set("STRIPE_TEAM_PRICE_ID", "price_team_test");
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({}),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: false, reason: "already_subscribed", stripe_customer_id: "cus_existing" },
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "team"
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.status, 409);
+  Deno.env.delete("STRIPE_TEAM_PRICE_ID");
+});
+
+Deno.test("retry apres echec : Stripe indisponible apres reservation -> release_checkout_reservation appelee, 500", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  const rpcCalls: { name: string; params: Record<string, unknown> }[] = [];
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({ sessionThrows: true }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+        rpcCalls,
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.status, 500);
+
+  const releaseCalls = rpcCalls.filter((c) => c.name === "release_checkout_reservation");
+  assertEquals(releaseCalls.length, 1);
+  assertEquals(releaseCalls[0].params.p_user_id, "user-1");
+});
+
+Deno.test("retry apres echec : upsert subscriptions en erreur apres reservation -> release_checkout_reservation appelee", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  const rpcCalls: { name: string; params: Record<string, unknown> }[] = [];
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({}),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: null },
+        upsertError: { message: "db down" },
+        rpcCalls,
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.status, 500);
+  assertEquals(rpcCalls.some((c) => c.name === "release_checkout_reservation"), true);
+});
+
+Deno.test("reserve_checkout_slot en erreur (panne DB) -> 500 generique, aucun appel Stripe", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  let stripeWasCalled = false;
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({
+        onCustomerCreate: () => {
+          stripeWasCalled = true;
+        },
+      }),
+      supabaseAdmin: fakeSupabaseAdmin({ reserveError: { message: "connection refused" } }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.status, 500);
+  assertEquals(stripeWasCalled, false);
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
 Deno.test("Customer Stripe existant et toujours valide -> reutilise, aucune creation ni upsert", async () => {
   Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
   let customerWasCreated = false;
@@ -217,7 +350,7 @@ Deno.test("Customer Stripe existant et toujours valide -> reutilise, aucune crea
         },
       }),
       supabaseAdmin: fakeSupabaseAdmin({
-        existingRow: { stripe_customer_id: "cus_existing", status: null },
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
         onUpsert: () => {
           upsertWasCalled = true;
         },
@@ -248,7 +381,9 @@ Deno.test("Customer Stripe existant mais supprime cote Stripe -> recree", async 
           customerWasCreated = true;
         },
       }),
-      supabaseAdmin: fakeSupabaseAdmin({ existingRow: { stripe_customer_id: "cus_existing", status: null } }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+      }),
       now: NOW,
     },
     "user-1",

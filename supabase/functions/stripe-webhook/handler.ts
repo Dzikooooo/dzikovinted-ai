@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { resolvePlanFromPriceId } from "../_shared/plans.ts";
-import { resolvePlanForStatus, type Plan } from "./subscriptionState.ts";
+import { resolvePlanFromPriceId, type BillablePlan } from "../_shared/plans.ts";
+import { resolvePlanDecision, type Plan } from "./subscriptionState.ts";
 import { resolveUserId } from "./userResolution.ts";
-import { isEventApplicable, stripeEventTimestamp } from "./eventOrdering.ts";
+import { stripeEventTimestamp } from "./eventOrdering.ts";
 
 export interface StripeWebhookDeps {
   supabaseAdmin: SupabaseClient;
@@ -53,17 +53,54 @@ interface SubscriptionUpsertFields {
   currentPeriodEnd: number;
 }
 
-// Coeur partage par subscription.created/updated/deleted -- resolution
-// utilisateur, garde anti-desordre (stripe_event_created_at exclusivement),
-// puis upsert complet de "subscriptions" + ecriture "profiles.plan" en
-// service_role. Aucun appel a admin_set_user_plan (RPC reservee a une
+// P1-2 (audit pre-lancement Stripe LIVE, 2026-08-09) : remplace l'ancien
+// SELECT stripe_event_created_at + upsert (non atomique -- deux evenements
+// traites en parallele pouvaient laisser un evenement plus ancien ecraser
+// un plus recent deja commit) par un seul appel a apply_subscription_event
+// (migration 20260809100000), UPSERT conditionnel cote SQL dont la clause
+// WHERE reevalue stripe_event_created_at SOUS LE VERROU DE LIGNE pris par
+// ON CONFLICT -- deux appels concurrents pour le meme utilisateur
+// serialisent reellement, celui qui commit en second reevalue contre
+// l'etat DEJA ECRIT par le premier. Renvoie `applied=false` sans avoir
+// rien modifie si l'evenement est plus ancien que l'etat deja stocke.
+async function applySubscriptionRow(
+  deps: StripeWebhookDeps,
+  userId: string,
+  eventCreatedUnix: number,
+  fields: SubscriptionUpsertFields
+): Promise<{ ok: true; applied: boolean } | { ok: false }> {
+  const { data, error } = await deps.supabaseAdmin.rpc("apply_subscription_event", {
+    p_user_id: userId,
+    p_stripe_customer_id: fields.stripeCustomerId,
+    p_stripe_subscription_id: fields.stripeSubscriptionId,
+    p_status: fields.status,
+    p_cancel_at_period_end: fields.cancelAtPeriodEnd,
+    p_current_period_start: new Date(fields.currentPeriodStart * 1000).toISOString(),
+    p_current_period_end: new Date(fields.currentPeriodEnd * 1000).toISOString(),
+    p_stripe_event_created_at: stripeEventTimestamp(eventCreatedUnix).toISOString(),
+    p_now: deps.now().toISOString(),
+  });
+
+  if (error) {
+    console.error("[stripe-webhook] echec apply_subscription_event", error);
+    return { ok: false };
+  }
+
+  return { ok: true, applied: data === true };
+}
+
+// Coeur partage par subscription.created/updated -- resolution utilisateur,
+// lecture du plan deja accorde (necessaire a la distinction P1-3 pour le
+// statut past_due, voir subscriptionState.ts), ecriture atomique de
+// "subscriptions" (P1-2), puis ecriture conditionnelle de "profiles.plan"
+// en service_role. Aucun appel a admin_set_user_plan (RPC reservee a une
 // action ADMIN explicite sur un AUTRE utilisateur, hors de propos ici).
 async function applySubscriptionEvent(
   deps: StripeWebhookDeps,
   eventCreatedUnix: number,
   metadataUserId: string | null,
   fields: SubscriptionUpsertFields,
-  plan: Plan | "unresolvable"
+  mappedPlan: BillablePlan | null
 ): Promise<StripeWebhookResult> {
   const resolved = await resolveUserId({ supabaseAdmin: deps.supabaseAdmin }, fields.stripeCustomerId, metadataUserId);
   if (!resolved) {
@@ -71,12 +108,24 @@ async function applySubscriptionEvent(
     return OK_RESPONSE;
   }
 
-  // Correction explicite du Lot 3 : Price ID inconnu sur un statut payant
-  // -> AUCUNE ecriture, ni profiles.plan ni l'etat billing dans
-  // subscriptions -- jamais d'etat partiellement applique tant que le
-  // mapping est inconnu. Verifie AVANT toute lecture/ecriture pour rester
-  // un no-op complet.
-  if (plan === "unresolvable") {
+  const { data: profileRow, error: profileFetchError } = await deps.supabaseAdmin
+    .from("profiles")
+    .select("plan")
+    .eq("id", resolved.userId)
+    .maybeSingle();
+
+  if (profileFetchError) {
+    console.error("[stripe-webhook] echec lecture profiles.plan", profileFetchError);
+    return INTERNAL_ERROR_RESPONSE;
+  }
+
+  const currentPlan: Plan = (profileRow as { plan: Plan } | null)?.plan ?? "free";
+  const decision = resolvePlanDecision(fields.status, mappedPlan, currentPlan);
+
+  // Correction explicite du Lot 3, conservee : Price ID inconnu sur un
+  // statut payant/grace -> AUCUNE ecriture, ni profiles.plan ni l'etat
+  // billing dans subscriptions -- jamais d'etat partiellement applique.
+  if (decision.kind === "unresolvable") {
     console.error("[stripe-webhook] Price ID inconnu sur un abonnement payant, aucune ecriture", {
       customer: fields.stripeCustomerId,
       status: fields.status,
@@ -84,45 +133,23 @@ async function applySubscriptionEvent(
     return OK_RESPONSE;
   }
 
-  const { data: existingRow, error: fetchError } = await deps.supabaseAdmin
-    .from("subscriptions")
-    .select("stripe_event_created_at")
-    .eq("user_id", resolved.userId)
-    .maybeSingle();
-
-  if (fetchError) {
-    console.error("[stripe-webhook] echec lecture subscriptions", fetchError);
+  const applyResult = await applySubscriptionRow(deps, resolved.userId, eventCreatedUnix, fields);
+  if (!applyResult.ok) {
     return INTERNAL_ERROR_RESPONSE;
   }
-
-  const storedRow = existingRow as { stripe_event_created_at: string | null } | null;
-  const storedAt = storedRow?.stripe_event_created_at ? new Date(storedRow.stripe_event_created_at) : null;
-
-  if (!isEventApplicable(storedAt, eventCreatedUnix)) {
+  if (!applyResult.applied) {
     console.log("[stripe-webhook] evenement plus ancien que l'etat stocke, ignore sans modification");
     return OK_RESPONSE;
   }
 
-  const nowIso = deps.now().toISOString();
-  const { error: upsertError } = await deps.supabaseAdmin.from("subscriptions").upsert(
-    {
-      user_id: resolved.userId,
-      stripe_customer_id: fields.stripeCustomerId,
-      stripe_subscription_id: fields.stripeSubscriptionId,
-      status: fields.status,
-      cancel_at_period_end: fields.cancelAtPeriodEnd,
-      current_period_start: new Date(fields.currentPeriodStart * 1000).toISOString(),
-      current_period_end: new Date(fields.currentPeriodEnd * 1000).toISOString(),
-      stripe_event_created_at: stripeEventTimestamp(eventCreatedUnix).toISOString(),
-      updated_at: nowIso,
-    },
-    { onConflict: "user_id" }
-  );
-
-  if (upsertError) {
-    console.error("[stripe-webhook] echec upsert subscriptions", upsertError);
-    return INTERNAL_ERROR_RESPONSE;
+  // "unchanged" (P1-3) : past_due sur un changement de plan non confirme --
+  // subscriptions.status reflete deja la realite Stripe (ecrit ci-dessus),
+  // profiles.plan reste intentionnellement intact.
+  if (decision.kind === "unchanged") {
+    return OK_RESPONSE;
   }
+
+  const plan = decision.kind === "free" ? "free" : decision.plan;
 
   // Ecriture directe en service_role -- profiles.plan a son UPDATE revoque
   // pour authenticated depuis 20260711090000, service_role contourne RLS/
@@ -144,9 +171,6 @@ function handleSubscriptionCreatedOrUpdated(
 ): Promise<StripeWebhookResult> {
   const priceId = subscription.items.data[0]?.price?.id ?? null;
   const mappedPlan = priceId ? resolvePlanFromPriceId(priceId) : null;
-  const decision = resolvePlanForStatus(subscription.status, mappedPlan);
-  const plan: Plan | "unresolvable" =
-    decision.kind === "unresolvable" ? "unresolvable" : decision.kind === "free" ? "free" : decision.plan;
 
   return applySubscriptionEvent(
     deps,
@@ -160,31 +184,52 @@ function handleSubscriptionCreatedOrUpdated(
       currentPeriodStart: subscription.current_period_start,
       currentPeriodEnd: subscription.current_period_end,
     },
-    plan
+    mappedPlan
   );
 }
 
-function handleSubscriptionDeleted(
+// subscription.deleted : toujours 'canceled'/'free', inconditionnellement
+// -- ne passe jamais par resolvePlanDecision (statut 'canceled' n'est de
+// toute facon dans aucune liste "payante"), ecrit directement via la meme
+// voie atomique que les autres evenements.
+async function handleSubscriptionDeleted(
   deps: StripeWebhookDeps,
   eventCreatedUnix: number,
   subscription: MinimalSubscriptionEventObject
 ): Promise<StripeWebhookResult> {
-  // subscription.deleted implique toujours 'canceled' -- pas besoin de
-  // resoudre de Price ID, jamais "unresolvable" pour cet evenement.
-  return applySubscriptionEvent(
-    deps,
-    eventCreatedUnix,
-    subscription.metadata?.user_id ?? null,
-    {
-      stripeCustomerId: subscription.customer,
-      stripeSubscriptionId: subscription.id,
-      status: "canceled",
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      currentPeriodStart: subscription.current_period_start,
-      currentPeriodEnd: subscription.current_period_end,
-    },
-    "free"
+  const resolved = await resolveUserId(
+    { supabaseAdmin: deps.supabaseAdmin },
+    subscription.customer,
+    subscription.metadata?.user_id ?? null
   );
+  if (!resolved) {
+    console.error("[stripe-webhook] utilisateur introuvable pour customer", subscription.customer);
+    return OK_RESPONSE;
+  }
+
+  const applyResult = await applySubscriptionRow(deps, resolved.userId, eventCreatedUnix, {
+    stripeCustomerId: subscription.customer,
+    stripeSubscriptionId: subscription.id,
+    status: "canceled",
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    currentPeriodStart: subscription.current_period_start,
+    currentPeriodEnd: subscription.current_period_end,
+  });
+  if (!applyResult.ok) {
+    return INTERNAL_ERROR_RESPONSE;
+  }
+  if (!applyResult.applied) {
+    console.log("[stripe-webhook] evenement plus ancien que l'etat stocke, ignore sans modification");
+    return OK_RESPONSE;
+  }
+
+  const { error: profileError } = await deps.supabaseAdmin.from("profiles").update({ plan: "free" }).eq("id", resolved.userId);
+  if (profileError) {
+    console.error("[stripe-webhook] echec mise a jour profiles.plan (deleted)", profileError);
+    return INTERNAL_ERROR_RESPONSE;
+  }
+
+  return OK_RESPONSE;
 }
 
 // checkout.session.completed : filet de securite pour rattacher
@@ -242,10 +287,11 @@ export async function processStripeWebhookEvent(
     case "invoice.payment_failed":
       // Log uniquement pour ce lot -- customer.subscription.updated reste
       // l'autorite du statut (pas de downgrade immediat sur un echec de
-      // paiement, voir past_due dans PAYING_STATUSES). notifications.type
-      // n'accepte pas encore de valeur billing (CHECK contraint a
-      // 'sale'/'community'/'admin_broadcast', migration 20260804120000) --
-      // pas de migration ajoutee dans ce lot pour l'etendre.
+      // paiement, voir past_due dans FULLY_PAYING_STATUSES/GRACE_STATUS).
+      // notifications.type n'accepte pas encore de valeur billing (CHECK
+      // contraint a 'sale'/'community'/'admin_broadcast', migration
+      // 20260804120000) -- pas de migration ajoutee dans ce lot pour
+      // l'etendre.
       console.log(`[stripe-webhook] ${event.type} recu (log uniquement, aucune mutation)`);
       return OK_RESPONSE;
     default:
