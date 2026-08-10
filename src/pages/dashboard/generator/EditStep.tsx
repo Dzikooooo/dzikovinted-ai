@@ -33,7 +33,16 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
     // changer lui-meme (voir ResultStep.tsx, meme principe d'honnetete que
     // price_source cote analyze-clothing).
     if (key === 'price') {
-      onChange({ ...editForm, price: value as number, price_source: 'ai_estimate', price_comparables_count: 0 });
+      onChange({
+        ...editForm,
+        price: value as number,
+        price_source: 'ai_estimate',
+        price_comparables_count: 0,
+        market_tier: 'none',
+        market_confidence_level: 'ia_uniquement',
+        market_confidence_score: 0,
+        market_freshness: null,
+      });
       return;
     }
     onChange({ ...editForm, [key]: value });

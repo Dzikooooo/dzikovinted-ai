@@ -182,6 +182,12 @@ export interface Profile {
   created_at: string;
   program_status: ProgramStatus;
   credits_mode: CreditsMode;
+  // Retour bêta-testeur reel (Albin, 2026-08-11, retour 4) : preferences de
+  // style libres, transmises comme instruction dans le prompt Gemini
+  // (analyze-clothing) -- jamais un remplacement de variables cote client.
+  // Absent/vide = comportement de generation actuel inchange a l'identique.
+  title_style: string | null;
+  description_style: string | null;
 }
 
 export type NotificationType = 'sale' | 'community' | 'admin_broadcast';
@@ -306,6 +312,14 @@ export interface GeneratedListing {
   // (la table ne couvre que les recherches suivies en Watchlist).
   price_source: 'market' | 'ai_estimate';
   price_comparables_count: number;
+  // Market Engine V2 (2026-08-10, voir supabase/functions/_shared/marketEngine.ts) --
+  // champs additifs, non consommes par l'UI actuelle (ResultStep.tsx continue
+  // d'utiliser price_source/price_comparables_count tels quels). Reserves a
+  // une future evolution de l'affichage prix, deja disponibles cote API.
+  market_tier: 'strong' | 'broad' | 'none';
+  market_confidence_level: 'elevee' | 'moyenne' | 'faible' | 'ia_uniquement';
+  market_confidence_score: number;
+  market_freshness: 'recent' | 'acceptable' | 'old' | 'stale' | null;
 }
 
 export interface UsageRecord {

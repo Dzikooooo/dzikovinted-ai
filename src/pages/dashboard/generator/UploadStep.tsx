@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, GripVertical, ImageIcon, Sparkles, Upload, X, Zap } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, GripVertical, ImageIcon, Plus, Sparkles, Upload, X, Zap } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { PageHeader } from '../../../components/ui/PageHeader';
 
@@ -278,12 +278,26 @@ export function UploadStep({
                   </div>
                 </div>
               ))}
-              {images.length < photoLimit && (
+              {images.length < photoLimit ? (
                 <label className="aspect-square rounded-xl border-2 border-dashed border-gray-700 flex flex-col items-center justify-center cursor-pointer hover:border-neon-500/40 hover:bg-neon-500/5 transition-all group">
-                  <ImageIcon className="w-5 h-5 text-gray-600 group-hover:text-neon-500 mb-1 transition-colors" />
+                  <Plus className="w-5 h-5 text-gray-600 group-hover:text-neon-500 mb-1 transition-colors" />
                   <span className="text-xs text-gray-600 group-hover:text-neon-500 transition-colors">Ajouter</span>
                   <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
                 </label>
+              ) : (
+                // Retour bêta-testeur reel (Albin, 2026-08-11) : "ajouter un +
+                // pour ajouter plus de photo" -- la tuile "Ajouter" existait
+                // deja mais disparaissait silencieusement des la limite
+                // atteinte (1 photo en Free sans credits_mode='unlimited', voir
+                // GeneratorPage.tsx), sans aucune explication. Ce message
+                // remplace le vide laisse par la tuile plutot que de laisser
+                // une grille tronquee sans indice.
+                <div className="aspect-square rounded-xl border border-white/5 bg-dark-400/50 flex flex-col items-center justify-center text-center px-2">
+                  <ImageIcon className="w-4 h-4 text-gray-700 mb-1" />
+                  <span className="text-[10px] text-gray-600 leading-tight">
+                    Limite de {photoLimit} photo{photoLimit > 1 ? 's' : ''} atteinte
+                  </span>
+                </div>
               )}
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-white/5">

@@ -64,17 +64,38 @@ function useListingOptions() {
   return { listings, loading };
 }
 
+// Retour bêta-testeur reel (Albin, 2026-08-11, retour 3) : "message aux
+// favoris" -- Vinted n'exposant jamais l'identite d'un favori (voir
+// commentaire d'en-tete ci-dessus), la seule reponse sure est d'aider a
+// PREPARER ce message plus vite, pas de le declencher automatiquement.
+// Ces 2 modeles de depart reutilisent uniquement les variables existantes
+// (aucune nouvelle donnee, aucun acces reseau) et pre-remplissent le
+// formulaire de creation habituel -- l'utilisateur reste libre de les
+// modifier ou de les ignorer completement.
+const STARTER_TEMPLATES: { name: string; body: string }[] = [
+  {
+    name: 'Relance favoris',
+    body: "Bonjour ! {titre} a l'air de t'intéresser, il est toujours disponible à {prix}. N'hésite pas si tu as des questions 🙂",
+  },
+  {
+    name: 'Baisse de prix',
+    body: 'Bonjour, je viens de baisser le prix de {titre} à {prix}. Ça peut t\'intéresser !',
+  },
+];
+
 function TemplateFormModal({
   initial,
+  prefill,
   onClose,
   onSave,
 }: {
   initial: MessageTemplate | null;
+  prefill?: { name: string; body: string } | null;
   onClose: () => void;
   onSave: (input: MessageTemplateInput) => Promise<boolean>;
 }) {
-  const [name, setName] = useState(initial?.name ?? '');
-  const [body, setBody] = useState(initial?.body ?? '');
+  const [name, setName] = useState(initial?.name ?? prefill?.name ?? '');
+  const [body, setBody] = useState(initial?.body ?? prefill?.body ?? '');
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit() {
@@ -135,6 +156,7 @@ export default function CommunicationPage() {
   const { listings, loading: listingsLoading } = useListingOptions();
 
   const [formTemplate, setFormTemplate] = useState<MessageTemplate | 'new' | null>(null);
+  const [formPrefill, setFormPrefill] = useState<{ name: string; body: string } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [selectedListingId, setSelectedListingId] = useState('');
@@ -167,7 +189,7 @@ export default function CommunicationPage() {
         title="Communication"
         description="Prépare un message à partir d'un modèle et d'une annonce réelle — l'envoi reste toujours manuel, sur Vinted."
         action={
-          <Button size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setFormTemplate('new')}>
+          <Button size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { setFormPrefill(null); setFormTemplate('new'); }}>
             Nouveau modèle
           </Button>
         }
@@ -188,7 +210,7 @@ export default function CommunicationPage() {
               icon={MessageSquare}
               title="Aucun modèle pour l'instant"
               description="Crée un premier modèle pour préparer tes messages plus vite."
-              action={{ label: 'Créer un modèle', onClick: () => setFormTemplate('new') }}
+              action={{ label: 'Créer un modèle', onClick: () => { setFormPrefill(null); setFormTemplate('new'); } }}
             />
           ) : (
             <div className="space-y-2">
@@ -206,7 +228,7 @@ export default function CommunicationPage() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       type="button"
-                      onClick={() => setFormTemplate(t)}
+                      onClick={() => { setFormPrefill(null); setFormTemplate(t); }}
                       aria-label="Modifier"
                       className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/5"
                     >
@@ -225,6 +247,22 @@ export default function CommunicationPage() {
               ))}
             </div>
           )}
+
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Idées de modèles</p>
+            <div className="flex flex-wrap gap-2">
+              {STARTER_TEMPLATES.map((s) => (
+                <button
+                  key={s.name}
+                  type="button"
+                  onClick={() => { setFormPrefill(s); setFormTemplate('new'); }}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:text-neon-400 hover:border-neon-500/30 transition-colors"
+                >
+                  + {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="bg-surface border border-white/5 rounded-2xl p-5">
@@ -318,7 +356,8 @@ export default function CommunicationPage() {
       {formTemplate && (
         <TemplateFormModal
           initial={formTemplate === 'new' ? null : formTemplate}
-          onClose={() => setFormTemplate(null)}
+          prefill={formTemplate === 'new' ? formPrefill : null}
+          onClose={() => { setFormTemplate(null); setFormPrefill(null); }}
           onSave={(input) => (formTemplate === 'new' ? createTemplate(input) : updateTemplate(formTemplate.id, input))}
         />
       )}

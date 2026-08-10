@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Pencil, Star, X, Shield, Database, Server, Cookie, Zap } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Pencil, Star, X, Shield, Database, Server, Cookie, Zap, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
@@ -32,6 +32,12 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [email] = useState(profile?.email ?? '');
+  // Retour bêta-testeur reel (Albin, 2026-08-11, retour 4) : style d'annonce
+  // optionnel, transmis a Gemini comme instruction (voir analyze-clothing) --
+  // jamais un remplacement de variables. Champ vide = comportement de
+  // generation actuel inchange.
+  const [titleStyle, setTitleStyle] = useState(profile?.title_style ?? '');
+  const [descriptionStyle, setDescriptionStyle] = useState(profile?.description_style ?? '');
   const [saving, setSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -44,7 +50,14 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
 
   const saveProfile = async () => {
     setSaving(true);
-    const { error } = await supabase.from('profiles').update({ full_name: fullName }).eq('id', profile?.id ?? '');
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: fullName,
+        title_style: titleStyle.trim() || null,
+        description_style: descriptionStyle.trim() || null,
+      })
+      .eq('id', profile?.id ?? '');
     setSaving(false);
     if (error) setProfileMsg({ type: 'error', text: 'Erreur lors de la sauvegarde.' });
     else { setProfileMsg({ type: 'success', text: 'Profil mis à jour !' }); await refreshProfile(); setTimeout(() => setProfileMsg(null), 3000); }
@@ -150,6 +163,37 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Plan</label>
             <div className="px-4 py-3 bg-dark-400 border border-white/5 rounded-xl text-sm text-neon-500 font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
+          </div>
+          <div className="pt-5 border-t border-white/5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-neon-500" />
+              <h3 className="font-bold text-sm">Style d'annonce IA (optionnel)</h3>
+            </div>
+            <p className="text-xs text-gray-500 -mt-2">
+              Décris comment tu aimes rédiger tes titres et descriptions. Le Générateur IA en tient compte tout en gardant les infos réelles détectées sur la photo et l'optimisation Vinted. Laisse vide pour garder le comportement par défaut.
+            </p>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Style de titre souhaité</label>
+              <textarea
+                value={titleStyle}
+                onChange={(e) => setTitleStyle(e.target.value)}
+                maxLength={500}
+                rows={2}
+                placeholder="Ex : titre court, direct, sans emoji."
+                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Style de description souhaité</label>
+              <textarea
+                value={descriptionStyle}
+                onChange={(e) => setDescriptionStyle(e.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="Ex : toujours mentionner la coupe et le tissu, ton chaleureux."
+                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
+              />
+            </div>
           </div>
           <Button icon={<Save className="w-4 h-4" />} loading={saving} onClick={saveProfile}>
             {saving ? 'Sauvegarde...' : 'Sauvegarder'}

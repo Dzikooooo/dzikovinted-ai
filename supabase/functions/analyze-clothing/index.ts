@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isMetered } from "../_shared/credits.ts";
+import { buildMarketContext } from "../_shared/marketEngine.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,49 +15,6 @@ interface AnalyzeRequest {
   platform?: string;
   photo_style?: string;
   enhance_photo?: boolean;
-}
-
-// Prix de marche honnete (2026-07-28) : duplique deliberement scripts/
-// opportunity-engine/{math,constants}.ts::median/MIN_COMPARABLES_FOR_PRICE/
-// OBSERVATION_LOOKBACK_DAYS -- meme convention de duplication deja assumee
-// partout entre le runtime Deno (supabase/functions/) et Node (scripts/),
-// aucun partage de code entre ces deux frontieres de build dans ce projet.
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-const MIN_COMPARABLES_FOR_MARKET_PRICE = 3;
-const OBSERVATION_LOOKBACK_DAYS = 60;
-
-interface MarketPriceResult {
-  price: number;
-  quickPrice: number;
-  premiumPrice: number;
-  comparablesCount: number;
-}
-
-// Prix de marche honnete plutot qu'une pure estimation Gemini (bug reel
-// remonte le 2026-07-27 : "35€ le polo c'est pas le bon prix", aucune
-// donnee de marche n'etait jamais consultee). Reutilise la meme logique de
-// mediane que le moteur d'opportunites (Scanner) sur market_price_observations
-// -- mais cette table ne couvre que les recherches suivies en Watchlist, donc
-// la majorite des generations resteront honnetement en price_source:
-// 'ai_estimate' plutot que 'market'. C'est le comportement voulu, pas un
-// echec : jamais presenter une estimation comme une donnee de marche
-// confirmee (voir listing.price_source cote frontend, ResultStep.tsx).
-function computeMarketPrice(prices: number[]): MarketPriceResult | null {
-  if (prices.length < MIN_COMPARABLES_FOR_MARKET_PRICE) return null;
-  const med = median(prices);
-  if (med === null) return null;
-  return {
-    price: Math.round(med),
-    quickPrice: Math.round(med * 0.9),
-    premiumPrice: Math.round(med * 1.25),
-    comparablesCount: prices.length,
-  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -143,7 +101,7 @@ Deno.serve(async (req: Request) => {
     // (supabase/functions/).
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("plan, role, banned, credits_mode")
+      .select("plan, role, banned, credits_mode, title_style, description_style")
       .eq("id", user.id)
       .single();
 
@@ -209,6 +167,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Retour bêta-testeur reel (Albin, 2026-08-11, retour 4) : preference de
+    // style optionnelle, injectee comme instruction supplementaire pour
+    // Gemini -- jamais un remplacement de variables cote client. Gemini
+    // reste seul responsable de concilier cette preference avec les regles
+    // factuelles ci-dessous (ne jamais inventer marque/taille/matiere) et
+    // l'optimisation Vinted deja en place. Absent/vide = aucune ligne
+    // ajoutee au prompt, comportement de generation actuel inchange a
+    // l'identique (contrainte explicite du retour : jamais de configuration
+    // obligatoire).
+    const titleStyle = typeof profile.title_style === "string" ? profile.title_style.trim() : "";
+    const descriptionStyle = typeof profile.description_style === "string" ? profile.description_style.trim() : "";
+    const styleInstructions =
+      titleStyle || descriptionStyle
+        ? `
+PRÉFÉRENCE DE STYLE DU VENDEUR (à respecter sans jamais l'emporter sur les règles ci-dessus, ni inventer un fait) :
+${titleStyle ? `- Style de titre souhaité : ${titleStyle}\n` : ""}${descriptionStyle ? `- Style de description souhaité : ${descriptionStyle}\n` : ""}`
+        : "";
+
     const prompt = `
 Tu es un expert de la revente de vêtements d'occasion.
 
@@ -229,7 +205,7 @@ RÈGLES IMPORTANTES :
 - Si la marque est incertaine, reste prudent sur le prix.
 - Si la plateforme est Vinted, optimise le titre, les mots-clés et les filtres pour Vinted.
 - Le champ "condition" doit être EXACTEMENT l'une de ces 5 valeurs (taxonomie officielle Vinted, avec les accents) : "Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "État satisfaisant". Aucune autre formulation.
-
+${styleInstructions}
 Retourne uniquement un JSON valide avec exactement ces champs :
 {
   "title": string,
@@ -314,12 +290,16 @@ Tous les textes doivent être en français correct.
 
     const listing = JSON.parse(content);
 
-    // Repli honnete par defaut : tant qu'aucune donnee de marche reelle n'est
-    // trouvee ci-dessous, le prix reste l'estimation Gemini telle quelle,
-    // mais explicitement etiquetee comme telle plutot que presentee comme
-    // une valeur de marche.
+    // Repli honnete par defaut : tant que le Market Engine ne trouve aucun
+    // comparable exploitable ci-dessous, le prix reste l'estimation Gemini
+    // telle quelle, mais explicitement etiquetee comme telle plutot que
+    // presentee comme une valeur de marche.
     listing.price_source = "ai_estimate";
     listing.price_comparables_count = 0;
+    listing.market_tier = "none";
+    listing.market_confidence_level = "ia_uniquement";
+    listing.market_confidence_score = 0;
+    listing.market_freshness = null;
 
     const brand = typeof listing.brand === "string" ? listing.brand.trim() : "";
     const category = typeof listing.category === "string" ? listing.category.trim() : "";
@@ -327,29 +307,17 @@ Tous les textes doivent être en français correct.
     // quand Gemini n'a pas pu identifier la marque -- inutile d'interroger
     // le marche avec une valeur qui ne correspondra jamais a une vraie ligne.
     if (brand && category && brand !== "Marque à vérifier") {
-      const lookbackSince = new Date(Date.now() - OBSERVATION_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      const { data: observations, error: obsError } = await supabase
-        .from("market_price_observations")
-        .select("price")
-        .ilike("brand", brand)
-        .ilike("category", category)
-        .gte("scanned_at", lookbackSince)
-        .limit(200);
-
-      if (obsError) {
-        console.error("market_price_observations query error:", obsError);
-      } else if (observations) {
-        const prices = observations
-          .map((o: { price: number }) => Number(o.price))
-          .filter((p: number) => Number.isFinite(p) && p > 0);
-        const marketPrice = computeMarketPrice(prices);
-        if (marketPrice) {
-          listing.price = marketPrice.price;
-          listing.quick_price = marketPrice.quickPrice;
-          listing.premium_price = marketPrice.premiumPrice;
-          listing.price_source = "market";
-          listing.price_comparables_count = marketPrice.comparablesCount;
-        }
+      const market = await buildMarketContext(supabase, { brand, category });
+      if (market.pricing) {
+        listing.price = market.pricing.price;
+        listing.quick_price = market.pricing.quickPrice;
+        listing.premium_price = market.pricing.premiumPrice;
+        listing.price_source = "market";
+        listing.price_comparables_count = market.comparablesCount;
+        listing.market_tier = market.tier;
+        listing.market_confidence_level = market.confidence.level;
+        listing.market_confidence_score = market.confidence.score;
+        listing.market_freshness = market.freshness;
       }
     }
 
@@ -396,6 +364,25 @@ Tous les textes doivent être en français correct.
         );
       }
     }
+
+    // Instrumentation cout/usage (Lot 3, Market Engine V2, 2026-08-10) --
+    // best-effort, service_role, ne bloque et ne fait jamais echouer une
+    // generation reussie (meme discipline que increment_usage ci-dessus).
+    // Ecrit uniquement ici, apres la garde consume_credit_reservation : ne
+    // jamais compter comme "succes" une generation dont la consommation de
+    // credit n'a pas ete confirmee (voir GARDE CRITIQUE ci-dessus).
+    const { error: usageEventError } = await supabaseAdmin.from("usage_events").insert({
+      user_id: user.id,
+      event_type: "generation_completed",
+      metadata: {
+        metered,
+        market_tier: listing.market_tier,
+        market_comparables_count: listing.price_comparables_count,
+        market_confidence_level: listing.market_confidence_level,
+        price_source: listing.price_source,
+      },
+    });
+    if (usageEventError) console.error("usage_events insert error:", usageEventError);
 
     return new Response(JSON.stringify({ listing }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -77,10 +77,18 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
   // de l'avantage credits_mode).
   const unlimitedCredits = isAdmin || profile?.credits_mode === 'unlimited';
   const limit = unlimitedCredits ? null : PLAN_LIMITS[plan];
-  // Un admin beneficie du meme plafond photo que le plan Pro -- coherent
-  // avec le traitement deja applique aux credits (illimite = "au moins
-  // aussi bien que Pro", pas un plan a part avec ses propres regles).
-  const photoLimit = isAdmin ? PLAN_PHOTO_LIMITS.pro : PLAN_PHOTO_LIMITS[plan];
+  // Un admin OU un compte credits_mode='unlimited' beneficie du meme plafond
+  // photo que le plan Pro -- coherent avec le traitement deja applique aux
+  // credits (illimite = "au moins aussi bien que Pro", pas un plan a part
+  // avec ses propres regles). Revu 2026-08-11 (premier retour bêta-testeur
+  // reel, Albin) : la version precedente limitait sciemment photoLimit au
+  // seul plan/role admin, hors perimetre de credits_mode -- en pratique,
+  // un bêta-testeur Free avec credits_mode='unlimited' restait bloque a 1
+  // photo (PLAN_PHOTO_LIMITS.free) des sa premiere image, sans aucune
+  // explication visible (voir UploadStep.tsx pour le message ajoute dans le
+  // meme correctif). L'avantage bêta credits_mode='unlimited' est cense
+  // donner une experience Pro complete, pas seulement des credits.
+  const photoLimit = unlimitedCredits ? PLAN_PHOTO_LIMITS.pro : PLAN_PHOTO_LIMITS[plan];
   const isLimitReached = limit !== null && credits <= 0;
 
   const handleGenerate = async () => {

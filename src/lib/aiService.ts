@@ -85,6 +85,14 @@ export async function analyzeWithAI({
         vinted_filters: Array.isArray(listing.vinted_filters) ? listing.vinted_filters : [],
         price_source: listing.price_source === 'market' ? 'market' : 'ai_estimate',
         price_comparables_count: Number(listing.price_comparables_count) || 0,
+        market_tier: listing.market_tier === 'strong' || listing.market_tier === 'broad' ? listing.market_tier : 'none',
+        market_confidence_level: ['elevee', 'moyenne', 'faible', 'ia_uniquement'].includes(listing.market_confidence_level)
+          ? listing.market_confidence_level
+          : 'ia_uniquement',
+        market_confidence_score: Number(listing.market_confidence_score) || 0,
+        market_freshness: ['recent', 'acceptable', 'old', 'stale'].includes(listing.market_freshness)
+          ? listing.market_freshness
+          : null,
       };
     } catch (err) {
       console.error('Edge function call failed:', err);
