@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Ban, CheckCircle2, RotateCcw, Send, ShieldAlert, Users, X } from 'lucide-react';
+import { Ban, CheckCircle2, RotateCcw, Send, Settings2, ShieldAlert, Users, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import type { DashboardPage, Profile } from '../../lib/types';
+import type { BetaCommercialOffer, CreditsMode, DashboardPage, Profile, ProgramStatus } from '../../lib/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { SectionLabel } from '../../components/ui/SectionLabel';
@@ -42,6 +42,17 @@ export default function AdminUsersPage() {
   // inchangee (meme RPC, meme etat de chargement workingId), seul le point
   // d'entree change (ouvre la modale au lieu d'agir immediatement).
   const [banConfirmTarget, setBanConfirmTarget] = useState<Profile | null>(null);
+
+  // Programme Beta ResellOS (Lot 5, 2026-08-10) : fiche detail d'un compte,
+  // 3 sections volontairement independantes (Programme/Credits/Avantage
+  // commercial) -- aucune des trois RPC ci-dessous n'en declenche une autre.
+  const [detailTarget, setDetailTarget] = useState<Profile | null>(null);
+  const [detailWorking, setDetailWorking] = useState<'program' | 'credits' | 'offer' | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [offer, setOffer] = useState<BetaCommercialOffer | null>(null);
+  const [offerLoading, setOfferLoading] = useState(false);
+  const [offerTrialDays, setOfferTrialDays] = useState('30');
+  const [offerCouponId, setOfferCouponId] = useState('');
 
   const [target, setTarget] = useState<Profile | 'all' | null>(null);
   const [notifTitle, setNotifTitle] = useState('');
@@ -105,6 +116,101 @@ export default function AdminUsersPage() {
       return;
     }
     await load();
+  };
+
+  const loadOffer = async (userId: string) => {
+    setOfferLoading(true);
+    const { data, error: loadError } = await supabase
+      .from('beta_commercial_offers')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (loadError) console.error(loadError);
+    setOffer((data ?? null) as BetaCommercialOffer | null);
+    setOfferTrialDays(data ? String((data as BetaCommercialOffer).trial_period_days) : '30');
+    setOfferCouponId(data ? (data as BetaCommercialOffer).stripe_coupon_id ?? '' : '');
+    setOfferLoading(false);
+  };
+
+  const openDetail = (p: Profile) => {
+    setDetailTarget(p);
+    setDetailError(null);
+    void loadOffer(p.id);
+  };
+
+  // Etiquette seule -- n'accorde jamais de credits illimites. Voir
+  // 20260810100000_add_beta_program_status.sql.
+  const setProgramStatus = async (p: Profile, status: ProgramStatus) => {
+    setDetailWorking('program');
+    setDetailError(null);
+    const { error: rpcError } = await supabase.rpc('admin_set_user_program_status', {
+      p_user_id: p.id,
+      p_program_status: status,
+    });
+    setDetailWorking(null);
+    if (rpcError) {
+      console.error(rpcError);
+      setDetailError('Impossible de modifier le statut programme. Réessaie plus tard.');
+      return;
+    }
+    setDetailTarget({ ...p, program_status: status });
+    await load();
+  };
+
+  // Seul chemin qui influence analyze-clothing -- ne modifie jamais
+  // profiles.credits (le solde reel). Voir _shared/credits.ts.
+  const setCreditsMode = async (p: Profile, mode: CreditsMode) => {
+    setDetailWorking('credits');
+    setDetailError(null);
+    const { error: rpcError } = await supabase.rpc('admin_set_user_credits_mode', {
+      p_user_id: p.id,
+      p_credits_mode: mode,
+    });
+    setDetailWorking(null);
+    if (rpcError) {
+      console.error(rpcError);
+      setDetailError('Impossible de modifier le mode crédits. Réessaie plus tard.');
+      return;
+    }
+    setDetailTarget({ ...p, credits_mode: mode });
+    await load();
+  };
+
+  const prepareOffer = async (p: Profile) => {
+    const trialDays = Number(offerTrialDays);
+    if (!Number.isFinite(trialDays) || trialDays < 0) {
+      setDetailError('Le nombre de jours d\'essai doit être un nombre positif ou nul.');
+      return;
+    }
+    setDetailWorking('offer');
+    setDetailError(null);
+    const { error: rpcError } = await supabase.rpc('admin_prepare_commercial_offer', {
+      p_user_id: p.id,
+      p_trial_period_days: trialDays,
+      p_stripe_coupon_id: offerCouponId.trim() || null,
+    });
+    setDetailWorking(null);
+    if (rpcError) {
+      console.error(rpcError);
+      setDetailError("Impossible de préparer l'offre. Réessaie plus tard.");
+      return;
+    }
+    await loadOffer(p.id);
+  };
+
+  const expireOffer = async (p: Profile) => {
+    setDetailWorking('offer');
+    setDetailError(null);
+    const { error: rpcError } = await supabase.rpc('admin_expire_commercial_offer', {
+      p_user_id: p.id,
+    });
+    setDetailWorking(null);
+    if (rpcError) {
+      console.error(rpcError);
+      setDetailError("Impossible d'annuler l'offre. Réessaie plus tard.");
+      return;
+    }
+    await loadOffer(p.id);
   };
 
   const sendNotification = async () => {
@@ -176,10 +282,20 @@ export default function AdminUsersPage() {
                     <Badge label={p.plan.toUpperCase()} tone={p.plan === 'free' ? 'neutral' : p.plan === 'pro' ? 'brand' : 'positive'} />
                     {p.role === 'admin' && <Badge label="Admin" tone="attention" />}
                     {p.banned && <Badge label="Bloqué" tone="negative" />}
+                    {p.program_status === 'beta_tester' && <Badge label="Bêta-testeur" tone="brand" />}
+                    {p.credits_mode === 'unlimited' && <Badge label="Crédits illimités" tone="positive" />}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">{p.email}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<Settings2 className="w-3.5 h-3.5" />}
+                    onClick={() => openDetail(p)}
+                  >
+                    Gérer
+                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -335,6 +451,139 @@ export default function AdminUsersPage() {
             >
               {banConfirmTarget.banned ? 'Débloquer' : 'Bloquer'}
             </Button>
+          </div>
+        </Modal>
+      )}
+
+      {detailTarget && (
+        <Modal onClose={() => setDetailTarget(null)} size="md">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-black">Gérer ce compte</h2>
+            <button
+              onClick={() => setDetailTarget(null)}
+              aria-label="Fermer"
+              className="p-1.5 rounded-lg hover:bg-white/5"
+            >
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 mb-5 bg-dark-400 border border-white/10 rounded-xl p-3">
+            <AccountAvatar label={detailTarget.full_name || detailTarget.email} size="md" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-200 truncate">
+                {detailTarget.full_name || detailTarget.email}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{detailTarget.email}</p>
+            </div>
+          </div>
+
+          {detailError && <p className="text-sm text-red-400 mb-4">{detailError}</p>}
+
+          {/* Section 1/3 -- PROGRAMME : simple etiquette, n'accorde aucun
+              privilege. Reste independante des deux sections ci-dessous. */}
+          <div className="mb-5">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Programme</p>
+            <div className="flex items-center justify-between bg-dark-400 border border-white/10 rounded-xl p-3">
+              <div>
+                <p className="text-sm text-gray-300">
+                  Statut : <span className="font-semibold text-gray-100">{detailTarget.program_status === 'beta_tester' ? 'Bêta-testeur' : 'Standard'}</span>
+                </p>
+                <p className="text-xs text-gray-600 mt-0.5">Étiquette seule — n'active aucun avantage.</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={detailWorking === 'program'}
+                onClick={() => setProgramStatus(detailTarget, detailTarget.program_status === 'beta_tester' ? 'standard' : 'beta_tester')}
+              >
+                {detailTarget.program_status === 'beta_tester' ? 'Repasser en Standard' : 'Passer en Bêta-testeur'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Section 2/3 -- CREDITS : seul champ lu par analyze-clothing.
+              Le solde reel (credits) reste affiche tel quel, jamais modifie. */}
+          <div className="mb-5">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Crédits</p>
+            <div className="flex items-center justify-between bg-dark-400 border border-white/10 rounded-xl p-3">
+              <div>
+                <p className="text-sm text-gray-300">
+                  Mode : <span className="font-semibold text-gray-100">{detailTarget.credits_mode === 'unlimited' ? 'Illimités' : 'Standard'}</span>
+                </p>
+                <p className="text-xs text-gray-600 mt-0.5">Solde réel : {detailTarget.credits} crédit{detailTarget.credits > 1 ? 's' : ''} (pour référence, jamais modifié par ce mode).</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={detailWorking === 'credits'}
+                onClick={() => setCreditsMode(detailTarget, detailTarget.credits_mode === 'unlimited' ? 'standard' : 'unlimited')}
+              >
+                {detailTarget.credits_mode === 'unlimited' ? 'Repasser en Standard' : 'Passer en Illimités'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Section 3/3 -- AVANTAGE COMMERCIAL : notion de facturation
+              Stripe, independante des deux sections ci-dessus. */}
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Avantage commercial</p>
+            <div className="bg-dark-400 border border-white/10 rounded-xl p-3 space-y-3">
+              {offerLoading ? (
+                <Skeleton shape="block" className="h-10" />
+              ) : offer ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-300">
+                      Offre :{' '}
+                      <Badge
+                        label={offer.status === 'pending' ? 'En attente' : offer.status === 'applied' ? 'Appliquée' : 'Expirée'}
+                        tone={offer.status === 'applied' ? 'positive' : offer.status === 'pending' ? 'attention' : 'neutral'}
+                      />
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {offer.trial_period_days} jour{offer.trial_period_days > 1 ? 's' : ''} d'essai
+                      {offer.stripe_coupon_id ? ` + coupon ${offer.stripe_coupon_id}` : ''}
+                    </p>
+                  </div>
+                  {offer.status === 'pending' && (
+                    <Button variant="secondary" size="sm" loading={detailWorking === 'offer'} onClick={() => expireOffer(detailTarget)}>
+                      Annuler l'offre
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Aucune offre préparée pour ce compte.</p>
+              )}
+
+              {(!offer || offer.status === 'expired') && !offerLoading && (
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 pt-2 border-t border-white/5">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-1">Jours d'essai</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={offerTrialDays}
+                      onChange={(e) => setOfferTrialDays(e.target.value)}
+                      className="w-full bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-1">Coupon Stripe (optionnel)</label>
+                    <input
+                      type="text"
+                      value={offerCouponId}
+                      onChange={(e) => setOfferCouponId(e.target.value)}
+                      placeholder="ex. BETA50"
+                      className="w-full bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
+                    />
+                  </div>
+                  <Button size="sm" loading={detailWorking === 'offer'} onClick={() => prepareOffer(detailTarget)}>
+                    Préparer l'offre
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </Modal>
       )}

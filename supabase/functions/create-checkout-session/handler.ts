@@ -93,6 +93,44 @@ async function releaseCheckoutSlot(deps: CreateCheckoutSessionDeps, userId: stri
   }
 }
 
+// Programme Beta ResellOS (Lot 7+8, 2026-08-10). claim_commercial_offer est
+// un UPDATE...WHERE...RETURNING atomique (meme idiome que
+// reserve_checkout_slot) : combine a reserveCheckoutSlot ci-dessus (deja
+// serialise par utilisateur, fenetre de 5 minutes), ceci exclut par
+// construction toute double consommation de l'offre par deux Checkout
+// Sessions concurrentes du meme utilisateur. Retourne null si aucune offre
+// pending n'existe -- comportement identique a aujourd'hui (aucun trial,
+// aucun coupon), jamais une erreur bloquante : un echec de lookup ne doit
+// jamais empecher un upgrade Pro/Team payant normal.
+interface ClaimedOffer {
+  trialPeriodDays: number;
+  stripeCouponId: string | null;
+}
+
+async function claimCommercialOffer(deps: CreateCheckoutSessionDeps, userId: string): Promise<ClaimedOffer | null> {
+  const { data, error } = await deps.supabaseAdmin.rpc("claim_commercial_offer", { p_user_id: userId });
+  if (error) {
+    console.error("[create-checkout-session] echec claim_commercial_offer (checkout poursuivi sans offre)", error);
+    return null;
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { trial_period_days: number; stripe_coupon_id: string | null }
+    | undefined;
+  if (!row) return null;
+  return { trialPeriodDays: row.trial_period_days, stripeCouponId: row.stripe_coupon_id };
+}
+
+// Symetrique de releaseCheckoutSlot -- remet l'offre en pending si Stripe
+// echoue APRES claimCommercialOffer, pour un retry immediat plutot que de
+// perdre l'offre. Meme discipline "jamais bloquant" : un echec de release
+// n'est qu'un log.
+async function releaseCommercialOffer(deps: CreateCheckoutSessionDeps, userId: string): Promise<void> {
+  const { error } = await deps.supabaseAdmin.rpc("release_commercial_offer", { p_user_id: userId });
+  if (error) {
+    console.error("[create-checkout-session] echec release_commercial_offer (retry differe possible)", error);
+  }
+}
+
 // Coeur testable de create-checkout-session -- toutes les dependances
 // (Stripe, Supabase, horloge) injectees, aucun acces direct a Deno.serve/
 // fetch ici. index.ts se contente de cabler les vrais clients et d'appeler
@@ -118,8 +156,14 @@ export async function createCheckoutSessionForPlan(
   }
 
   let customerId = reservation.stripeCustomerId;
+  let claimedOffer: ClaimedOffer | null = null;
 
   try {
+    // Recherche/reclamation de l'offre APRES la reservation du slot de
+    // Checkout (deja serialisee par utilisateur) -- voir claimCommercialOffer
+    // ci-dessus pour l'analyse de race complete.
+    claimedOffer = await claimCommercialOffer(deps, userId);
+
     if (customerId) {
       // Verification legere que le Customer existe toujours cote Stripe (ex.
       // supprime manuellement dans le Dashboard) -- toute erreur ou un
@@ -160,24 +204,43 @@ export async function createCheckoutSessionForPlan(
       if (upsertError) {
         console.error("[create-checkout-session] echec upsert subscriptions", upsertError);
         await releaseCheckoutSlot(deps, userId);
+        if (claimedOffer) await releaseCommercialOffer(deps, userId);
         return { ok: false, status: 500, error: GENERIC_SERVER_ERROR };
       }
     }
 
-    const session = await deps.stripe.checkout.sessions.create({
+    // subscription_data.trial_period_days + discounts:[{coupon}] (duration
+    // 'once' cote Stripe) : Stripe gere nativement la transition essai ->
+    // premiere facture payante, aucune logique maison de "mois numero 2"
+    // (verifie contre la documentation Stripe -- un coupon 'once' s'applique
+    // a la PROCHAINE facture et est consomme une fois celle-ci finalisee ;
+    // aucune facture n'est emise pendant le trial, donc le coupon s'applique
+    // naturellement a la premiere facture reelle du mois 2).
+    const subscriptionData: Record<string, unknown> = { metadata: { user_id: userId } };
+    if (claimedOffer && claimedOffer.trialPeriodDays > 0) {
+      subscriptionData.trial_period_days = claimedOffer.trialPeriodDays;
+    }
+
+    const sessionParams: Record<string, unknown> = {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: userId,
-      subscription_data: { metadata: { user_id: userId } },
+      subscription_data: subscriptionData,
       metadata: { user_id: userId, requested_plan: plan },
       success_url: SUCCESS_URL,
       cancel_url: CANCEL_URL,
-    });
+    };
+    if (claimedOffer && claimedOffer.stripeCouponId) {
+      sessionParams.discounts = [{ coupon: claimedOffer.stripeCouponId }];
+    }
+
+    const session = await deps.stripe.checkout.sessions.create(sessionParams);
 
     if (!session.url) {
       console.error("[create-checkout-session] Stripe n'a renvoye aucune URL de session");
       await releaseCheckoutSlot(deps, userId);
+      if (claimedOffer) await releaseCommercialOffer(deps, userId);
       return { ok: false, status: 500, error: GENERIC_SERVER_ERROR };
     }
 
@@ -185,6 +248,7 @@ export async function createCheckoutSessionForPlan(
   } catch (e) {
     console.error("[create-checkout-session] erreur inattendue apres reservation", e);
     await releaseCheckoutSlot(deps, userId);
+    if (claimedOffer) await releaseCommercialOffer(deps, userId);
     return { ok: false, status: 500, error: GENERIC_SERVER_ERROR };
   }
 }

@@ -11,7 +11,11 @@ interface UploadStepProps {
   isLimitReached: boolean;
   credits: number;
   limit: number | null;
-  isAdmin: boolean;
+  // Programme Beta ResellOS (Lot 4) : true pour un admin OU pour
+  // credits_mode='unlimited' -- ce composant n'a besoin de savoir que "les
+  // credits sont-ils a afficher comme illimites", jamais qui est
+  // effectivement admin.
+  unlimitedCredits: boolean;
   onGenerate: () => void;
 }
 
@@ -23,7 +27,7 @@ export function UploadStep({
   isLimitReached,
   credits,
   limit,
-  isAdmin,
+  unlimitedCredits,
   onGenerate,
 }: UploadStepProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -90,13 +94,13 @@ export function UploadStep({
           title={<>Générateur <span className="text-neon-500">IA</span></>}
           description={`Uploade 1 à ${photoLimit} photo${photoLimit > 1 ? 's' : ''} de ton vêtement et laisse l'IA créer ton annonce Vinted parfaite.`}
           action={
-            (limit !== null || isAdmin) && (
+            (limit !== null || unlimitedCredits) && (
               <div className="hidden sm:flex items-center gap-2 bg-surface border border-white/5 rounded-xl px-4 py-2.5">
                 <Zap className="w-4 h-4 text-neon-500" />
                 <div>
                   <p className="text-xs text-gray-500">Credits restants</p>
                   <p className="text-sm font-bold text-neon-500">
-                    {isAdmin ? 'Illimité' : <>{credits} <span className="text-gray-600 font-normal">/ {limit}</span></>}
+                    {unlimitedCredits ? 'Illimité' : <>{credits} <span className="text-gray-600 font-normal">/ {limit}</span></>}
                   </p>
                 </div>
               </div>
@@ -104,10 +108,10 @@ export function UploadStep({
           }
         />
 
-        {(limit !== null || isAdmin) && (
+        {(limit !== null || unlimitedCredits) && (
           <div className="sm:hidden flex items-center gap-2 bg-surface border border-white/5 rounded-xl px-4 py-2.5 mt-4">
             <Zap className="w-4 h-4 text-neon-500" />
-            {isAdmin ? (
+            {unlimitedCredits ? (
               <p className="text-sm font-bold text-neon-500">Illimité</p>
             ) : (
               <p className="text-sm"><span className="font-bold text-neon-500">{credits}</span> <span className="text-gray-500">credits restants sur {limit}</span></p>

@@ -22,3 +22,5 @@ dist-ssr
 *.sw?
 .env
 supabase/.temp
+extension/release
+extension/.beta-signing-key.pem

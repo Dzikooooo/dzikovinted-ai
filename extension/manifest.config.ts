@@ -31,39 +31,75 @@ import pkg from "./package.json";
 // que l'extension etait bel et bien installee et fonctionnelle -- diagnostic
 // pre-beta 2026-08-04. Toute future migration de domaine DOIT mettre a jour
 // cette liste en meme temps que le rattachement DNS/Vercel, jamais apres.
-export default defineManifest({
-  manifest_version: 3,
-  name: "ResellOS pour Vinted",
-  description: "Connecte ton compte Vinted a ResellOS.",
-  version: pkg.version,
-  icons: {
-    16: "public/icons/icon16.png",
-    48: "public/icons/icon48.png",
-    128: "public/icons/icon128.png",
-  },
-  action: {
-    default_popup: "src/popup/index.html",
-  },
-  background: {
-    service_worker: "src/background/index.ts",
-    type: "module",
-  },
-  // "alarms" retiree (2026-07-23, revue de coherence) : jamais utilisee par
-  // aucun code de l'extension (grep exhaustif de chrome.alarms/alarms.* sur
-  // extension/src/, aucun resultat) -- une permission Chrome non justifiee
-  // est un risque et une confusion pour rien.
-  //
-  permissions: ["storage", "tabs", "scripting"],
-  host_permissions: ["https://www.vinted.fr/*"],
-  externally_connectable: {
-    matches: [
-      "http://localhost:5173/*",
-      "https://dzikovinted-ai.vercel.app/*",
-      "https://resellosapp.com/*",
-      "https://www.resellosapp.com/*",
-    ],
-  },
-  content_scripts: [
+// Distribution beta (2026-08-10, packaging ZIP pour beta-testeurs externes) :
+// le build local (npm run build, mode par defaut) doit continuer a inclure
+// localhost:5173 pour le dev quotidien -- seul le build beta dedie
+// (npm run build:beta, --mode beta, voir vite.config.ts) doit le retirer.
+// Une seule liste, calculee une fois, plutot que deux manifestes dupliques
+// a maintenir en parallele (risque de recidive du bug documente ci-dessous
+// si les deux listes divergent).
+function buildExternallyConnectableMatches(isBeta: boolean): string[] {
+  const matches = [
+    "https://dzikovinted-ai.vercel.app/*",
+    "https://resellosapp.com/*",
+    "https://www.resellosapp.com/*",
+  ];
+  if (!isBeta) matches.unshift("http://localhost:5173/*");
+  return matches;
+}
+
+// ID d'extension instable corrige (2026-08-10, diagnostic bêta Albin) :
+// une extension chargee via "Charger l'extension non empaquetee" SANS champ
+// `key` obtient un ID calcule par Chrome a partir du CHEMIN ABSOLU du
+// dossier -- donc un ID different par machine/emplacement (c'etait la cause
+// exacte du "Extension Chrome non detectee" : le SaaS attendait l'ID genere
+// sur la machine de dev, jamais celui d'Albin). `key` = cle publique (PAS un
+// secret -- elle finit de toute facon visible dans manifest.json de chaque
+// copie distribuee) : Chrome calcule alors l'ID a partir de CETTE cle,
+// identique pour tout le monde, sur toute machine, quel que soit le dossier
+// d'installation. Meme cle utilisee pour tous les modes (dev/beta) : un seul
+// ID a connaitre partout, pas de complexite dev/beta/prod a maintenir pour
+// ce probleme precis (voir rapport du lot "correctif ID extension").
+// Cle privee correspondante : extension/.beta-signing-key.pem (jamais
+// commitee, voir .gitignore) -- generee par scripts/generate-signing-key.mjs
+// (a lancer UNE SEULE FOIS, jamais en routine : relancer regeneres une cle
+// ET donc un nouvel ID). Sans objet pour la premiere publication Chrome Web
+// Store : Google assigne alors son propre ID final, independant de cette cle
+// (mise a jour a faire une seule fois dans VITE_RESELLOS_EXTENSION_ID a ce
+// moment-la -- non bloquant, deja documente dans .env.example).
+const BETA_SIGNING_PUBLIC_KEY =
+  "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx2qRV6QvP1T0AFKlshX5YMqOzzg68Ze6uglmpNelS7i6xgM57b53uiOJwPsV+/ILpaQ0TupVbRbmH6FHA7PSFGul4659npVkJoFSDGTlNGPlNSVasxOpkTVL2S+IWl4x+q7y/4BcS9h5iMkBuYs8kek/PS+Rv2eMfedJ6Rjhsuz+zMpKNhKzl/t8jrPV3IXSzO8kYm8Ct9QYjmuzNLMFQ/urMivbtTqhUd4zXS2SuPzYgjqz44YuQNsX0dgO8KNOCXII2+u/lMDAUP31sLoLfvNmZUUJqlVIg0KSBMZC3Pbwjugqx5FzWZsJlcReZpJXsQj9aUlg786Za2WatvIRzwIDAQAB";
+
+export function buildManifest(isBeta = false) {
+  return defineManifest({
+    manifest_version: 3,
+    name: "ResellOS pour Vinted",
+    description: "Connecte ton compte Vinted a ResellOS.",
+    version: pkg.version,
+    key: BETA_SIGNING_PUBLIC_KEY,
+    icons: {
+      16: "public/icons/icon16.png",
+      48: "public/icons/icon48.png",
+      128: "public/icons/icon128.png",
+    },
+    action: {
+      default_popup: "src/popup/index.html",
+    },
+    background: {
+      service_worker: "src/background/index.ts",
+      type: "module",
+    },
+    // "alarms" retiree (2026-07-23, revue de coherence) : jamais utilisee par
+    // aucun code de l'extension (grep exhaustif de chrome.alarms/alarms.* sur
+    // extension/src/, aucun resultat) -- une permission Chrome non justifiee
+    // est un risque et une confusion pour rien.
+    //
+    permissions: ["storage", "tabs", "scripting"],
+    host_permissions: ["https://www.vinted.fr/*"],
+    externally_connectable: {
+      matches: buildExternallyConnectableMatches(isBeta),
+    },
+    content_scripts: [
     {
       matches: ["https://www.vinted.fr/member/*"],
       js: ["src/content/vinted-profile.ts"],
@@ -94,5 +130,6 @@ export default defineManifest({
       js: ["src/content/vinted-edit.ts"],
       run_at: "document_idle",
     },
-  ],
-});
+    ],
+  });
+}

@@ -142,8 +142,12 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
   const isAdmin = useIsAdmin();
-  const limit = isAdmin ? null : PLAN_LIMITS[plan];
-  const isLimitReached = !isAdmin && limit !== null && credits <= 0;
+  // Programme Beta ResellOS (Lot 4) : credits_mode='unlimited' affiche le
+  // meme etat "Illimite" qu'un admin, sans jamais modifier profiles.credits
+  // (le solde reel reste intact -- voir _shared/credits.ts cote serveur).
+  const unlimitedCredits = isAdmin || profile?.credits_mode === 'unlimited';
+  const limit = unlimitedCredits ? null : PLAN_LIMITS[plan];
+  const isLimitReached = !unlimitedCredits && limit !== null && credits <= 0;
   const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || '';
 
   const handleNewListing = () => {
@@ -373,11 +377,11 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           signal dominant ci-dessus : ce sont des jauges de reference,
           jamais l'element qui doit capter l'oeil en premier. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        {(limit !== null || isAdmin) && (
+        {(limit !== null || unlimitedCredits) && (
           <div className={`bg-surface border border-white/5 rounded-2xl p-4 flex items-center gap-4 ${
             !loading && !metrics.hasAnyListing ? 'sm:col-span-2' : ''
           }`}>
-            {isAdmin ? (
+            {unlimitedCredits ? (
               <div className="w-14 h-14 bg-neon-500/10 rounded-full flex items-center justify-center flex-shrink-0">
                 <Zap className="w-5 h-5 text-neon-500" />
               </div>
@@ -392,7 +396,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-gray-200">Crédits restants</p>
-              {isAdmin ? (
+              {unlimitedCredits ? (
                 <p className="text-base font-black text-neon-500 mt-0.5">Illimité</p>
               ) : (
                 <p className="text-sm text-gray-500 mt-0.5">{credits} / {limit} ce mois</p>
@@ -405,7 +409,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
                   </button>
                 </p>
               )}
-              {!isAdmin && limit !== null && credits > 0 && credits <= 3 && (
+              {!unlimitedCredits && limit !== null && credits > 0 && credits <= 3 && (
                 <p className="text-xs text-amber-400 mt-1.5">Plus que {credits} crédit{credits > 1 ? 's' : ''} disponible{credits > 1 ? 's' : ''}.</p>
               )}
             </div>

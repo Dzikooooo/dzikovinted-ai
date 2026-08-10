@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { isMetered } from "../_shared/credits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,7 +143,7 @@ Deno.serve(async (req: Request) => {
     // (supabase/functions/).
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("plan, role, banned")
+      .select("plan, role, banned, credits_mode")
       .eq("id", user.id)
       .single();
 
@@ -165,9 +166,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const isMetered = profile.plan === "free" && profile.role !== "admin";
+    // Programme Beta ResellOS (Lot 3, 2026-08-10) : credits_mode='unlimited'
+    // suspend la reservation/consommation de credits sans jamais modifier
+    // profiles.credits (le solde reel) -- voir _shared/credits.ts pour la
+    // matrice complete et 20260810100000_add_beta_program_status.sql pour
+    // la garantie que ce champ n'est modifiable que par une RPC admin.
+    const metered = isMetered(profile);
 
-    if (isMetered) {
+    if (metered) {
       const { data: reserveData, error: reserveError } = await supabaseAdmin.rpc("reserve_credit", {
         p_user_id: user.id,
       });

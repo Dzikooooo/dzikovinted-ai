@@ -71,7 +71,12 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
   const isAdmin = useIsAdmin();
-  const limit = isAdmin ? null : PLAN_LIMITS[plan];
+  // Programme Beta ResellOS (Lot 4) : credits_mode='unlimited' suspend la
+  // limite de credits comme un admin, sans toucher au plafond de photos
+  // (photoLimit reste lie au plan/role admin uniquement -- hors perimetre
+  // de l'avantage credits_mode).
+  const unlimitedCredits = isAdmin || profile?.credits_mode === 'unlimited';
+  const limit = unlimitedCredits ? null : PLAN_LIMITS[plan];
   // Un admin beneficie du meme plafond photo que le plan Pro -- coherent
   // avec le traitement deja applique aux credits (illimite = "au moins
   // aussi bien que Pro", pas un plan a part avec ses propres regles).
@@ -210,7 +215,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         isLimitReached={isLimitReached}
         credits={credits}
         limit={limit}
-        isAdmin={isAdmin}
+        unlimitedCredits={unlimitedCredits}
         onGenerate={handleGenerate}
       />
     );

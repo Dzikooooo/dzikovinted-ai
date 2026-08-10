@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:beta": "vite build --mode beta",
+    "package:beta": "npm run build:beta && node scripts/package-beta.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run"
@@ -18,6 +20,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",
+    "archiver": "^7.0.1",
     "@eslint/js": "^9.9.1",
     "@types/chrome": "^0.2.2",
     "@types/react": "^18.3.5",

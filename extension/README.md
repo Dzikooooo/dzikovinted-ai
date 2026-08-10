@@ -18,7 +18,7 @@ Le build produit `extension/dist/`. Charger l'extension dans Chrome :
 1. `chrome://extensions`
 2. Activer "Mode développeur" (en haut à droite)
 3. "Charger l'extension non empaquetée" → sélectionner `extension/dist`
-4. Noter l'ID généré (affiché sous le nom de l'extension) et le mettre dans `VITE_RESELLOS_EXTENSION_ID` du `.env` **racine du repo** (pas celui de `extension/`) — c'est l'app web qui a besoin de connaître cet ID pour s'adresser à l'extension via `chrome.runtime.sendMessage`
+4. L'ID affiché sous le nom de l'extension doit correspondre à celui déjà renseigné dans `VITE_RESELLOS_EXTENSION_ID` du `.env` **racine du repo** (voir `.env.example` pour le détail) — c'est l'app web qui a besoin de connaître cet ID pour s'adresser à l'extension via `chrome.runtime.sendMessage`. Correctif 2026-08-10 : cet ID est désormais **stable** (calculé depuis le champ `key` de `manifest.config.ts`, pas depuis le chemin du dossier) — identique quel que soit l'endroit où `dist/` est chargé, aucune copie manuelle nécessaire à chaque rechargement. S'il diffère malgré tout, vérifie que `manifest.config.ts` contient bien `BETA_SIGNING_PUBLIC_KEY` et que le build n'est pas issu d'une autre copie du repo.
 
 Après toute modification du code de l'extension : `npm run build` puis, dans `chrome://extensions`, cliquer l'icône de rechargement de la carte de l'extension (l'ID reste stable tant qu'on recharge le même dossier `dist`).
 

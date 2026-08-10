@@ -15,6 +15,11 @@ interface ReserveResult {
 // requete concurrente si l'UPSERT reel avait deja serialise la premiere).
 // L'atomicite elle-meme vit dans la clause SQL (ON CONFLICT ... WHERE),
 // verifiee par construction/relecture, pas testable ici sans Postgres reel.
+interface ClaimOfferResult {
+  trial_period_days: number;
+  stripe_coupon_id: string | null;
+}
+
 function fakeSupabaseAdmin(opts: {
   reserveResult?: ReserveResult;
   reserveError?: unknown;
@@ -22,6 +27,11 @@ function fakeSupabaseAdmin(opts: {
   onUpsert?: (row: Record<string, unknown>) => void;
   rpcCalls?: { name: string; params: Record<string, unknown> }[];
   fromCalls?: string[];
+  // Programme Beta ResellOS (Lot 7+8) : par defaut, aucune offre pending
+  // (comportement identique a aujourd'hui) -- un test passe claimOfferResult
+  // pour simuler une offre reclamee.
+  claimOfferResult?: ClaimOfferResult;
+  claimOfferError?: unknown;
 }): SupabaseClient {
   return {
     from(table: string) {
@@ -44,6 +54,13 @@ function fakeSupabaseAdmin(opts: {
         return { data: [row], error: null };
       }
       if (name === "release_checkout_reservation") {
+        return { data: null, error: null };
+      }
+      if (name === "claim_commercial_offer") {
+        if (opts.claimOfferError) return { data: null, error: opts.claimOfferError };
+        return { data: opts.claimOfferResult ? [opts.claimOfferResult] : [], error: null };
+      }
+      if (name === "release_commercial_offer") {
         return { data: null, error: null };
       }
       throw new Error(`RPC inattendue dans ce test: ${name}`);
@@ -143,9 +160,11 @@ Deno.test("requete normale : reservation reussie -> Customer cree, subscriptions
     assertEquals(result.url, "https://checkout.stripe.com/fake");
   }
 
-  assertEquals(rpcCalls.length, 1);
+  assertEquals(rpcCalls.length, 2);
   assertEquals(rpcCalls[0].name, "reserve_checkout_slot");
   assertEquals(rpcCalls[0].params.p_user_id, "user-1");
+  assertEquals(rpcCalls[1].name, "claim_commercial_offer");
+  assertEquals(rpcCalls[1].params.p_user_id, "user-1");
 
   assertExists(createdCustomerParams);
   assertEquals((createdCustomerParams as { metadata: Record<string, string> }).metadata.user_id, "user-1");
@@ -164,6 +183,11 @@ Deno.test("requete normale : reservation reussie -> Customer cree, subscriptions
   assertEquals(params.client_reference_id, "user-1");
   assertEquals(params.mode, "subscription");
   assertEquals((params.line_items as Array<{ price: string }>)[0].price, "price_pro_test");
+
+  // Aucune offre pending pour cet utilisateur -- comportement inchange
+  // (Lot 7, point 5) : ni trial_period_days ni discounts.
+  assertEquals((params.subscription_data as Record<string, unknown>).trial_period_days, undefined);
+  assertEquals(params.discounts, undefined);
 
   // Aucune modification profiles.plan/credit ici -- seule "subscriptions" a
   // ete interrogee (voir garde dans fakeSupabaseAdmin.from()).
@@ -393,5 +417,136 @@ Deno.test("Customer Stripe existant mais supprime cote Stripe -> recree", async 
 
   assertEquals(result.ok, true);
   assertEquals(customerWasCreated, true);
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
+// Programme Beta ResellOS (Lot 7+8, 2026-08-10).
+
+Deno.test("offre pending existante -> trial_period_days et discounts transmis a Stripe", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  let sessionParams: Record<string, unknown> | null = null;
+
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({ onSessionCreate: (p) => { sessionParams = p; } }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+        claimOfferResult: { trial_period_days: 30, stripe_coupon_id: "BETA50" },
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+
+  assertEquals(result.ok, true);
+  assertExists(sessionParams);
+  const params = sessionParams as Record<string, unknown>;
+  assertEquals((params.subscription_data as Record<string, unknown>).trial_period_days, 30);
+  assertEquals(params.discounts, [{ coupon: "BETA50" }]);
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
+Deno.test("offre pending sans coupon (trial seul) -> pas de discounts, trial_period_days present", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  let sessionParams: Record<string, unknown> | null = null;
+
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({ onSessionCreate: (p) => { sessionParams = p; } }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+        claimOfferResult: { trial_period_days: 30, stripe_coupon_id: null },
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+
+  assertEquals(result.ok, true);
+  assertExists(sessionParams);
+  const params = sessionParams as Record<string, unknown>;
+  assertEquals((params.subscription_data as Record<string, unknown>).trial_period_days, 30);
+  assertEquals(params.discounts, undefined);
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
+Deno.test("Stripe echoue apres claim de l'offre -> release_commercial_offer appelee (retry possible)", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  const rpcCalls: { name: string; params: Record<string, unknown> }[] = [];
+
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({ sessionThrows: true }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+        claimOfferResult: { trial_period_days: 30, stripe_coupon_id: "BETA50" },
+        rpcCalls,
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+
+  assertEquals(result.ok, false);
+  const releaseOfferCalls = rpcCalls.filter((c) => c.name === "release_commercial_offer");
+  assertEquals(releaseOfferCalls.length, 1);
+  assertEquals(releaseOfferCalls[0].params.p_user_id, "user-1");
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
+Deno.test("Stripe echoue sans offre reclamee -> release_commercial_offer jamais appelee", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  const rpcCalls: { name: string; params: Record<string, unknown> }[] = [];
+
+  await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({ sessionThrows: true }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+        rpcCalls,
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+
+  assertEquals(rpcCalls.some((c) => c.name === "release_commercial_offer"), false);
+  Deno.env.delete("STRIPE_PRO_PRICE_ID");
+});
+
+Deno.test("claim_commercial_offer en erreur (panne DB) -> checkout poursuit normalement sans offre", async () => {
+  Deno.env.set("STRIPE_PRO_PRICE_ID", "price_pro_test");
+  let sessionParams: Record<string, unknown> | null = null;
+
+  const result = await createCheckoutSessionForPlan(
+    {
+      stripe: fakeStripe({ onSessionCreate: (p) => { sessionParams = p; } }),
+      supabaseAdmin: fakeSupabaseAdmin({
+        reserveResult: { reserved: true, reason: "reserved", stripe_customer_id: "cus_existing" },
+        claimOfferError: { message: "connection refused" },
+      }),
+      now: NOW,
+    },
+    "user-1",
+    "user@example.invalid",
+    "pro"
+  );
+
+  // Une offre illisible ne doit jamais bloquer un upgrade payant normal --
+  // le Checkout se cree sans trial ni coupon, exactement comme si aucune
+  // offre n'existait.
+  assertEquals(result.ok, true);
+  assertExists(sessionParams);
+  const params = sessionParams as Record<string, unknown>;
+  assertEquals((params.subscription_data as Record<string, unknown>).trial_period_days, undefined);
+  assertEquals(params.discounts, undefined);
   Deno.env.delete("STRIPE_PRO_PRICE_ID");
 });

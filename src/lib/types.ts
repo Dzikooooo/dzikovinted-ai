@@ -163,6 +163,13 @@ export interface TicketMessage {
   created_at: string;
 }
 
+// Programme Beta ResellOS (audit valide 2026-08-10) : program_status est une
+// simple etiquette d'appartenance, jamais lue pour une decision de credits.
+// credits_mode est l'entitlement reel -- 'unlimited' ne modifie jamais le
+// solde `credits` (voir DashboardHome.tsx/GeneratorPage.tsx : unlimitedCredits).
+export type ProgramStatus = 'standard' | 'beta_tester';
+export type CreditsMode = 'standard' | 'unlimited';
+
 export interface Profile {
   id: string;
   email: string;
@@ -173,6 +180,8 @@ export interface Profile {
   avatar_url: string | null;
   banned: boolean;
   created_at: string;
+  program_status: ProgramStatus;
+  credits_mode: CreditsMode;
 }
 
 export type NotificationType = 'sale' | 'community' | 'admin_broadcast';
@@ -430,6 +439,23 @@ export interface Subscription {
   current_period_start: string | null;
   current_period_end: string | null;
   created_at: string;
+}
+
+// Avantage commercial du Programme Beta (troisieme axe, independant de
+// Profile.program_status/credits_mode) -- voir
+// 20260810110000_add_beta_commercial_offers.sql. Jamais lu/ecrit directement
+// par le client (RLS deny-by-default) : uniquement via les RPC admin_* dans
+// AdminUsersPage.tsx.
+export type CommercialOfferStatus = 'pending' | 'applied' | 'expired';
+
+export interface BetaCommercialOffer {
+  id: string;
+  user_id: string;
+  trial_period_days: number;
+  stripe_coupon_id: string | null;
+  status: CommercialOfferStatus;
+  created_at: string;
+  applied_at: string | null;
 }
 
 export const PLAN_LIMITS: Record<Plan, number | null> = {
