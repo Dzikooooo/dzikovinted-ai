@@ -4,6 +4,7 @@ import { withRetry } from "./retry";
 import { getValidAccessToken } from "./session";
 import { toLocalDateString } from "../lib/date";
 import { extractSkuFromTitle, runSkuRepair } from "../lib/sku";
+import { deriveResellOsStatus, resolveStaleDraftStatus } from "./listingStatusSync";
 import type { ListingPayload, SingleItemPayload } from "../lib/messages";
 
 // reportSkuRepair (2026-07-27, chantier "auto-reparation SKU" -- separe de
@@ -139,12 +140,6 @@ interface ExistingLinkedListing {
   vinted_sync_status: string | null;
 }
 
-function deriveResellOsStatus(vintedStatus: string): "draft" | "en_stock" | "vendu" {
-  if (vintedStatus === "sold_completed") return "vendu";
-  if (vintedStatus === "draft") return "draft";
-  return "en_stock";
-}
-
 // `listings` est desormais l'unique source de verite (fusion avec l'ancienne
 // vinted_listings, 2026-07-09) : une annonce Vinted EST la meme ligne que
 // l'article ResellOS correspondant. Deux categories de champs sur une meme
@@ -278,6 +273,35 @@ export async function recordListings(
           payload.sold_price = l.price;
           payload.sold_date = todayLocal;
         }
+      }
+
+      // Bug reel confirme en test live (2026-08-11, mission "brouillon
+      // fantome") : `status` (colonne ResellOS interne, lue par
+      // checkListingRepublishEligible) restait bloquee sur "draft" pour
+      // toujours des qu'une ligne avait ce statut, meme apres que Vinted
+      // confirme l'annonce reellement publiee (vinted_status, lui, est deja
+      // correctement rafraichi plus haut) -- voir resolveStaleDraftStatus
+      // pour le detail. N'a d'effet que si justSold ne vient pas deja de
+      // decider payload.status juste au-dessus. Journalise uniquement le cas
+      // pertinent (existing.status "draft") -- pas a chaque synchro passive
+      // de chaque annonce, pour ne pas noyer le ring buffer de logger.ts
+      // (MAX_ENTRIES=400, deja documente comme point de fragilite reel).
+      if (payload.status === undefined && existing.status === "draft") {
+        logger.info("REPUBLISH_STATUS_RAW", {
+          vintedItemId: l.vintedItemId,
+          existingResellOsStatus: existing.status,
+          rawVintedStatus: l.status,
+          previousVintedStatus: existing.vinted_status,
+        });
+        const refreshed = resolveStaleDraftStatus(existing.status, l.status);
+        if (refreshed) {
+          payload.status = refreshed;
+        }
+        logger.info("REPUBLISH_STATUS_NORMALIZED", {
+          vintedItemId: l.vintedItemId,
+          previousResellOsStatus: existing.status,
+          nextResellOsStatus: refreshed ?? existing.status,
+        });
       }
 
       toUpdate.push({ id: existing.id, payload, guardSyncStatus: !draftPending });

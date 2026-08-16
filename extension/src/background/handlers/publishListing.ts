@@ -48,6 +48,7 @@ import type {
 } from "../../lib/messages";
 import { errorDetails, errorMessage } from "../../lib/errorMessage";
 import { arrayBufferToBase64, describeBinaryValue } from "../../lib/binaryTransport";
+import { enrichListingIfNeeded } from "./enrichListing";
 
 // Mission "PORT MESSAGE FERMÉ" (2026-08-11) : etiquette constante de l'onglet
 // PRINCIPAL (visible, actif) dans tous les logs TAB_*/SEND_MESSAGE_* -- a
@@ -250,7 +251,7 @@ export async function handlePublishListing(
   onProgress: (step: PublishStep) => void,
   onPrefillSummary: (confirmed: string[], pending: string[]) => void = () => {}
 ): Promise<RunActionOutcome> {
-  const payload = request.payload as unknown as PublishListingPayload;
+  let payload = request.payload as unknown as PublishListingPayload;
 
   onProgress("preparing");
 
@@ -265,14 +266,19 @@ export async function handlePublishListing(
     category: payload.category,
   });
 
-  // Enrichissement de republish_listing (auto-completion depuis l'annonce
-  // precedente) pas encore branche ici -- commit dedie separe, voir
-  // enrichListing.ts. `payload` reste donc pour l'instant strictement celui
-  // recu de l'app, sans modification.
+  // Enrichissement lazy (audit "prefill partiel", 2026-08-10-11) : republish_listing
+  // uniquement (previousVintedItemId requis, voir enrichListing.ts) -- best-effort,
+  // ne bloque jamais la republication, ne fait rien si description deja presente.
+  if (request.kind === "republish_listing") {
+    const previousVintedItemId = (request.payload as { previousVintedItemId?: unknown }).previousVintedItemId;
+    if (typeof previousVintedItemId === "string") {
+      payload = await enrichListingIfNeeded(payload, previousVintedItemId);
+    } else {
+      logger.warn("HANDLE_PUBLISH_NO_PREVIOUS_ITEM_ID", { payloadHasKey: "previousVintedItemId" in request.payload });
+    }
+  }
 
-  // Preuve directe du payload (inchange pour l'instant, voir commentaire
-  // ci-dessus) juste avant qu'il ne serve a fetcher les photos et a
-  // construire la commande PUBLISH_LISTING. juste avant qu'il ne
+  // Preuve directe du payload APRES enrichissement, juste avant qu'il ne
   // serve a fetcher les photos et a construire la commande PUBLISH_LISTING --
   // si ces valeurs different de HANDLE_PUBLISH_PAYLOAD_BEFORE_ENRICH, la
   // reaffectation `payload = await enrichListingIfNeeded(...)` a bien
