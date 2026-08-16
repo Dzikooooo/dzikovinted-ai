@@ -73,6 +73,48 @@ export interface PublishListingPayload {
   expectedVintedUsername: string;
 }
 
+// Audit "prefill partiel" (2026-08-10) : le fetch() des photos est deplace
+// du content script (vinted-publish.ts, soumis au CORS de vinted.fr) vers
+// handlePublishListing.ts (background, beneficie de host_permissions sur
+// images*.vinted.net, voir manifest.config.ts). Le content script ne recoit
+// plus jamais d'URL a fetcher lui-meme -- uniquement le resultat deja tente,
+// succes ou echec explicite, jamais suppose. arrayBuffer null = fetch echoue
+// (voir error) ; le content script ne retente jamais lui-meme.
+// Champs de diagnostic ajoutes (mission "5 photos non reconnues comme images",
+// 2026-08-11) : PHOTO_CONTENT_NOT_RECOGNIZED_AS_IMAGE observe 5/5 en test live
+// -- avant de supposer quoi que ce soit (faux positif du sniffer vs contenu
+// reellement invalide), il faut pouvoir comparer le Content-Type HTTP declare
+// par le CDN aux magic bytes reels, et savoir si une redirection a eu lieu
+// (ex. vers une page d'erreur/challenge). Tous optionnels/nullable -- best
+// effort, ne doivent jamais faire echouer fetchPhoto() si absents.
+export interface FetchedPhoto {
+  url: string;
+  arrayBuffer: ArrayBuffer | null;
+  mimeType: string | null;
+  fileName: string;
+  error: string | null;
+  httpStatus: number | null;
+  contentTypeHeader: string | null;
+  contentLengthHeader: string | null;
+  finalUrl: string | null;
+  redirected: boolean | null;
+}
+
+// Mission "PREUVE LIVE PRECISE -- TRANSPORT BINAIRE PHOTOS" (2026-08-11) :
+// CAUSE CONFIRMEE -- chrome.tabs.sendMessage() serialise son message via
+// JSON (documente par Chrome), pas via clone structure complet -- un
+// ArrayBuffer degenere en "{}" a la traversee (aucune propriete enumerable
+// propre), perdant integralement les octets. Forme "sur le fil" de
+// FetchedPhoto : arrayBuffer (binaire reel) remplace par arrayBufferBase64
+// (string, JSON-safe) -- utilisee UNIQUEMENT entre sendPublishCommand()
+// (background, encode) et le listener PUBLISH_LISTING (content script,
+// decode immediatement en ArrayBuffer reel avant tout autre traitement).
+// fetchPhoto()/reconstructPhotoFiles() ne voient jamais ce type, ils
+// continuent de manipuler FetchedPhoto (ArrayBuffer reel) sans changement.
+export interface FetchedPhotoWire extends Omit<FetchedPhoto, "arrayBuffer"> {
+  arrayBufferBase64: string | null;
+}
+
 // Duplique EditableFieldName (src/lib/actions/handlers/editListing.ts) --
 // meme convention de duplication assumee pour EditListingPayload.
 export type EditableFieldName =
@@ -143,10 +185,54 @@ export interface VerifyEditFieldsPayload {
 }
 
 // Background -> content script, via chrome.tabs.sendMessage.
+//
+// AUTO_ENRICH_REQUESTED (audit "prefill partiel", 2026-08-10) : envoye a un
+// onglet Vinted ouvert en arriere-plan (inactive:true) sur la page d'une
+// annonce EXISTANTE (/items/{id}), jamais /items/new -- demande a
+// vinted-item.ts d'extraire les details complets (meme fonctions que le clic
+// "Importer", voir buildPayload() dans ce fichier) et de les renvoyer
+// directement dans la reponse, SANS jamais afficher son bouton flottant ni
+// attendre une action utilisateur. Reponse type AutoEnrichResponse.
 export type ContentCommand =
-  | { type: "PUBLISH_LISTING"; payload: PublishListingPayload }
+  | { type: "PUBLISH_LISTING"; payload: PublishListingPayload; photos: FetchedPhotoWire[] }
   | { type: "EDIT_LISTING"; payload: EditListingPayload }
-  | { type: "VERIFY_EDIT_FIELDS"; payload: VerifyEditFieldsPayload };
+  | { type: "VERIFY_EDIT_FIELDS"; payload: VerifyEditFieldsPayload }
+  | { type: "AUTO_ENRICH_REQUESTED" };
+
+// Reponse directe (callback de chrome.tabs.sendMessage) a AUTO_ENRICH_REQUESTED
+// -- distincte de ContentReport (qui porte des messages POUSSES par le
+// content script de sa propre initiative) : ceci est la reponse synchrone-ish
+// a UNE commande precise, meme convention que ImportItemResponse/
+// CheckItemLinkedResponse plus bas dans ce fichier.
+export type AutoEnrichResponse =
+  | { ok: true; item: SingleItemPayload; vintedUsername: string }
+  | { ok: false; error: string };
+
+// Reponse synchrone (ACK) a PUBLISH_LISTING (mission "ACK PUBLISH_LISTING
+// MANQUANT", 2026-08-11) -- CAUSE CONFIRMEE en test live : l'ancien listener
+// (vinted-publish.ts) ne repondait JAMAIS (ni sendResponse, ni return true),
+// laissant Chrome fermer le port avant reponse ("message port closed before a
+// response was received.") alors meme que le content script avait bien recu
+// le message et demarre runPublish(). Distingue desormais explicitement DEUX
+// notions : "la commande a ete remise au content script" (ce type) vs "la
+// republication est terminee" (toujours PUBLISH_RESULT/onTabUpdated,
+// jamais confondus). `duplicate:true` si PUBLISH_LISTING arrive alors qu'un
+// runPublish() est deja en cours dans ce document -- accepte proprement SANS
+// relancer un second traitement (voir runPublishInFlight, vinted-publish.ts).
+// documentInstanceId (mission "DIAGNOSTIC LIVE APRES REJET DES PHOTOS
+// INVALIDES", 2026-08-11) : identifiant genere UNE FOIS au boot du content
+// script (const module-level, voir vinted-publish.ts), stable tant que le
+// MEME document JS reste vivant. Permet de prouver -- au lieu de le
+// supposer -- si le document qui a repondu a PUBLISH_LISTING (donc dont
+// runPublish() a demarre) est bien le MEME document que celui finalement
+// visible/rempli par l'utilisateur, ou si une navigation Vinted l'a remplace
+// entre-temps par un document B jamais destinataire de la commande.
+export interface PublishCommandResponse {
+  ok: true;
+  accepted: true;
+  duplicate: boolean;
+  documentInstanceId: string;
+}
 
 // Content script -> background, via chrome.runtime.sendMessage (meme canal
 // interne que ACCOUNT_DETECTED/LISTINGS_DETECTED, capte par onMessage).
@@ -183,9 +269,35 @@ export type ContentCommand =
 // de rapporter PUBLISH_RESULT normalement. Seul ce signal precis indique a
 // handleEditListing.ts de laisser l'onglet Vinted ouvert au lieu de le
 // fermer, pour permettre l'inspection manuelle du DOM reel qui a echoue.
+// PUBLISH_PREFILL_SUMMARY (republication assistee, 2026-08-11) : envoye une
+// seule fois par vinted-publish.ts juste apres la phase de remplissage
+// automatise (texte + photos, seuls champs jamais tentes ici -- voir le
+// commentaire d'en-tete de resolveCategory() dans formFill.ts : le picker
+// categorie n'ouvre jamais via script, et brand/size/condition/color/material
+// n'existent meme pas dans le DOM tant qu'une categorie feuille n'a pas ete
+// choisie). `confirmed` ne liste que les champs RELUS dans le DOM apres
+// ecriture (jamais juste "tentes") ; `pending` liste les champs que
+// l'utilisateur doit terminer lui-meme sur Vinted, EXCLUANT tout champ vide
+// dans l'annonce d'origine (inutile de demander de "confirmer" un champ que
+// le vendeur n'avait jamais renseigne). Cote handlePublishListing.ts,
+// reception de ce message marque aussi le debut de la phase d'attente d'un
+// clic reel de l'utilisateur (voir keepTabOpen sur timeout).
+// PUBLISH_TAB_READY (mission "port message ferme", 2026-08-11) : MEME cause
+// racine et MEME correctif qu'EDIT_TAB_READY ci-dessus, appliques a
+// publish_listing -- vinted-publish.ts se chargeait de facon asynchrone sur
+// /items/new (plusieurs cycles de navigation reels observes en direct, voir
+// TAB_UPDATED repetes avant "complete") et handlePublishListing.ts envoyait
+// PUBLISH_LISTING en aveugle (retry a duree fixe) des la creation de
+// l'onglet -- "Receiving end does not exist" puis "message port closed"
+// confirmes en test live, jamais recus cote content script
+// (CONTENT_SCRIPT_MESSAGE_RECEIVED absent des logs). Desormais le content
+// script signale explicitement sa disponibilite ; PUBLISH_LISTING n'est
+// envoye qu'apres reception de ce signal, jamais avant.
 export type ContentReport =
   | { type: "PUBLISH_PROGRESS"; step: PublishStep }
   | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome }
+  | { type: "PUBLISH_PREFILL_SUMMARY"; confirmed: string[]; pending: string[] }
+  | { type: "PUBLISH_TAB_READY"; documentInstanceId: string }
   | { type: "EDIT_TAB_READY" }
   | { type: "EDIT_SAVE_SUBMITTED"; vintedItemId: string; vintedUrl: string }
   | {
@@ -205,7 +317,7 @@ export type ContentReport =
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PUBLISH_LISTING" || type === "EDIT_LISTING" || type === "VERIFY_EDIT_FIELDS";
+  return type === "PUBLISH_LISTING" || type === "EDIT_LISTING" || type === "VERIFY_EDIT_FIELDS" || type === "AUTO_ENRICH_REQUESTED";
 }
 
 export function isContentReport(msg: unknown): msg is ContentReport {
@@ -214,6 +326,8 @@ export function isContentReport(msg: unknown): msg is ContentReport {
   return (
     type === "PUBLISH_PROGRESS" ||
     type === "PUBLISH_RESULT" ||
+    type === "PUBLISH_PREFILL_SUMMARY" ||
+    type === "PUBLISH_TAB_READY" ||
     type === "EDIT_TAB_READY" ||
     type === "EDIT_SAVE_SUBMITTED" ||
     type === "EDIT_VERIFICATION_RESULT" ||
@@ -233,7 +347,14 @@ export const ACTION_PROGRESS_PORT_NAME = "action-progress";
 // pour la meme etape reemise periodiquement. Aucune signification metier,
 // uniquement un vrai appel chrome.runtime.Port.postMessage() qui
 // reinitialise le minuteur d'inactivite de Chrome cote background.
-export type ActionProgressPortMessage = { type: "progress"; step: PublishStep } | { type: "heartbeat" };
+// "prefill_summary" (republication assistee, 2026-08-11) : relaie
+// PUBLISH_PREFILL_SUMMARY (voir ContentReport) jusqu'a l'app via le meme
+// port persistant que la progression -- l'app n'a besoin de cette
+// information qu'une seule fois par action, jamais rejouee comme "progress".
+export type ActionProgressPortMessage =
+  | { type: "progress"; step: PublishStep }
+  | { type: "prefill_summary"; confirmed: string[]; pending: string[] }
+  | { type: "heartbeat" };
 
 // App web -> background, via chrome.runtime.sendMessage(EXTENSION_ID, ...)
 // (externally_connectable, limite a l'origine de l'app - voir manifest.config.ts)

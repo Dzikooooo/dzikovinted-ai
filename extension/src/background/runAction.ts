@@ -15,7 +15,16 @@ import { handlePublishListing } from "./handlers/publishListing";
 import { handleEditListing } from "./handlers/editListing";
 import type { ActionKind, PublishStep, RunActionOutcome, RunActionRequest } from "../lib/messages";
 
-type ActionHandler = (request: RunActionRequest, onProgress: (step: PublishStep) => void) => Promise<RunActionOutcome>;
+// onPrefillSummary (republication assistee, 2026-08-11) : optionnel --
+// seul handlePublishListing.ts le consomme reellement aujourd'hui (voir son
+// commentaire d'en-tete). Un handler qui l'ignore (ex. handleEditListing,
+// signature a 2 parametres) reste assignable ici, TypeScript autorisant une
+// fonction avec moins de parametres declares la ou plus sont attendus.
+type ActionHandler = (
+  request: RunActionRequest,
+  onProgress: (step: PublishStep) => void,
+  onPrefillSummary?: (confirmed: string[], pending: string[]) => void
+) => Promise<RunActionOutcome>;
 
 const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {
   publish_listing: handlePublishListing,
@@ -24,7 +33,7 @@ const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {
   // mecaniquement identique a publish_listing (memes /items/new, meme
   // content script vinted-publish.ts, meme formulaire de creation) -- seule
   // la logique d'eligibilite differe, et elle vit entierement cote app
-  // (checks.ts::checkListingNeedsRepublish, avant meme que RUN_ACTION ne
+  // (checks.ts::checkListingRepublishEligible, avant meme que RUN_ACTION ne
   // soit envoye). Aucun nouveau selecteur DOM, aucun nouveau risque jamais
   // teste en direct cote extension.
   republish_listing: handlePublishListing,
@@ -64,7 +73,8 @@ const KEEPALIVE_INTERVAL_MS = 20000;
 export async function runAction(
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void = () => {},
-  onKeepalive: () => void = () => {}
+  onKeepalive: () => void = () => {},
+  onPrefillSummary: (confirmed: string[], pending: string[]) => void = () => {}
 ): Promise<RunActionOutcome> {
   const handler = HANDLERS[request.kind];
   logger.info(`[${request.historyId}] runAction : dispatch vers le handler`, {
@@ -78,7 +88,7 @@ export async function runAction(
   }, KEEPALIVE_INTERVAL_MS);
 
   try {
-    const outcome: RunActionOutcome = handler ? await handler(request, onProgress) : { status: "not_implemented" };
+    const outcome: RunActionOutcome = handler ? await handler(request, onProgress, onPrefillSummary) : { status: "not_implemented" };
     logger.info(`[${request.historyId}] RUN_ACTION traité`, { kind: request.kind, status: outcome.status });
     return outcome;
   } finally {

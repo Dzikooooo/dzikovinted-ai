@@ -4,6 +4,19 @@ vi.mock("../logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// Republication V2 (2026-08-11, audit "prefill partiel") : publishListing.ts
+// importe desormais enrichListing.ts -> sync.ts -> supabaseClient.ts, dont le
+// module top-level appelle createClient() (GoTrueClient._emitInitialSession
+// tente aussitot chrome.storage.local.get -- objet chrome pas encore stubbe a
+// l'evaluation des imports, ES modules s'evaluent avant tout code de test).
+// Ce test ne verifie que le dispatch/routage (voir plus bas) -- jamais le
+// comportement reel de recordSingleItemImport -- mocker tout le module
+// evite d'evaluer sync.ts (et donc supabaseClient.ts) du tout, meme
+// discipline que le mock logger ci-dessus.
+vi.mock("../sync", () => ({
+  recordSingleItemImport: vi.fn(),
+}));
+
 import { runAction } from "../runAction";
 import { logger } from "../logger";
 import type { ActionKind, RunActionRequest } from "../../lib/messages";
@@ -53,7 +66,20 @@ describe("runAction", () => {
       },
     };
     try {
-      const outcome = await runAction(makeRequest("republish_listing"));
+      // Republication V2 (2026-08-11, audit "prefill partiel") : handlePublishListing
+      // fetch desormais les photos EN ARRIERE-PLAN avant meme d'ouvrir l'onglet
+      // Vinted (voir fetchAllPhotos, publishListing.ts) -- payload:{} (comme les
+      // autres kinds de ce fichier) ferait planter Promise.all(undefined.map(...))
+      // avant meme d'atteindre chrome.tabs.create, invalidant la preuve de
+      // dispatch recherchee ici. imageUrls:[] suffit (0 photo a fetcher, resout
+      // immediatement) sans reintroduire un payload pleinement realiste.
+      const request: RunActionRequest = {
+        historyId: "history-1",
+        kind: "republish_listing",
+        vintedAccountId: "account-1",
+        payload: { imageUrls: [], description: "" },
+      };
+      const outcome = await runAction(request);
       // Preuve du dispatch : si republish_listing n'avait aucun handler, le
       // fallback runAction.ts renverrait { status: "not_implemented" } sans
       // jamais toucher chrome.tabs.create -- un statut "error" prouve que

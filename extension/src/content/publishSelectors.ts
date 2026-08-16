@@ -56,6 +56,27 @@ export const BRAND_DROPDOWN_TRIGGER_SELECTOR = '[data-testid="brand-select-dropd
 // -- cause racine confirmee d'un echec reel (selectMatchingOption utilisait par
 // defaut le selecteur de la categorie pour tous les pickers, y compris marque).
 export const BRAND_DROPDOWN_CONTENT_SELECTOR = '[data-testid="brand-select-dropdown-content"]';
+// Mission "BRAND SEARCH INPUT LOCATOR" (2026-08-16) : preuve live directe --
+// BRAND_DROPDOWN_TRIGGER_SELECTOR est readonly (voir son DOM reel :
+// <input readonly id="brand" ...>), uniquement l'affichage de la valeur
+// choisie. Diagnostic dedie confirme qu'aucune frappe (keydown/beforeinput/
+// input/keyup) n'atteint jamais ce trigger meme pendant une frappe humaine
+// reelle, alors que Vinted emet bien /api/v2/item_upload/brands?keyword=...
+// et filtre visiblement les resultats -- la frappe atterrit forcement
+// ailleurs. Meme architecture que CATEGORY_SEARCH_INPUT_SELECTOR ci-dessus
+// (un champ de recherche DEDIE, distinct du trigger, monte dans le panneau
+// une fois ouvert) mais ICI CONFIRMEE EN DIRECT (contrairement a celle de la
+// categorie, jamais exercee) : #brand-search-input recoit reellement la
+// frappe et declenche le filtrage. Fallback sur le data-testid si l'id
+// venait a changer.
+export const BRAND_SEARCH_INPUT_SELECTOR = "#brand-search-input";
+export const BRAND_SEARCH_INPUT_FALLBACK_SELECTOR = '[data-testid="brand-search--input"]';
+// Resultat filtre : PAS le <li> parent (verifie en direct, li.click() ne
+// selectionne rien) mais la Cell interactive qu'il contient
+// (role="button", portant aria-label="<nom exact de la marque>",
+// id="brand-{id numerique Vinted}" -- id NON stable, ne jamais s'appuyer
+// dessus). target.click() sur cette Cell est confirme en direct.
+export const BRAND_RESULT_CELL_SELECTOR = '[role="button"][aria-label]';
 export const SIZE_GRID_TRIGGER_SELECTOR = '[data-testid="category-size-single-grid-input"]';
 // Liste verifiee en direct (les 2 premieres options + debut de la 3e,
 // visible au scroll) : "Neuf avec etiquette", "Neuf sans etiquette",

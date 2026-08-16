@@ -37,6 +37,13 @@ function reportActionProgress(step: PublishStep): void {
   activeProgressPort?.postMessage({ type: "progress", step } satisfies ActionProgressPortMessage);
 }
 
+// Republication assistee (2026-08-11) : relaie PUBLISH_PREFILL_SUMMARY vers
+// l'app via le meme port que reportActionProgress ci-dessus -- voir
+// handlePublishListing.ts pour la production de ce message.
+function reportPrefillSummary(confirmed: string[], pending: string[]): void {
+  activeProgressPort?.postMessage({ type: "prefill_summary", confirmed, pending } satisfies ActionProgressPortMessage);
+}
+
 // Maintien du service worker MV3 actif pendant une action longue (voir
 // commentaire detaille dans runAction.ts) -- reutilise le MEME port deja
 // ouvert par l'app, distinct de reportActionProgress() pour ne jamais
@@ -46,14 +53,28 @@ function sendKeepaliveHeartbeat(): void {
 }
 
 // Messages venant de l'app web (externally_connectable, voir manifest.config.ts).
-chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  // Instrumentation TEMPORAIRE (diagnostic Bug Live n2, republication assistee,
+  // 2026-08-10) -- a retirer une fois la cause confirmee. Objectif : si
+  // sender.origin n'est pas dans externally_connectable.matches du manifest
+  // REELLEMENT charge par Chrome, ce listener n'est jamais invoque du tout --
+  // cette ligne n'apparaitra alors JAMAIS dans la console du service worker
+  // ni dans le journal persiste (logger.getRecent() depuis le popup), ce qui
+  // est en soi le signal recherche. Deja arrive deux fois avec ce meme
+  // symptome (voir manifest.config.ts, commentaire buildExternallyConnectableMatches).
+  logger.debug("onMessageExternal recu", {
+    type: (message as { type?: unknown } | null)?.type,
+    senderOrigin: sender.origin,
+    senderUrl: sender.url,
+  });
+
   if (!isExternalMessage(message)) {
     sendResponse({ ok: false, error: "Message externe inconnu" } satisfies ExternalResponse);
     return false;
   }
 
   if (message.type === "PING") {
-    logger.debug("PING recu (onMessageExternal)");
+    logger.debug("PING recu (onMessageExternal), reponse {ok:true} envoyee");
     sendResponse({ ok: true } satisfies ExternalResponse);
     return false;
   }
@@ -71,7 +92,10 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
 
   if (message.type === "GET_STATUS") {
     getStatus()
-      .then(sendResponse)
+      .then((status) => {
+        logger.debug("GET_STATUS (externe) reponse envoyee", status);
+        sendResponse(status);
+      })
       .catch((err: unknown) => {
         logger.error("GET_STATUS (externe) a echoue", errorMessage(err));
         sendResponse({ paired: false, pairedUserId: null, vintedConnected: false, lastSyncedAt: null, lastError: "Erreur interne" });
@@ -95,7 +119,7 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
       vintedAccountId: message.request.vintedAccountId,
       listingId: message.request.listingId,
     });
-    runAction(message.request, reportActionProgress, sendKeepaliveHeartbeat)
+    runAction(message.request, reportActionProgress, sendKeepaliveHeartbeat, reportPrefillSummary)
       .then((outcome) => sendResponse({ ok: true, outcome } satisfies RunActionResponse))
       .catch((err: unknown) => {
         console.error("[ResellOS][action]", err);

@@ -51,6 +51,21 @@ export function dispatchFullClick(el: HTMLElement): void {
   el.dispatchEvent(new MouseEvent("click", { ...mouseInit, buttons: 0 }));
 }
 
+// Mission "LIVE RETEST RESULTS -- FIX SIZE/COLOR CONFIRMATION + COLOR
+// DROPDOWN CLOSURE" (2026-08-13) : preuve live directe -- apres une
+// selection Couleur reussie ("Bleu" correctement stocke, visible sur
+// Vinted), le dropdown restait visuellement ouvert. Un appui MANUEL sur
+// Echap l'a ferme SANS desselectionner "Bleu" -- Escape est donc une
+// fermeture live-confirmee sure APRES une selection reussie. keydown ET
+// keyup emis (comme dispatchFullClick emet toute la sequence pointer/mouse)
+// -- certains gestionnaires de fermeture ecoutent l'un ou l'autre, jamais
+// verifie lequel precisement pour ce composant.
+export function dispatchEscapeKey(el: Element): void {
+  const keyInit: KeyboardEventInit = { key: "Escape", code: "Escape", keyCode: 27, which: 27, bubbles: true, cancelable: true, composed: true };
+  el.dispatchEvent(new KeyboardEvent("keydown", keyInit));
+  el.dispatchEvent(new KeyboardEvent("keyup", keyInit));
+}
+
 // Positionne la valeur d'un champ controle React : passer par le setter
 // natif puis emettre "input" bouillonnant, seule methode fiable pour qu'un
 // input controle par React detecte le changement (assigner .value
@@ -162,6 +177,58 @@ export async function typeIntoPriceField(el: HTMLInputElement, value: string): P
   console.log(`[ResellOS][STEP] BLUR_EVENT`, { field: fieldLabel, domValueAfter: el.value });
 }
 
+// Mission "BRAND SEARCH INPUT LOCATOR" (2026-08-16) : les 3 tentatives
+// precedentes (setNativeValue en bloc, frappe caractere par caractere,
+// puis + keydown/keyup) ciblaient TOUTES BRAND_DROPDOWN_TRIGGER_SELECTOR --
+// preuve live directe (diagnostic dedie, listener document/capture) que ce
+// trigger ne recoit JAMAIS de frappe, meme humaine reelle (readonly, voir
+// son DOM). Cause du blocage : mauvais element cible depuis le debut, pas
+// une sequence d'evenements insuffisante. Le vrai champ de recherche est
+// #brand-search-input (BRAND_SEARCH_INPUT_SELECTOR, publishSelectors.ts),
+// un input SEPARE monte dans le panneau une fois ouvert. Technique
+// CONFIRMEE EN DIRECT sur CE champ precis (test manuel isole avant
+// implementation) : setter natif + UN SEUL InputEvent("input",
+// inputType:"insertText") suffit a declencher le filtrage reel Vinted --
+// aucune frappe caractere par caractere ni evenement clavier necessaire ici
+// (contrairement a l'hypothese precedente, qui s'averait fausse parce que
+// testee sur le mauvais element). Remplace typeIntoBrandSearchField
+// (supprimee, plus jamais appelee -- ciblait un element dont on sait
+// desormais qu'il ne peut structurellement pas recevoir de frappe).
+//
+// Deliberement SANS "blur" (comme l'ancienne version) : le champ de
+// recherche Marque fait partie d'un dropdown encore OUVERT -- le flou
+// fermerait tres probablement ce dropdown avant que le clic sur le
+// resultat filtre puisse avoir lieu.
+export function typeIntoBrandSearchInput(el: HTMLInputElement, value: string): void {
+  const fieldLabel = el.getAttribute("data-testid") ?? el.id ?? el.tagName;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
+  setter?.call(el, value);
+  el.dispatchEvent(new InputEvent("input", { bubbles: true, data: value, inputType: "insertText" }));
+  console.log(`[ResellOS][STEP] BRAND_SEARCH_INPUT_TYPED (frappe simulee)`, { field: fieldLabel, value, domValueAfter: el.value });
+}
+
+// Mission "REPUBLICATION FIDELE" (2026-08-11) : extrait de vinted-edit.ts
+// (fonction locale non exportee jusqu'ici, deja live-testee sur ce meme
+// champ prix cote edit_listing -- voir son commentaire "bug reel demontre en
+// test manuel direct le 2026-07-16"). Le champ prix Vinted reformate sa
+// valeur affichee ("24" -> "24,00") synchroniquement des les evenements
+// input/change/blur (voir setNativeValue) -- une comparaison de chaines
+// stricte compare alors "24" (attendu) a "24,00" (reellement affiche APRES
+// le reformatage) et rapporte a tort un echec, meme quand l'ecriture a
+// parfaitement reussi (cause du faux negatif observe en direct sur
+// vinted-publish.ts, mission "diagnostic final PHOTOS + CATEGORIE").
+export function parsePriceToNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  const normalized = raw
+    .replace(/\s/g, "")
+    .replace(",", ".")
+    .replace(/[^0-9.]/g, "");
+  if (normalized === "") return null;
+  const value = parseFloat(normalized);
+  return Number.isNaN(value) ? null : value;
+}
+
 export async function fillTextFields(fields: { title: string; description: string; price: number }): Promise<void> {
   const titleInput = await waitForElement<HTMLInputElement>(sel.TITLE_INPUT_SELECTOR);
   setNativeValue(titleInput, fields.title);
@@ -205,15 +272,82 @@ export async function resolveCategory(categoryText: string): Promise<void> {
 // en direct pour la marque : "brand-select-dropdown-content", distinct de
 // celui de la categorie). Rendre ce parametre obligatoire force chaque
 // appelant a etre explicite plutot que de deviner silencieusement.
-async function readOptionTexts(triggerSelector: string, contentSelector: string) {
-  const trigger = await waitForElement<HTMLElement>(triggerSelector);
+// Mission "FINIR LES CHAMPS MANQUANTS" (2026-08-11) : exportee (etait privee)
+// pour permettre a vinted-publish.ts de reutiliser TELLE QUELLE cette
+// mecanique d'ouverture/lecture DEJA prouvee en production (edit_listing),
+// sans dupliquer sa logique ni toucher a selectMatchingOption() (dont le
+// comportement/signature restent inchanges pour edit_listing).
+// Mission "CORRIGER LES ATTRIBUTS POST-CATEGORIE" (2026-08-12) : `triggerTimeoutMs`
+// AJOUTE (optionnel, defaut inchange -- 8000ms via waitForElement) -- preuve
+// live directe : sur /items/new, le trigger ETAT/TAILLE echoue en
+// "trigger_not_found" alors que MARQUE (3e champ tente dans la meme
+// sequence, donc ~16s+ apres la selection de categorie) reussit -- signal
+// fort que ces triggers ne sont pas absents mais rendus plus tardivement
+// (chargement asynchrone specifique a la categorie choisie cote Vinted),
+// jamais confirme en direct comme un probleme de selecteur errone. Elargir
+// CE timeout precis (appele uniquement par la reprise post-categorie) laisse
+// selectMatchingOption()/edit_listing totalement inchanges (aucun appel
+// existant ne passe ce parametre).
+// Mission "STOPPER LE DEBUG EN BOUCLE" (2026-08-12) : preuve directe, a LA
+// FRONTIERE meme ou l'argument pourrait se perdre (mauvais parametre
+// positionnel, valeur non transmise...), de ce que cette fonction a
+// REELLEMENT recu -- DEV uniquement (import.meta.env.DEV, meme convention
+// que le reste du projet, Lot 0) pour ne jamais alourdir les logs de
+// production ordinaires.
+//
+// Mission "REPUBLICATION VINTED : CORRIGER LES 5 ATTRIBUTS APRES CATEGORIE"
+// (2026-08-12) : BUG REEL CONFIRME PAR LECTURE DE CODE (pas une hypothese) --
+// `triggerTimeoutMs` n'etait applique QU'AU PREMIER waitForElement (le
+// trigger). Le SECOND, `waitForElement(contentSelector)` juste en dessous,
+// n'a jamais recu ce parametre et retombait donc TOUJOURS sur le defaut de
+// domWait.ts (8000ms), meme quand l'appelant demandait explicitement 20000ms.
+// Explique exactement le symptome live : conditionTriggerFound:true (le
+// PREMIER wait reussit, quasi instantane car l'element existe deja) mais
+// l'erreur finale porte toujours "8000ms" -- c'est le wait du CONTENU du
+// dropdown qui echouait, pas celui du trigger, mais le catch de l'appelant
+// (vinted-publish.ts) etiquetait a tort les deux "trigger_not_found". Les
+// deux waits partagent desormais le meme `triggerTimeoutMs` (le nom du
+// parametre reste, mais s'applique maintenant identiquement aux deux
+// etapes -- pas de nouveau parametre distinct, aucune raison de traiter le
+// contenu differemment du trigger).
+//
+// `onStep` (nouveau, optionnel) : callback appele a chaque etape franchie
+// AVANT de savoir si la suite va reussir -- meme pattern deja etabli dans ce
+// fichier pour `setNativeValue()` (`onEvent`). Permet a l'appelant (ici
+// vinted-publish.ts) de distinguer PRECISEMENT "trigger jamais trouve" de
+// "trigger trouve + clic tente mais contenu jamais apparu" de "contenu
+// trouve mais 0 options" -- au lieu d'un seul message generique. Aucun appel
+// existant (selectMatchingOption, jamais modifie) ne passe ce parametre :
+// comportement d'edit_listing rigoureusement inchange.
+export type ReadOptionTextsStep = "trigger_found" | "trigger_click_attempted" | "dropdown_content_found" | "options_read";
+
+export async function readOptionTexts(
+  triggerSelector: string,
+  contentSelector: string,
+  triggerTimeoutMs?: number,
+  onStep?: (step: ReadOptionTextsStep, detail: Record<string, unknown>) => void
+) {
+  if (import.meta.env.DEV) {
+    console.log("[ResellOS] READ_OPTION_TEXTS_CONFIG", { triggerSelector, contentSelector, receivedTriggerTimeoutMs: triggerTimeoutMs });
+  }
+  const timeoutOptions = triggerTimeoutMs ? { timeoutMs: triggerTimeoutMs } : {};
+
+  const trigger = await waitForElement<HTMLElement>(triggerSelector, timeoutOptions);
+  onStep?.("trigger_found", { triggerSelector });
+
   // dispatchFullClick (pas trigger.click()) : voir le commentaire de la
   // fonction -- un simple .click() natif n'a jamais ouvert le dropdown
   // marque en test reel (timeout confirme sur son contenu, pourtant
   // correctement cible par son selecteur).
   dispatchFullClick(trigger);
-  const content = await waitForElement(contentSelector);
+  onStep?.("trigger_click_attempted", { triggerSelector });
+
+  const content = await waitForElement(contentSelector, timeoutOptions);
+  onStep?.("dropdown_content_found", { contentSelector });
+
   const items = Array.from(content.querySelectorAll("li"));
+  onStep?.("options_read", { contentSelector, optionsCount: items.length });
+
   return { trigger, content, items, texts: items.map((li) => (li.textContent ?? "").trim()) };
 }
 

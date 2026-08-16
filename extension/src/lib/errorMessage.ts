@@ -33,3 +33,18 @@ export function errorMessage(err: unknown): string {
 
   return String(err);
 }
+
+// Audit "prefill partiel" (2026-08-11) : errorMessage() seule aplati toute
+// erreur en une simple chaine -- suffisant pour l'utilisateur, insuffisant
+// pour diagnostiquer PRECISEMENT ou une exception a ete levee (demande
+// explicite : "le log final seul ne suffit pas, je veux error.name/
+// error.message/stack/etape exacte ayant throw"). Complement, jamais un
+// remplacement -- utiliser aux points de log DEV/diagnostic uniquement,
+// jamais pour un message utilisateur (le stack n'a pas sa place la-bas).
+export function errorDetails(err: unknown): { name: string; message: string; stack: string | null } {
+  return {
+    name: err instanceof Error ? err.name : typeof err,
+    message: errorMessage(err),
+    stack: err instanceof Error ? err.stack ?? null : null,
+  };
+}
