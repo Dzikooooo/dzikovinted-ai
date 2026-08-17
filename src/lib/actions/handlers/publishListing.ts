@@ -3,10 +3,8 @@ import {
   checkAuthenticated,
   checkExtensionConnected,
   checkListingHasPhotos,
-  checkListingHasRequiredVintedFields,
   checkListingLoaded,
   checkListingNotAlreadyPublished,
-  checkPublishTemporarilyDisabled,
 } from '../checks';
 import type { ActionDefinition } from '../types';
 import { formatEUR } from '../../currency';
@@ -29,6 +27,12 @@ export interface PublishListingPayload {
   condition: string;
   color: string | null;
   material: string | null;
+  // Mission "MATIERE : MULTI-SELECT" (2026-08-16) : derive de `material` via
+  // src/lib/materials.ts::parseMaterials() au moment de la construction du
+  // payload (buildPublishPayload, ListingsManagementSection.tsx) -- voir
+  // extension/src/lib/messages.ts::PublishListingPayload pour le contrat
+  // complet cote content script.
+  materials?: string[];
   imageUrls: string[];
   packageSize: 'small' | 'medium' | 'large';
   expectedVintedUsername: string;
@@ -41,14 +45,20 @@ export interface PublishListingPayload {
 export const publishListingDefinition: ActionDefinition<PublishListingPayload> = {
   kind: 'publish_listing',
   label: 'Publier sur Vinted',
+  // Categorie/etat/attributs volontairement NON verifies ici (retire
+  // 2026-08-11, republication assistee) : vinted-publish.ts (content script)
+  // ne tente plus jamais de les selectionner automatiquement -- le trigger du
+  // panneau categorie exige un evenement isTrusted, impossible a simuler (voir
+  // son commentaire d'en-tete) -- ce sont desormais TOUJOURS des champs
+  // manuels sur Vinted (voir publishFieldSummary.ts::computeManualFields),
+  // que l'annonce ResellOS en porte une valeur ou non. Les bloquer ici
+  // empechait a tort l'ouverture de Vinted pour des annonces valides.
   checks: [
-    checkPublishTemporarilyDisabled,
     checkAuthenticated,
     checkExtensionConnected,
     checkAccountSelected,
     checkListingLoaded,
     checkListingHasPhotos,
-    checkListingHasRequiredVintedFields,
     checkListingNotAlreadyPublished,
   ],
   buildPreview: (request) => {

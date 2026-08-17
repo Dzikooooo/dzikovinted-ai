@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { describeTimeout, waitForCondition, waitForElement, WaitTimeoutError } from "../domWait";
+import { describeTimeout, waitForCondition, waitForElement, waitForElementMatching, WaitTimeoutError } from "../domWait";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -47,6 +47,37 @@ describe("waitForCondition", () => {
 
   it("rejects with WaitTimeoutError if the predicate never becomes true", async () => {
     await expect(waitForCondition(() => false, { timeoutMs: 50 })).rejects.toBeInstanceOf(WaitTimeoutError);
+  });
+});
+
+describe("waitForElementMatching", () => {
+  it("resolves immediately if the finder already matches", async () => {
+    document.body.innerHTML = '<button>Supprimer</button>';
+    const el = await waitForElementMatching(
+      () => Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "Supprimer") ?? null,
+      { timeoutMs: 500 }
+    );
+    expect(el.textContent).toBe("Supprimer");
+  });
+
+  it("resolves once a DOM mutation makes the finder match", async () => {
+    const promise = waitForElementMatching(
+      () => Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "Confirmer et supprimer") ?? null,
+      { timeoutMs: 2000 }
+    );
+    setTimeout(() => {
+      const btn = document.createElement("button");
+      btn.textContent = "Confirmer et supprimer";
+      document.body.appendChild(btn);
+    }, 20);
+    const el = await promise;
+    expect(el.textContent).toBe("Confirmer et supprimer");
+  });
+
+  it("rejects with WaitTimeoutError if the finder never matches", async () => {
+    await expect(waitForElementMatching(() => null, { timeoutMs: 50, description: "bouton introuvable" })).rejects.toBeInstanceOf(
+      WaitTimeoutError
+    );
   });
 });
 

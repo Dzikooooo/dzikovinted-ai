@@ -24,7 +24,7 @@
 // juste avant, et toute exception inattendue est capturee et loguee
 // (jamais de disparition silencieuse du script ni du bouton).
 
-import { waitForElement } from "./domWait";
+import { waitForElement, waitForCondition, waitForElementMatching } from "./domWait";
 import { LOGGED_IN_USERNAME_SELECTOR } from "./publishSelectors";
 import {
   extractCondition,
@@ -34,7 +34,24 @@ import {
   extractSize,
   extractVintedItemId,
 } from "./itemSelectors";
-import type { CheckItemLinkedResponse, ImportItemResponse, SingleItemPayload } from "../lib/messages";
+import { dispatchFullClick } from "./formFill";
+import {
+  DELETE_CONFIRM_TEXT,
+  DELETE_MODAL_HEADING_TEXT,
+  DELETE_TRIGGER_TEXT,
+  findDeleteConfirmButton,
+  findDeleteTriggerButton,
+  isDeleteConfirmationModalVisible,
+} from "./deleteFlowSelectors";
+import { isContentCommand } from "../lib/messages";
+import type {
+  AutoEnrichResponse,
+  CheckItemLinkedResponse,
+  DeleteCommandResponse,
+  DeleteListingPayload,
+  ImportItemResponse,
+  SingleItemPayload,
+} from "../lib/messages";
 import { errorMessage } from "../lib/errorMessage";
 
 console.log("[ResellOS][ImportButton] script injected", {
@@ -43,6 +60,15 @@ console.log("[ResellOS][ImportButton] script injected", {
   pathname: location.pathname,
   hostname: location.hostname,
 });
+
+// Mission "DIAGNOSTIC LIVE MINIMAL -- SUPPRESSION DE A" (2026-08-17) :
+// identifiant unique PAR EXECUTION de ce module (meme pattern que
+// DOCUMENT_INSTANCE_ID dans vinted-publish.ts) -- permet de distinguer, dans
+// les logs du prochain test live, "plusieurs handleDeleteListing() concurrents
+// dans le meme document" (hypothese A de l'audit) de "documents/onglets
+// distincts". Purement diagnostique, aucune decision metier ne depend de
+// cette valeur.
+const DOCUMENT_INSTANCE_ID = crypto.randomUUID();
 
 const BUTTON_ID = "resellos-import-button";
 const STATUS_ID = "resellos-import-status";
@@ -101,6 +127,290 @@ function buildPayload(vintedItemId: string): SingleItemPayload {
     imageUrls: extractPhotoUrls(),
   };
 }
+
+// Enrichissement lazy sans UI (audit "prefill partiel", 2026-08-11) : reagit
+// a AUTO_ENRICH_REQUESTED envoye par handlePublishListing.ts (background) a
+// un onglet ouvert en arriere-plan sur la page de l'annonce d'ORIGINE d'une
+// republication -- reutilise buildPayload()/extractVintedItemId() a
+// l'IDENTIQUE du chemin "clic sur Importer" ci-dessus (zero nouvelle logique
+// d'extraction), mais ne touche jamais au DOM (aucun bouton injecte) et ne
+// depend d'aucune interaction utilisateur : ce script tourne dans un onglet
+// que l'utilisateur n'a jamais lui-meme ouvert ni ne voit necessairement.
+function extractCurrentItemId(): string | null {
+  if (location.hostname !== "www.vinted.fr") return null;
+  if (!/^\/items\/\d+/.test(location.pathname)) return null;
+  return extractVintedItemId(location.href);
+}
+
+async function handleAutoEnrichRequested(): Promise<AutoEnrichResponse> {
+  const vintedItemId = extractCurrentItemId();
+  if (!vintedItemId) {
+    return { ok: false, error: "Page annonce Vinted non reconnue (hostname/pathname inattendus)" };
+  }
+
+  let vintedUsername: string | null = null;
+  try {
+    const usernameEl = await waitForElement<HTMLImageElement>(LOGGED_IN_USERNAME_SELECTOR, { timeoutMs: 5000 });
+    vintedUsername = usernameEl.getAttribute("alt");
+  } catch (err) {
+    return { ok: false, error: `Compte Vinted non detecte : ${errorMessage(err)}` };
+  }
+  if (!vintedUsername) {
+    return { ok: false, error: "Compte Vinted non detecte (attribut alt absent)" };
+  }
+
+  return { ok: true, item: buildPayload(vintedItemId), vintedUsername };
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!isContentCommand(message) || message.type !== "AUTO_ENRICH_REQUESTED") return false;
+  void handleAutoEnrichRequested().then(sendResponse);
+  return true; // reponse asynchrone : garder le canal ouvert
+});
+
+// Mission "REPUBLICATION : DIAGNOSTIC LIVE SUPPRESSION ANCIENNE ANNONCE
+// VINTED" (2026-08-17) : contrairement a AUTO_ENRICH_REQUESTED ci-dessus
+// (reponse rapide via sendResponse), cette commande peut attendre jusqu'a
+// 90s un clic humain reel -- fire-and-forget + messages separes
+// (DELETE_PROGRESS/DELETE_RESULT), meme discipline que EDIT_LISTING
+// (vinted-edit.ts) pour la meme raison (un port sendMessage n'est pas fait
+// pour rester ouvert aussi longtemps).
+function reportDeleteProgress(step: import("../lib/messages").DeleteStep): void {
+  chrome.runtime.sendMessage({ type: "DELETE_PROGRESS", step, documentInstanceId: DOCUMENT_INSTANCE_ID });
+}
+
+function reportDeleteResult(outcome: import("../lib/messages").DeleteListingOutcome): void {
+  chrome.runtime.sendMessage({ type: "DELETE_RESULT", outcome, documentInstanceId: DOCUMENT_INSTANCE_ID });
+}
+
+// Attente courte du bloc ld+json AVANT de chercher le bouton "Supprimer" --
+// distingue "annonce deja absente/retiree" (aucune donnee produit des le
+// rendu complet) de "bouton pas encore rendu" (cas normal, couvert par
+// waitForElementMatching juste apres). Meme delai (10s) et meme mecanisme
+// (MutationObserver, jamais un sleep fixe) que readLdJsonForVerification
+// (editListing.ts), deja valide en direct pour cette page.
+function waitForLdJsonSettled(timeoutMs = 10000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const hasProductData = () => extractLdJsonProduct().price !== null;
+    if (hasProductData()) {
+      resolve(true);
+      return;
+    }
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      resolve(false);
+    }, timeoutMs);
+    const observer = new MutationObserver(() => {
+      if (hasProductData()) {
+        clearTimeout(timer);
+        observer.disconnect();
+        resolve(true);
+      }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  });
+}
+
+// Attend un evenement "click" REEL (isTrusted:true) sur `el`, jusqu'a
+// `timeoutMs`. isTrusted est une propriete native du navigateur, jamais
+// falsifiable par du JavaScript (synthetique ou non) -- seul signal fiable
+// pour distinguer un vrai clic utilisateur d'un effet de bord quelconque
+// (navigation, re-render, disparition DOM) qui n'a rien a voir avec une
+// action de l'utilisateur. capture:true : intercepte l'evenement au plus
+// tot dans sa phase de descente, avant qu'un eventuel stopPropagation() du
+// gestionnaire propre de Vinted ne puisse l'empecher d'atteindre ce
+// listener (les deux ecoutent le MEME element, capture et target restent
+// toujours executes avant que stopPropagation n'affecte quoi que ce soit
+// d'autre sur ce meme noeud).
+// Exportee pour testabilite -- jsdom ne peut jamais produire un evenement
+// avec isTrusted:true (aucun script, y compris un test, ne peut le
+// falsifier -- c'est precisement la garantie recherchee ici), donc cette
+// fonction est testee directement avec un element factice dont on controle
+// isTrusted a la main, plutot que via un vrai dispatchEvent().
+export function waitForTrustedClick(el: HTMLElement, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    function onClick(e: MouseEvent): void {
+      if (!e.isTrusted || settled) return;
+      settled = true;
+      cleanup();
+      resolve(true);
+    }
+    function cleanup(): void {
+      el.removeEventListener("click", onClick, true);
+      clearTimeout(timer);
+    }
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+    el.addEventListener("click", onClick, true);
+  });
+}
+
+// Exportee pour testabilite (jsdom, meme discipline que domWait.test.ts) --
+// aucun appelant reel en dehors du listener chrome.runtime.onMessage
+// ci-dessous.
+export async function handleDeleteListing(payload: DeleteListingPayload): Promise<void> {
+  const { vintedItemId } = payload;
+
+  // Garde "mauvais item interdit" (demande explicite) : ne supprime QUE
+  // l'annonce dont l'id correspond exactement a la page reellement chargee
+  // dans cet onglet -- jamais un rapprochement par titre/prix.
+  const currentItemId = extractVintedItemId(location.href);
+  if (currentItemId !== vintedItemId) {
+    reportDeleteResult({
+      ok: false,
+      reason: "wrong_item",
+      errorMessage: `Page actuelle (annonce ${currentItemId ?? "inconnue"}) ne correspond pas a l'ancienne annonce ciblee (${vintedItemId}) -- suppression annulee par sécurité.`,
+    });
+    return;
+  }
+
+  reportDeleteProgress("loading");
+
+  // Cas "ancienne annonce deja absente" (demande explicite du test
+  // minimum) : si aucune donnee produit n'apparait jamais, l'annonce est
+  // deja retiree -- rien a supprimer, jamais une erreur "bouton introuvable".
+  const stillHasProductData = await waitForLdJsonSettled();
+  if (!stillHasProductData) {
+    reportDeleteResult({ ok: true, alreadyGone: true });
+    return;
+  }
+
+  let triggerButton: HTMLButtonElement;
+  try {
+    triggerButton = await waitForElementMatching(() => findDeleteTriggerButton(document), {
+      timeoutMs: 15000,
+      description: `bouton "${DELETE_TRIGGER_TEXT}"`,
+    });
+  } catch (err) {
+    reportDeleteResult({ ok: false, reason: "trigger_not_found", errorMessage: `Bouton "${DELETE_TRIGGER_TEXT}" introuvable : ${errorMessage(err)}` });
+    return;
+  }
+  reportDeleteProgress("trigger_found");
+
+  // Clic synthetique sur "Supprimer" : ouvre uniquement la modale de
+  // confirmation (changement d'etat purement client, aucune requete reseau
+  // attendue) -- distinct du clic FINAL ci-dessous, qui declenche la vraie
+  // mutation et doit rester un clic humain (voir DeleteStep dans messages.ts).
+  dispatchFullClick(triggerButton);
+  reportDeleteProgress("trigger_clicked");
+
+  try {
+    await waitForCondition(() => isDeleteConfirmationModalVisible(document), {
+      timeoutMs: 8000,
+      description: `modale "${DELETE_MODAL_HEADING_TEXT}"`,
+    });
+  } catch (err) {
+    reportDeleteResult({
+      ok: false,
+      reason: "modal_not_found",
+      errorMessage: `Modale de confirmation introuvable après le clic sur "${DELETE_TRIGGER_TEXT}" : ${errorMessage(err)}`,
+    });
+    return;
+  }
+  reportDeleteProgress("modal_confirmed");
+
+  let confirmButton: HTMLButtonElement;
+  try {
+    confirmButton = await waitForElementMatching(() => findDeleteConfirmButton(document), {
+      timeoutMs: 8000,
+      description: `bouton "${DELETE_CONFIRM_TEXT}"`,
+    });
+  } catch (err) {
+    reportDeleteResult({
+      ok: false,
+      reason: "confirm_button_not_found",
+      errorMessage: `Bouton "${DELETE_CONFIRM_TEXT}" introuvable : ${errorMessage(err)}`,
+    });
+    return;
+  }
+
+  // Clic MANUEL requis (decision d'architecture, voir commentaire d'en-tete
+  // de DeleteStep dans messages.ts) : jamais de clic synthetique sur ce
+  // bouton precis.
+  //
+  // BUG REEL confirme en test live (mission "CORRIGER LE FAUX TERMINE",
+  // 2026-08-17) : l'ancienne condition (`!document.body.contains(confirmButton)
+  // || !location.pathname.includes(...)`) traitait TOUTE navigation hors de
+  // /items/{id} comme une preuve de clic -- y compris une navigation SANS
+  // AUCUN rapport avec un clic reel (observe en direct : le navigateur est
+  // revenu sur /member/{userId} sans qu'aucune confirmation n'ait ete
+  // donnee). Consequence en cascade : DELETE_RESULT{ok:true} etait envoye a
+  // tort, declenchant la verification independante puis la fermeture de cet
+  // onglet (settle() dans deleteOldListing.ts) -- exactement "l'onglet
+  // n'est plus reste disponible" rapporte par l'utilisateur, ET un
+  // REPUBLISH_COMPLETED potentiellement faux si la verification suivante
+  // se trompait aussi.
+  //
+  // Corrige en detectant un VRAI evenement "click" avec isTrusted:true
+  // directement sur confirmButton -- un clic synthetique (le notre, ou
+  // toute autre origine) a TOUJOURS isTrusted:false, propriete native du
+  // navigateur, non falsifiable depuis JavaScript. Plus aucune inference a
+  // partir d'effets de bord (navigation, disparition DOM) qui peuvent
+  // survenir pour des raisons totalement etrangeres a un clic utilisateur.
+  reportDeleteProgress("waiting_for_manual_confirm_click");
+  const humanClicked = await waitForTrustedClick(confirmButton, 90000);
+  if (!humanClicked) {
+    reportDeleteResult({
+      ok: false,
+      reason: "confirm_click_timeout",
+      errorMessage: `Aucun clic humain détecté sur "${DELETE_CONFIRM_TEXT}" sous 90s.`,
+    });
+    return;
+  }
+  reportDeleteProgress("confirm_clicked");
+  reportDeleteResult({ ok: true, alreadyGone: false });
+}
+
+// Mission "CORRIGER LA REPETITION DELETE_LISTING" (2026-08-17) -- CAUSE
+// RACINE PROUVEE en test live : ce listener ne repondait JAMAIS (ni
+// sendResponse, ni return true) -- exactement le meme bug deja corrige pour
+// PUBLISH_LISTING (vinted-publish.ts, mission "ACK PUBLISH_LISTING
+// MANQUANT"). Chrome fermait alors le port avant reponse ("message port
+// closed before a response was received."), MEME quand ce content script
+// avait deja reellement recu DELETE_LISTING et demarre handleDeleteListing() --
+// deleteOldListing.ts::withRetry() traitait ce faux negatif comme un echec
+// d'envoi et renvoyait DELETE_LISTING, demarrant plusieurs
+// handleDeleteListing() concurrents dans le MEME document (documentInstanceId
+// identique confirme sur toute la sequence repetee en test live -- jamais un
+// document duplique). deleteHandlingInFlight :
+// garde LOCALE (defense en profondeur, meme pattern que runPublishInFlight,
+// vinted-publish.ts) -- ne masque PAS le bug d'ACK (corrige separement cote
+// background), protege seulement contre un envoi residuel qui contournerait
+// malgre tout la correction principale.
+let deleteHandlingInFlight = false;
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!isContentCommand(message) || message.type !== "DELETE_LISTING") return false;
+  // ACK SYNCHRONE explicite, AVANT tout travail long -- distingue "commande
+  // remise" (ce message) de "suppression terminee" (toujours DELETE_RESULT,
+  // jamais confondus). duplicate:true si un handleDeleteListing() est deja
+  // en cours dans ce document -- accepte proprement SANS en relancer un
+  // second (voir deleteHandlingInFlight ci-dessus).
+  const duplicate = deleteHandlingInFlight;
+  const response: DeleteCommandResponse = {
+    ok: true,
+    accepted: true,
+    duplicate,
+    documentInstanceId: DOCUMENT_INSTANCE_ID,
+  };
+  sendResponse(response);
+  if (duplicate) {
+    // Rien d'autre a faire : le background recoit deja duplicate:true dans
+    // cette meme reponse ACK et peut journaliser ce cas lui-meme -- jamais
+    // relancer un second handleDeleteListing() sur ce document.
+    return false;
+  }
+  deleteHandlingInFlight = true;
+  void handleDeleteListing(message.payload).finally(() => {
+    deleteHandlingInFlight = false;
+  });
+  return false; // reponse (ACK) deja envoyee SYNCHRONEMENT ci-dessus -- le reste (DELETE_PROGRESS/DELETE_RESULT) continue de communiquer via le canal fire-and-forget existant.
+});
 
 async function handleImportClick(
   button: HTMLButtonElement,

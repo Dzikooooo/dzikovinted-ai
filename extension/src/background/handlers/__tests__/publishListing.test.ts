@@ -5,8 +5,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // voir enrichListing.test.ts pour le detail). fetchPhoto() n'a rien a voir
 // avec ce chemin, mais l'import du MODULE entier l'evalue quand meme --
 // meme mock que partout ailleurs dans ce paquet pour ce probleme precis.
+//
+// Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+// (2026-08-17) : listKnownVintedItemIds/findListingsByVintedItemIds AJOUTES
+// -- publishListing.ts les appelle desormais directement (reconciliation
+// post-submit CAS B, /member/{userId}). Mockes ici avec des defauts
+// permissifs (ensemble/liste vides) ; chaque test qui exerce reellement le
+// CAS B fournit son propre mockImplementation cible.
 vi.mock("../../sync", () => ({
   recordSingleItemImport: vi.fn(),
+  listKnownVintedItemIds: vi.fn().mockResolvedValue(new Set()),
+  findListingsByVintedItemIds: vi.fn().mockResolvedValue([]),
+}));
+
+// Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+// (2026-08-17) : syncCoordinator.startAccountSync() est desormais reutilise
+// TEL QUEL par la reconciliation CAS B -- mocke ici (jamais le vrai module,
+// qui attend de vraies correlations ACCOUNT_DETECTED/LISTINGS_DETECTED
+// organiques, hors de portee d'un test unitaire de publishListing.ts).
+vi.mock("../../syncCoordinator", () => ({
+  startAccountSync: vi.fn(),
 }));
 
 // Mission "NOUVEAU TEST LIVE" (2026-08-11), item 10 : preuve que
@@ -23,6 +41,8 @@ vi.mock("../enrichListing", () => ({
 
 import { fetchPhoto, handlePublishListing } from "../publishListing";
 import { enrichListingIfNeeded } from "../enrichListing";
+import { findListingsByVintedItemIds, listKnownVintedItemIds } from "../../sync";
+import { startAccountSync } from "../../syncCoordinator";
 import type { PublishListingPayload, RunActionRequest } from "../../../lib/messages";
 
 // Audit "prefill partiel" (2026-08-10) : preuve LIVE que le fetch() d'une
@@ -174,6 +194,11 @@ function makeMockChrome(tabId: number) {
     tabs: {
       create: vi.fn().mockResolvedValue({ id: tabId }),
       remove: vi.fn().mockResolvedValue(undefined),
+      // Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON
+      // DETECTE" (2026-08-17) : reload() du tab de publication existant --
+      // le mecanisme d'"ouverture" reutilise par reconcilePostSubmitViaMemberRedirect
+      // pour forcer une nouvelle navigation deterministe (voir son en-tete).
+      reload: vi.fn().mockResolvedValue(undefined),
       // Mission "ACK PUBLISH_LISTING MANQUANT" : reponse par defaut valide
       // ({ok:true, accepted:true, duplicate:false}) -- sendPublishCommand()
       // rejette desormais toute reponse absente/invalide comme une erreur de
@@ -552,6 +577,78 @@ describe("handlePublishListing -- mission 'PORT MESSAGE FERMÉ' (2026-08-11) -- 
   });
 });
 
+// Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) : preuve
+// que le nouveau signal PUBLISH_READY_TO_SUBMIT (pousse par vinted-publish.ts
+// des que le bouton "Ajouter" devient cliquable, voir son en-tete) est bien
+// relaye jusqu'au 4e callback de handlePublishListing() -- jamais confondu
+// avec PUBLISH_TAB_READY (handshake initial) ni PUBLISH_PREFILL_SUMMARY
+// (etat des lieux de l'autofill), ces trois signaux restant independants.
+describe("handlePublishListing -- mission 'CLIC FINAL + CONFIRMATION POST-PUBLICATION' (2026-08-16)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("calls onReadyToSubmit exactly once when the content script reports PUBLISH_READY_TO_SUBMIT", async () => {
+    const mock = makeMockChrome(6001);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const request: RunActionRequest = {
+      historyId: "hist-20",
+      kind: "publish_listing",
+      vintedAccountId: "acc-1",
+      payload: makePayload({ description: "d", imageUrls: [] }) as unknown as Record<string, unknown>,
+    };
+
+    const onReadyToSubmit = vi.fn();
+    const resultPromise = handlePublishListing(request, () => {}, () => {}, onReadyToSubmit);
+    await vi.waitFor(() => expect(mock.runtimeMessageListeners.length).toBeGreaterThan(0));
+
+    mock.sendReady("doc-a");
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1));
+
+    expect(onReadyToSubmit).not.toHaveBeenCalled();
+
+    for (const fn of mock.runtimeMessageListeners) {
+      fn({ type: "PUBLISH_READY_TO_SUBMIT" }, { tab: { id: 6001 } });
+    }
+    expect(onReadyToSubmit).toHaveBeenCalledTimes(1);
+
+    mock.updatedListeners[0](6001, { status: "complete" }, { id: 6001, url: "https://www.vinted.fr/items/121212121" });
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+  });
+
+  it("ignores PUBLISH_READY_TO_SUBMIT from a different/stale tab -- never calls onReadyToSubmit for the wrong tab", async () => {
+    const mock = makeMockChrome(6002);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const request: RunActionRequest = {
+      historyId: "hist-21",
+      kind: "publish_listing",
+      vintedAccountId: "acc-1",
+      payload: makePayload({ description: "d", imageUrls: [] }) as unknown as Record<string, unknown>,
+    };
+
+    const onReadyToSubmit = vi.fn();
+    const resultPromise = handlePublishListing(request, () => {}, () => {}, onReadyToSubmit);
+    await vi.waitFor(() => expect(mock.runtimeMessageListeners.length).toBeGreaterThan(0));
+
+    for (const fn of mock.runtimeMessageListeners) {
+      fn({ type: "PUBLISH_READY_TO_SUBMIT" }, { tab: { id: 999999 } });
+    }
+    expect(onReadyToSubmit).not.toHaveBeenCalled();
+
+    mock.sendReady("doc-a");
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1));
+    mock.updatedListeners[0](6002, { status: "complete" }, { id: 6002, url: "https://www.vinted.fr/items/131313131" });
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+  });
+});
+
 // Mission "CAUSE DOCUMENT-LIFECYCLE CONFIRMEE EN LIVE" (2026-08-11) :
 // CONFIRME EN TEST LIVE (pas seulement reproduit en code) -- document A
 // recoit l'ACK, est remplace par une navigation Vinted reelle, document B
@@ -816,5 +913,441 @@ describe("handlePublishListing -- mission 'PREUVE LIVE PRECISE -- TRANSPORT BINA
     mock.updatedListeners[0](5001, { status: "complete" }, { id: 5001, url: "https://www.vinted.fr/items/888777666" });
     const result = await resultPromise;
     expect(result.status).toBe("success");
+  });
+});
+
+// Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+// (2026-08-17) : preuve live directe -- apres un clic humain reussi sur
+// "Ajouter", Vinted redirige parfois le tab de publication vers
+// /member/{userId} (le profil du vendeur) plutot que vers /items/{nouvel_id}
+// (le SEUL cas gere jusqu'ici, voir CAS A ci-dessus, inchange). Cette
+// navigation seule n'est jamais un succes -- reconcilePostSubmitViaMemberRedirect()
+// declenche une VRAIE relecture wardrobe (syncCoordinator.startAccountSync(),
+// mocke ici -- ses propres correlations organiques sont deja testees dans
+// syncCoordinator.test.ts) puis compare l'ensemble des vinted_item_id avant/
+// apres (listKnownVintedItemIds, mocke ici) pour identifier LA nouvelle
+// annonce, avec desambiguisation stricte titre+prix si plusieurs candidats,
+// jamais un choix au hasard.
+describe("handlePublishListing -- mission 'REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE' (2026-08-17)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  function makeSyncResult(overrides: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      complete: true,
+      created: 0,
+      updated: 0,
+      deletedMarked: 0,
+      pagesRead: 1,
+      pagesExpected: 1,
+      reason: "success",
+      ...overrides,
+    };
+  }
+
+  // startAccountSync est entierement mocke (vi.mock) : sans implementation
+  // explicite, le mock ne INVOQUE jamais le callback `openTab` qu'on lui
+  // passe -- pour que les assertions sur chrome.tabs.reload() restent
+  // fideles au comportement reel (voir reconcilePostSubmitViaMemberRedirect,
+  // qui appelle openTab() a CHAQUE tentative), le mock l'appelle lui-meme
+  // avant de resoudre, persistant sur TOUS les appels (jamais Once -- les
+  // scenarios multi-tentatives appellent startAccountSync plusieurs fois).
+  function stubStartAccountSync(result: ReturnType<typeof makeSyncResult>): void {
+    vi.mocked(startAccountSync).mockImplementation(async (_vintedUserId, _onProgress, openTab) => {
+      await openTab();
+      return result as Awaited<ReturnType<typeof startAccountSync>>;
+    });
+  }
+
+  function makeRequest(overrides: Partial<RunActionRequest> = {}): RunActionRequest {
+    return {
+      historyId: "hist-member-redirect",
+      kind: "publish_listing",
+      vintedAccountId: "acc-1",
+      payload: makePayload({ title: "Pull Zara", price: 15, description: "d", imageUrls: [] }) as unknown as Record<string, unknown>,
+      ...overrides,
+    };
+  }
+
+  it("navigation directe /items/{id} (CAS A) reste inchangee -- jamais de reconciliation declenchee", async () => {
+    const mock = makeMockChrome(8000);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](8000, { status: "complete" }, { id: 8000, url: "https://www.vinted.fr/items/999000111" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.resultPayload).toEqual({ vintedItemId: "999000111", vintedUrl: "https://www.vinted.fr/items/999000111" });
+    }
+    expect(startAccountSync).not.toHaveBeenCalled();
+  });
+
+  it("CAS B : redirection /member/{userId} + exactement 1 nouvel item -> succes", async () => {
+    const mock = makeMockChrome(8001);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds)
+      .mockResolvedValueOnce(new Set(["100"])) // beforeIds, capture precoce
+      .mockResolvedValueOnce(new Set(["100", "200"])); // afterIds, 1er essai
+    stubStartAccountSync(makeSyncResult());
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](8001, { status: "complete" }, { id: 8001, url: "https://www.vinted.fr/member/3152175197" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.resultPayload).toEqual({ vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200" });
+    }
+    expect(startAccountSync).toHaveBeenCalledTimes(1);
+    expect(startAccountSync).toHaveBeenCalledWith("3152175197", expect.any(Function), expect.any(Function));
+  });
+
+  it("query string ?promo_shown=true est acceptee -- l'id numerique du compte est correctement extrait du path", async () => {
+    const mock = makeMockChrome(8002);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds).mockResolvedValueOnce(new Set()).mockResolvedValueOnce(new Set(["777"]));
+    stubStartAccountSync(makeSyncResult());
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "777", vintedUrl: "https://www.vinted.fr/items/777", title: "Pull Zara", price: 15 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](8002, { status: "complete" }, { id: 8002, url: "https://www.vinted.fr/member/3152175197?promo_shown=true" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    expect(startAccountSync).toHaveBeenCalledWith("3152175197", expect.any(Function), expect.any(Function));
+  });
+
+  it(
+    "CAS B : 0 nouvel item au premier essai, puis apparition au retry -> succes",
+    async () => {
+      const mock = makeMockChrome(8003);
+      vi.stubGlobal("chrome", mock.chrome);
+      vi.stubGlobal("fetch", vi.fn());
+
+      vi.mocked(listKnownVintedItemIds)
+        .mockResolvedValueOnce(new Set(["100"])) // beforeIds
+        .mockResolvedValueOnce(new Set(["100"])) // afterIds, essai 1 -- rien de nouveau
+        .mockResolvedValueOnce(new Set(["100", "200"])); // afterIds, essai 2 -- trouve
+      stubStartAccountSync(makeSyncResult());
+      vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+        { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+      ]);
+
+      const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+      await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+      mock.updatedListeners[0](8003, { status: "complete" }, { id: 8003, url: "https://www.vinted.fr/member/3152175197" });
+
+      const result = await resultPromise;
+      expect(result.status).toBe("success");
+      if (result.status === "success") {
+        expect(result.resultPayload).toEqual({ vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200" });
+      }
+      expect(startAccountSync).toHaveBeenCalledTimes(2);
+      // Un vrai rechargement a eu lieu avant le retry -- jamais une simple
+      // reevaluation sans nouvelle navigation (le content script ne se
+      // re-execute jamais sans elle, voir le commentaire d'en-tete).
+      expect(mock.chrome.tabs.reload).toHaveBeenCalledTimes(2);
+    },
+    15000
+  );
+
+  it("CAS B : plusieurs nouveaux items mais un seul compatible titre+prix -> succes", async () => {
+    const mock = makeMockChrome(8004);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds).mockResolvedValueOnce(new Set(["100"])).mockResolvedValueOnce(new Set(["100", "200", "300"]));
+    stubStartAccountSync(makeSyncResult());
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+      { vintedItemId: "300", vintedUrl: "https://www.vinted.fr/items/300", title: "Autre article", price: 99 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](8004, { status: "complete" }, { id: 8004, url: "https://www.vinted.fr/member/3152175197" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.resultPayload).toEqual({ vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200" });
+    }
+  });
+
+  it("CAS B : plusieurs candidats ambigus (meme titre+prix) -> jamais de faux succes", async () => {
+    const mock = makeMockChrome(8005);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds).mockResolvedValueOnce(new Set(["100"])).mockResolvedValueOnce(new Set(["100", "200", "300"]));
+    stubStartAccountSync(makeSyncResult());
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+      { vintedItemId: "300", vintedUrl: "https://www.vinted.fr/items/300", title: "Pull Zara", price: 15 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](8005, { status: "complete" }, { id: 8005, url: "https://www.vinted.fr/member/3152175197" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("error");
+    if (result.status === "error") {
+      expect(result.errorMessage).toContain("impossible d'identifier celle-ci avec certitude");
+    }
+    // Onglet garde ouvert -- l'utilisateur peut verifier lui-meme sur Vinted.
+    expect(mock.chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+
+  it(
+    "CAS B : aucun nouvel item apres toutes les tentatives -> erreur honnete, jamais un succes invente",
+    async () => {
+      const mock = makeMockChrome(8006);
+      vi.stubGlobal("chrome", mock.chrome);
+      vi.stubGlobal("fetch", vi.fn());
+
+      // beforeIds + 4 tentatives, toutes sans nouvel item.
+      vi.mocked(listKnownVintedItemIds).mockResolvedValue(new Set(["100"]));
+      stubStartAccountSync(makeSyncResult());
+
+      const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+      await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+      mock.updatedListeners[0](8006, { status: "complete" }, { id: 8006, url: "https://www.vinted.fr/member/3152175197" });
+
+      const result = await resultPromise;
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.errorMessage).toContain("n'a pas pu identifier la nouvelle annonce avec certitude");
+      }
+      expect(startAccountSync).toHaveBeenCalledTimes(4);
+      expect(findListingsByVintedItemIds).not.toHaveBeenCalled();
+      expect(mock.chrome.tabs.remove).not.toHaveBeenCalled();
+    },
+    25000
+  );
+
+  it("listeners/timers sont nettoyes apres un settle() reussi via CAS B (jamais de fuite)", async () => {
+    const mock = makeMockChrome(8007);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds).mockResolvedValueOnce(new Set(["100"])).mockResolvedValueOnce(new Set(["100", "200"]));
+    stubStartAccountSync(makeSyncResult());
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](8007, { status: "complete" }, { id: 8007, url: "https://www.vinted.fr/member/3152175197" });
+    await resultPromise;
+
+    expect(mock.updatedListeners).toHaveLength(0);
+    expect(mock.removedListeners).toHaveLength(0);
+    expect(mock.runtimeMessageListeners).toHaveLength(0);
+  });
+
+  it("plusieurs TAB_UPDATED /member/* successifs ne declenchent jamais deux boucles de reconciliation ni deux settle() -- une seule synchro", async () => {
+    const mock = makeMockChrome(8008);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds).mockResolvedValueOnce(new Set(["100"])).mockResolvedValueOnce(new Set(["100", "200"]));
+    stubStartAccountSync(makeSyncResult());
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    // Deux evenements /member/* successifs (ex. loading->complete puis un
+    // second "complete" apres l'apparition de ?promo_shown=true) -- un SEUL
+    // demarrage de reconciliation attendu (reconciliationStarted).
+    mock.updatedListeners[0](8008, { status: "complete" }, { id: 8008, url: "https://www.vinted.fr/member/3152175197" });
+    mock.updatedListeners[0](8008, { status: "complete" }, { id: 8008, url: "https://www.vinted.fr/member/3152175197?promo_shown=true" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    expect(startAccountSync).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17), CAS C :
+// preuve live obtenue -- la reponse REELLE de POST /api/v2/item_upload/items
+// ({"item":{"id":9691226139},...,"code":0}) identifie B directement, sans
+// navigation ni reconciliation. CAS C est UNIQUEMENT un nouvel appelant de
+// finalizeSuccess() (voir publishListing.ts) -- ces tests prouvent que (1)
+// une capture valide aboutit a un succes identique a CAS A/CAS B, (2) une
+// capture invalide n'a AUCUN effet metier et laisse CAS A operer normalement
+// en fallback, et (3) l'idempotence deja garantie par successFinalizationStarted/
+// settled tient face a CAS C, y compris en course avec CAS A.
+describe("handlePublishListing -- CAS C : identification de B via la reponse reseau capturee (2026-08-17)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  function makeRequest(overrides: Partial<RunActionRequest> = {}): RunActionRequest {
+    return {
+      historyId: "hist-cas-c",
+      kind: "publish_listing",
+      vintedAccountId: "acc-1",
+      payload: makePayload({ title: "Pull Zara", price: 15, description: "d", imageUrls: [] }) as unknown as Record<string, unknown>,
+      ...overrides,
+    };
+  }
+
+  function sendCreateResponseCaptured(
+    mock: ReturnType<typeof makeMockChrome>,
+    tabId: number,
+    overrides: Partial<{ url: string; statusCode: number; ok: boolean; bodyText: string; transport: "fetch" | "xhr" }> = {}
+  ): void {
+    const message = {
+      type: "PUBLISH_CREATE_RESPONSE_CAPTURED",
+      url: "https://www.vinted.fr/api/v2/item_upload/items",
+      statusCode: 200,
+      ok: true,
+      bodyText: JSON.stringify({ item: { id: 9691226139 }, after_upload_actions: ["show_upload_another_item_tip"], code: 0 }),
+      transport: "xhr" as const,
+      ...overrides,
+    };
+    for (const fn of mock.runtimeMessageListeners) fn(message, { tab: { id: tabId } });
+  }
+
+  it("capture valide (ok, 2xx, code:0, item.id entier positif) -> succes identique a CAS A/CAS B, via finalizeSuccess", async () => {
+    const mock = makeMockChrome(9000);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    sendCreateResponseCaptured(mock, 9000);
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.resultPayload).toEqual({
+        vintedItemId: "9691226139",
+        vintedUrl: "https://www.vinted.fr/items/9691226139",
+      });
+    }
+    // Aucune navigation /items/{id} ni /member/{userId} n'a jamais eu lieu
+    // dans ce test -- preuve que CAS C aboutit seul, sans dependre de CAS A/B.
+    expect(startAccountSync).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ok:false", { ok: false }],
+    ["statusCode 4xx", { statusCode: 403 }],
+    ["statusCode 5xx", { statusCode: 500 }],
+    ["JSON invalide", { bodyText: "{not json" }],
+    ["code different de 0", { bodyText: JSON.stringify({ item: { id: 123 }, code: 1 }) }],
+    ["item.id absent", { bodyText: JSON.stringify({ item: {}, code: 0 }) }],
+    ["item.id non numerique", { bodyText: JSON.stringify({ item: { id: "123" }, code: 0 }) }],
+    ["item.id negatif", { bodyText: JSON.stringify({ item: { id: -5 }, code: 0 }) }],
+    ["item.id zero", { bodyText: JSON.stringify({ item: { id: 0 }, code: 0 }) }],
+    ["URL inattendue (pas le POST de creation exact)", { url: "https://www.vinted.fr/api/v2/item_upload/items/123" }],
+  ])("capture invalide (%s) : aucun effet metier -- CAS A continue de fonctionner normalement en fallback", async (_label, overrides) => {
+    const mock = makeMockChrome(9001);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    sendCreateResponseCaptured(mock, 9001, overrides);
+    // La capture invalide ci-dessus ne doit avoir declenche ni settle() ni
+    // finalizeSuccess() -- seul CAS A (navigation reelle) fait aboutir ce
+    // test, preuve directe que le fallback reste pleinement fonctionnel.
+    mock.updatedListeners[0](9001, { status: "complete" }, { id: 9001, url: "https://www.vinted.fr/items/555000111" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.resultPayload).toEqual({
+        vintedItemId: "555000111",
+        vintedUrl: "https://www.vinted.fr/items/555000111",
+      });
+    }
+  });
+
+  it("idempotence : deux captures valides successives (rejeu) ne provoquent qu'un seul rebind/settle", async () => {
+    const mock = makeMockChrome(9002);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    sendCreateResponseCaptured(mock, 9002);
+    sendCreateResponseCaptured(mock, 9002); // rejeu de la meme reponse -- doit etre un pur no-op
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      expect(result.resultPayload).toEqual({
+        vintedItemId: "9691226139",
+        vintedUrl: "https://www.vinted.fr/items/9691226139",
+      });
+    }
+    // settle() ferme l'onglet exactement une fois par publication reussie
+    // (chrome.tabs.remove) -- un second passage complet par finalizeSuccess/
+    // settle aurait appele remove() une seconde fois.
+    expect(mock.chrome.tabs.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("course CAS C / CAS A : la capture reseau arrive en premier -- CAS A (navigation tardive) devient un no-op silencieux", async () => {
+    const mock = makeMockChrome(9003);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    sendCreateResponseCaptured(mock, 9003);
+    // CAS A arrive ENSUITE, avec un id DIFFERENT -- ne doit jamais l'emporter
+    // ni provoquer un second settle.
+    mock.updatedListeners[0](9003, { status: "complete" }, { id: 9003, url: "https://www.vinted.fr/items/777000222" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    if (result.status === "success") {
+      // L'id retenu est celui de CAS C (arrive en premier), jamais celui de
+      // la navigation CAS A tardive.
+      expect(result.resultPayload).toEqual({
+        vintedItemId: "9691226139",
+        vintedUrl: "https://www.vinted.fr/items/9691226139",
+      });
+    }
+    expect(mock.chrome.tabs.remove).toHaveBeenCalledTimes(1);
   });
 });

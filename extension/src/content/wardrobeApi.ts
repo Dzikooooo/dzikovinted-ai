@@ -7,6 +7,18 @@
 // l'ancienne lecture du DOM (fragile, limitee au premier lot de cartes
 // rendues, incapable de distinguer les statuts) par une pagination fiable
 // jusqu'a epuisement complet - aucune limite arbitraire.
+//
+// Mission "FIABILISATION SYNCHRO VINTED, lot 1" (2026-08-16) : CAUSE REELLE
+// identifiee par audit -- l'ancienne version retournait un simple tableau
+// pour TOUS les cas, y compris quand une page >= 2 echouait apres la
+// premiere (`break`, items deja collectes renvoyes tels quels). Ce tableau
+// tronque etait ensuite traite par sync.ts::recordListings() comme un scan
+// COMPLET, dont toute absence sert de preuve de suppression -- une simple
+// panne reseau transitoire sur la page 2/3 pouvait donc marquer a tort de
+// VRAIES annonces `vinted_status='deleted'`. Retourne desormais un resultat
+// STRUCTURE (`WardrobeFetchResult`) qui distingue explicitement un scan
+// complet d'un scan partiel -- recordListings() (sync.ts) doit desormais
+// EXIGER `complete === true` avant toute logique de suppression.
 
 export interface WardrobeItem {
   vintedItemId: string;
@@ -44,6 +56,17 @@ interface VintedApiResponse {
 }
 
 const PER_PAGE = 50;
+
+// Resultat structure -- `complete` est le champ qui protege sync.ts::recordListings()
+// de tirer une conclusion "annonce supprimee" d'un scan tronque. `pagesRead`/
+// `pagesExpected` sont purement diagnostiques (logs), jamais utilises pour
+// une decision metier.
+export interface WardrobeFetchResult {
+  items: WardrobeItem[];
+  complete: boolean;
+  pagesRead: number;
+  pagesExpected: number;
+}
 
 // Priorite explicite quand plusieurs booleens seraient vrais en meme temps
 // (ex. une annonce fermee ne devrait normalement plus etre "reservee", mais
@@ -83,36 +106,69 @@ function toWardrobeItem(item: VintedApiItem): WardrobeItem | null {
   };
 }
 
-export async function fetchAllWardrobeItems(vintedUserId: string): Promise<WardrobeItem[]> {
+// Mission "FIABILISATION SYNCHRO VINTED, lot 1" : bornee (3 tentatives,
+// backoff 500ms/1000ms) -- une page individuelle qui echoue une fois sur un
+// blip reseau transitoire ne doit pas degrader tout le scan en "partiel"
+// pour rien. Jamais de boucle non bornee : au-dela de PAGE_FETCH_MAX_ATTEMPTS,
+// l'appelant (fetchAllWardrobeItems) traite l'echec normalement (page 1 =>
+// erreur totale, page >= 2 => scan partiel).
+const PAGE_FETCH_MAX_ATTEMPTS = 3;
+const PAGE_FETCH_RETRY_BASE_DELAY_MS = 500;
+
+async function fetchWardrobePage(vintedUserId: string, page: number): Promise<VintedApiResponse> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= PAGE_FETCH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(
+        `https://www.vinted.fr/api/v2/wardrobe/${vintedUserId}/items?page=${page}&per_page=${PER_PAGE}&order=relevance`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as VintedApiResponse;
+    } catch (err) {
+      lastError = err;
+      if (attempt < PAGE_FETCH_MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, PAGE_FETCH_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
+export async function fetchAllWardrobeItems(vintedUserId: string): Promise<WardrobeFetchResult> {
   const results: WardrobeItem[] = [];
   let page = 1;
   let totalPages = 1;
+  let pagesRead = 0;
 
   do {
-    const res = await fetch(
-      `https://www.vinted.fr/api/v2/wardrobe/${vintedUserId}/items?page=${page}&per_page=${PER_PAGE}&order=relevance`,
-      { headers: { Accept: "application/json" } }
-    );
-
-    if (!res.ok) {
-      // Premiere page en echec = on ne sait rien de fiable, on remonte
-      // l'erreur. Une page suivante en echec (rate limit ponctuel...) : on
-      // garde ce qui a deja ete recupere plutot que de tout perdre - une
-      // synchro partielle reste meilleure qu'aucune, et le prochain passage
-      // sur le profil la completera.
-      if (page === 1) throw new Error(`Echec recuperation wardrobe Vinted (HTTP ${res.status})`);
-      break;
+    let data: VintedApiResponse;
+    try {
+      data = await fetchWardrobePage(vintedUserId, page);
+    } catch (err) {
+      // Premiere page en echec (meme apres les tentatives bornees) = on ne
+      // sait rien de fiable, on remonte l'erreur -- aucun appelant ne doit
+      // traiter ce cas comme un scan, complet ou non.
+      if (page === 1) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Echec recuperation wardrobe Vinted (page 1, apres ${PAGE_FETCH_MAX_ATTEMPTS} tentatives) : ${message}`);
+      }
+      // Page >= 2 en echec apres tentatives bornees : scan INCOMPLET,
+      // jamais un succes total silencieux (cause reelle confirmee par audit
+      // -- un ancien `break` ici retournait un simple tableau tronque,
+      // traite ensuite comme un scan complet par recordListings()).
+      return { items: results, complete: false, pagesRead, pagesExpected: totalPages };
     }
 
-    const data = (await res.json()) as VintedApiResponse;
     for (const raw of data.items ?? []) {
       const mapped = toWardrobeItem(raw);
       if (mapped) results.push(mapped);
     }
 
+    pagesRead += 1;
     totalPages = data.pagination?.total_pages ?? page;
     page += 1;
   } while (page <= totalPages);
 
-  return results;
+  return { items: results, complete: true, pagesRead, pagesExpected: totalPages };
 }

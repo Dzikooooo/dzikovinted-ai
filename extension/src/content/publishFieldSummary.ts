@@ -19,8 +19,40 @@ import type { PublishListingPayload } from "../lib/messages";
 // Vinted exige un choix humain sur chacun d'eux quoi qu'il arrive (voir
 // checks.ts::publishListingDefinition -- aucun check ne bloque plus dessus
 // depuis le 2026-08-11).
+//
+// Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : preuve live --
+// un test reel montrait Matière vide en pending avec un libelle identique a
+// un champ reellement obligatoire (ex. Marque), alors que Matière/Couleur
+// sont deja documentes ailleurs dans ce paquet comme optionnels sur Vinted
+// (voir publishSelectors.ts : Couleur "optionnel, max 2", Matiere
+// "optionnel (recommande)"). watchForPublishReadiness() ne bloque deja QUE
+// sur l'etat reel du bouton Vinted (jamais sur `pending`, voir son en-tete) --
+// ce correctif ne change donc rien a la publication reelle, seulement le
+// LIBELLE affiche, pour que l'utilisateur sache immediatement qu'aucune
+// action n'est requise sur ces deux champs precis quand ResellOS n'a pas de
+// valeur, au lieu de les lire comme un blocage au meme titre que Catégorie/
+// État/Marque/Taille (reellement obligatoires sur Vinted).
+const OPTIONAL_ON_VINTED_LABELS = new Set(["Couleur", "Matière"]);
+
 function fieldLine(label: string, value: string | null): string {
-  return value ? `${label} : ${value} (à sélectionner sur Vinted)` : `${label} : donnée manquante (à choisir sur Vinted)`;
+  if (value) return `${label} : ${value} (à sélectionner sur Vinted)`;
+  if (OPTIONAL_ON_VINTED_LABELS.has(label)) {
+    return `${label} : facultatif sur Vinted, non renseigné par ResellOS (aucune action requise)`;
+  }
+  return `${label} : donnée manquante (à choisir sur Vinted)`;
+}
+
+// Mission "MATIERE : MULTI-SELECT" (2026-08-16) : `payload.materials` (tableau
+// derive, voir src/lib/materials.ts::parseMaterials) est desormais la source
+// de verite quand elle contient au moins une valeur -- affichage joint par
+// ", " pour rester un simple `string` compatible avec fieldLine() ci-dessus,
+// jamais une refonte du type de retour (PublishProgressModal.tsx affiche
+// `pending`/`confirmed` comme de simples listes de chaines). Repli sur
+// `payload.material` seul si `materials` est absent/vide -- retro-
+// compatibilite avec tout appelant qui ne peuplerait pas encore ce champ.
+function materialDisplayValue(payload: PublishListingPayload): string | null {
+  if (payload.materials && payload.materials.length > 0) return payload.materials.join(", ");
+  return payload.material;
 }
 
 const PACKAGE_SIZE_LABELS: Record<PublishListingPayload["packageSize"], string> = {
@@ -36,8 +68,18 @@ export function computeManualFields(payload: PublishListingPayload): string[] {
     fieldLine("Marque", payload.brand),
     fieldLine("Taille", payload.size),
     fieldLine("Couleur", payload.color),
-    fieldLine("Matière", payload.material),
-    `Taille du colis : ${PACKAGE_SIZE_LABELS[payload.packageSize]} (à sélectionner sur Vinted)`,
+    fieldLine("Matière", materialDisplayValue(payload)),
+    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : preuve live --
+    // Vinted affichait "Petit" (son propre choix par defaut) alors que le
+    // payload demandait "Moyen" -- ce champ n'a JAMAIS ete automatise (aucun
+    // code de ce fichier n'ecrit jamais sur PACKAGE_SIZE_CELL_SELECTOR,
+    // verifie par grep). L'ancien libelle ("Moyen : à sélectionner") pouvait
+    // laisser croire que "Moyen" etait deja applique ou en cours de
+    // traitement -- desormais explicite : ResellOS ne touche jamais ce
+    // champ, la valeur visible sur Vinted a l'instant T est TOUJOURS le
+    // choix de Vinted (par defaut ou deja modifie par l'utilisateur), jamais
+    // une confirmation de la valeur demandee.
+    `Taille du colis : ${PACKAGE_SIZE_LABELS[payload.packageSize]} demandé -- ResellOS ne sélectionne jamais ce champ, Vinted affiche son propre choix (vérifie/corrige-le toi-même avant de publier)`,
   ];
 }
 

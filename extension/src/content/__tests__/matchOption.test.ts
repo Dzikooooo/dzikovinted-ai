@@ -186,6 +186,80 @@ describe("matchOption() against a realistic Vinted color list (Couleur -- reused
   });
 });
 
+// Mission "MATIERE" (2026-08-16) : matchOption() reste le mecanisme de
+// matching reutilise TEL QUEL par attemptAttributePrefill() pour Matiere --
+// AUCUN reader/chemin dedie n'existe pour ce champ (contrairement a
+// Taille/Couleur/Marque/Etat), donc ce chemin generique + matchOption() sont
+// la SEULE couverture de test possible sans mocker `chrome` (meme contrainte
+// que les autres attempt*Prefill(), jamais testes directement -- voir
+// vinted-publish.ts::attemptAttributePrefill). IMPORTANT : contrairement a
+// REAL_SIZE_OPTIONS (echelle Vinted confirmee en direct ailleurs) et
+// REAL_COLOR_OPTIONS (liste de couleurs Vinted courantes), la liste de
+// matieres ci-dessous n'a JAMAIS ete verifiee en direct sur le DOM Vinted
+// reel (voir le rapport d'audit Matiere) -- elle sert uniquement a prouver
+// que matchOption() lui-meme se comporte correctement (casse, accents,
+// ambiguite, absence) independamment de la vraie liste Vinted, qui reste a
+// confirmer par le prochain test live.
+describe("matchOption() against a plausible (NOT live-verified) Vinted material list (Matière -- generic attemptAttributePrefill path)", () => {
+  const PLAUSIBLE_MATERIAL_OPTIONS = ["Coton", "Polyester", "Laine", "Cuir", "Lin", "Soie", "Cachemire", "Denim"];
+
+  it("'Coton' matches exactly", () => {
+    expect(matchOption("Coton", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Coton");
+  });
+
+  it("'Polyester' matches exactly", () => {
+    expect(matchOption("Polyester", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Polyester");
+  });
+
+  it("'Laine' matches exactly", () => {
+    expect(matchOption("Laine", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Laine");
+  });
+
+  it("returns null for an empty/absent source material (never fabricates a choice)", () => {
+    expect(matchOption(null, PLAUSIBLE_MATERIAL_OPTIONS)).toBeNull();
+    expect(matchOption("", PLAUSIBLE_MATERIAL_OPTIONS)).toBeNull();
+  });
+
+  it("returns null for a material unknown to the Vinted list, rather than guessing the closest one", () => {
+    expect(matchOption("Néoprène", PLAUSIBLE_MATERIAL_OPTIONS)).toBeNull();
+  });
+
+  it("matches case-insensitively and ignoring accents ('coton' -> 'Coton', 'cachemire' -> 'Cachemire')", () => {
+    expect(matchOption("coton", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Coton");
+    expect(matchOption("cachemire", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Cachemire");
+  });
+
+  it("tolerates surrounding whitespace ('  Laine  ' -> 'Laine')", () => {
+    expect(matchOption("  Laine  ", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Laine");
+  });
+
+  it("refuses an ambiguous partial value rather than picking between two equally valid candidates", () => {
+    // "Coton" est contenu a la fois dans "Coton bio" et "Coton mélangé" --
+    // aucun match exact dans cette liste precise, deux candidats partiels
+    // egalement valides.
+    const optionsWithOverlappingCotton = ["Coton bio", "Coton mélangé", "Laine"];
+    expect(matchOption("Coton", optionsWithOverlappingCotton)).toBeNull();
+  });
+
+  // Documente le GAP multi-matiere (mission "MATIERE", point 4) : le modele
+  // ResellOS est scalaire de bout en bout (extraction/stockage/payload, voir
+  // itemSelectors.ts::extractMaterial, types.ts::Listing.material,
+  // messages.ts::PublishListingPayload.material -- tous `string | null`,
+  // aucun tableau) alors meme que le data-testid Vinted du trigger porte
+  // "multi" (category-material-multi-list-input, publishSelectors.ts) --
+  // matchOption() lui-meme ne recoit et ne traite jamais qu'UNE seule valeur
+  // a la fois, exactement comme pour Couleur (meme gap documente plus haut
+  // dans ce fichier). Si Vinted s'avere reellement multi-select pour ce
+  // champ (a confirmer par le diagnostic live), ResellOS ne selectionnera
+  // jamais qu'UNE seule matiere parmi plusieurs valeurs sources
+  // potentielles -- tant que le modele de donnees ResellOS lui-meme
+  // n'evolue pas vers un tableau, cette limitation est structurelle et non
+  // un bug de matchOption().
+  it("only ever matches a single material value at a time -- the multi-material gap is structural (ResellOS payload.material is a scalar string, never an array), not a matchOption() limitation", () => {
+    expect(matchOption("Coton", PLAUSIBLE_MATERIAL_OPTIONS)).toBe("Coton");
+  });
+});
+
 // Mission "CORRIGER LES ATTRIBUTS POST-CATEGORIE" (2026-08-12), item 3 :
 // describeMatchAttempt() est le diagnostic PUREMENT observationnel ajoute
 // pour remplacer la devinette par une preuve exacte quand matchOption()

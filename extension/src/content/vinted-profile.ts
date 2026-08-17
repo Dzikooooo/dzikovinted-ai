@@ -22,12 +22,32 @@ async function detectAndReport(): Promise<void> {
   chrome.runtime.sendMessage(accountMessage);
 
   try {
-    const listings = await fetchAllWardrobeItems(vintedUserId);
-    // Envoye meme si vide : une liste vide est une information a part
-    // entiere (miroir complet, voir sync.ts) - seule une erreur reseau doit
-    // empecher l'envoi, pas un compte sans annonce.
-    const listingsMessage: InternalMessage = { type: "LISTINGS_DETECTED", vintedUserId, vintedUsername, listings };
+    const wardrobeResult = await fetchAllWardrobeItems(vintedUserId);
+    // Envoye meme si vide/partiel : une liste vide est une information a
+    // part entiere (miroir complet, voir sync.ts) - seule une erreur reseau
+    // SUR LA PREMIERE PAGE empeche completement l'envoi (voir catch
+    // ci-dessous). `complete` (mission "FIABILISATION SYNCHRO VINTED, lot 1")
+    // est desormais transmis explicitement : sync.ts::recordListings() ne
+    // doit jamais traiter une absence comme une suppression tant que
+    // complete !== true.
+    const listingsMessage: InternalMessage = {
+      type: "LISTINGS_DETECTED",
+      vintedUserId,
+      vintedUsername,
+      listings: wardrobeResult.items,
+      complete: wardrobeResult.complete,
+      pagesRead: wardrobeResult.pagesRead,
+      pagesExpected: wardrobeResult.pagesExpected,
+    };
     chrome.runtime.sendMessage(listingsMessage);
+    if (!wardrobeResult.complete) {
+      logger.warn("Pagination wardrobe Vinted incomplete -- scan partiel envoye, aucune suppression ne sera appliquee", {
+        vintedUserId,
+        pagesRead: wardrobeResult.pagesRead,
+        pagesExpected: wardrobeResult.pagesExpected,
+        itemsCollected: wardrobeResult.items.length,
+      });
+    }
   } catch (err) {
     // Echec de recuperation : on n'envoie rien plutot qu'une liste vide qui
     // effacerait a tort les annonces deja connues en base. Bug reel trouve

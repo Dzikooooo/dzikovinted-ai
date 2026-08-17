@@ -32,6 +32,17 @@ export function extractLdJsonProduct(): LdJsonProduct {
       category?: string;
       color?: string;
     };
+    // Mission "FINIR LES CHAMPS MANQUANTS" (2026-08-11), item 2 : diagnostic
+    // PUREMENT observationnel (aucune logique construite dessus) -- le type
+    // ci-dessus ne lit que category/brand/color/offers/name/description en
+    // texte libre, jamais un identifiant Vinted numerique (catalog_id). Le
+    // format schema.org/Product standard n'a structurellement pas de champ
+    // pour un identifiant proprietaire Vinted, mais seule une inspection du
+    // JSON brut peut le confirmer avec certitude plutot que de le supposer.
+    // Ce log revele au prochain import reel si des cles au-dela de celles
+    // typees ci-dessus existent (ex. "@id", "sku", "gtin", "identifier") --
+    // sans jamais rien construire dessus tant que ce n'est pas confirme.
+    console.log("[ResellOS][DIAGNOSTIC] LD_JSON_RAW_KEYS", { keys: Object.keys(data), raw: data });
     return {
       title: data.name ?? null,
       description: data.description ?? null,

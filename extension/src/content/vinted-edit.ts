@@ -41,6 +41,7 @@ import { waitForElement, waitForCondition, WaitTimeoutError, describeTimeout } f
 import * as sel from "./publishSelectors";
 import {
   PublishError,
+  parsePriceToNumber,
   resolveCategory,
   selectMatchingOption,
   setNativeValue,
@@ -122,17 +123,6 @@ function isBrandLocked(): boolean {
   const bodyText = (document.body.textContent ?? "").replace(/[‘’]/g, "'");
   const noticeVisible = bodyText.includes("peuvent être modifiées qu'en supprimant");
   return triggerDisabled || noticeVisible;
-}
-
-function parsePriceToNumber(raw: string | null): number | null {
-  if (!raw) return null;
-  const normalized = raw
-    .replace(/\s/g, "")
-    .replace(",", ".")
-    .replace(/[^0-9.]/g, "");
-  if (normalized === "") return null;
-  const value = parseFloat(normalized);
-  return Number.isNaN(value) ? null : value;
 }
 
 // Log inconditionnel, tout premier statement execute par ce module --

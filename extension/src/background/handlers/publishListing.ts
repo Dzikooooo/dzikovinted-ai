@@ -49,6 +49,9 @@ import type {
 import { errorDetails, errorMessage } from "../../lib/errorMessage";
 import { arrayBufferToBase64, describeBinaryValue } from "../../lib/binaryTransport";
 import { enrichListingIfNeeded } from "./enrichListing";
+import { findListingsByVintedItemIds, listKnownVintedItemIds } from "../sync";
+import { startAccountSync, type OpenSyncTabResult } from "../syncCoordinator";
+import { performRepublishReplaceTransaction } from "../republishTransaction";
 
 // Mission "PORT MESSAGE FERMÉ" (2026-08-11) : etiquette constante de l'onglet
 // PRINCIPAL (visible, actif) dans tous les logs TAB_*/SEND_MESSAGE_* -- a
@@ -76,6 +79,14 @@ const GLOBAL_TIMEOUT_MS = 600000;
 // (pattern identique, cause racine identique -- voir commentaire d'en-tete
 // de vinted-publish.ts::bootPublishContentScript).
 const TAB_READY_TIMEOUT_MS = 30000;
+// Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+// (2026-08-17) : bornes explicites de la reconciliation post-submit (CAS B,
+// /member/{userId}) -- "quelques retries bornés" (demande explicite), jamais
+// une boucle infinie. Le delai entre tentatives laisse le temps a l'index
+// wardrobe Vinted (potentiellement en retard de quelques secondes juste
+// apres une creation) de se mettre a jour avant le prochain rechargement.
+const RECONCILE_MAX_ATTEMPTS = 4;
+const RECONCILE_RETRY_DELAY_MS = 4000;
 
 function isNewListingUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -95,6 +106,92 @@ function extractPublishedItemId(url: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+// Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+// (2026-08-17) : CAUSE CONFIRMEE en test live -- apres un clic humain reussi
+// sur "Ajouter", Vinted ne redirige pas toujours vers /items/{nouvel_id}
+// (le seul cas gere jusqu'ici, voir extractPublishedItemId ci-dessus) : le
+// tab de publication a ete observe naviguant vers /member/{userId}
+// (parfois suivi de ?promo_shown=true). L'ID numerique du compte est extrait
+// depuis le PATH -- `new URL().pathname` exclut deja la query string, donc
+// aucun traitement special n'est necessaire pour ?promo_shown=true.
+// IMPORTANT : cette fonction ne prouve PAS a elle seule un succes -- une
+// navigation vers /member/{userId} est seulement le SIGNAL qui declenche une
+// reconciliation ciblee (voir reconcilePostSubmitViaMemberRedirect plus bas),
+// jamais un succes aveugle.
+function extractMemberUserId(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const match = new URL(url).pathname.match(/^\/member\/(\d+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17), CAS C :
+// preuve live obtenue -- la reponse REELLE de POST /api/v2/item_upload/items
+// (capturee par publishCreateResponseCapture.ts, transport fetch OU xhr)
+// contient directement l'id du nouvel item cree
+// ({"item":{"id":9691226139},...,"code":0}), sans ambiguite possible
+// contrairement a CAS A (navigation /items/{id}, pas toujours declenchee --
+// la reponse observee porte after_upload_actions:["show_upload_another_item_tip"],
+// signe que Vinted peut rester sur la page apres creation) et CAS B
+// (redirection /member/{userId}, plus lente, plus indirecte). Cette fonction
+// est PUREMENT une validation -- aucune decision ici, seulement une preuve
+// verifiee ou un rejet explicite avec sa raison exacte, jamais un throw
+// (une reponse malformee/inattendue doit degrader vers CAS A/CAS B/timeout
+// global, jamais crasher le handler).
+type PublishCreateResponseValidation =
+  | { valid: true; vintedItemId: string }
+  | { valid: false; reason: string };
+
+const CREATE_RESPONSE_URL_PATTERN = /\/api\/v2\/item_upload\/items$/;
+
+function validatePublishCreateResponse(
+  url: string,
+  ok: boolean,
+  statusCode: number,
+  bodyText: string
+): PublishCreateResponseValidation {
+  // Revalidation de l'URL cote background -- defense en profondeur, en plus
+  // du filtrage deja fait cote MAIN-world (publishCreateResponseCapture.ts) :
+  // ce content script est le seul emetteur de ce message aujourd'hui, mais
+  // rien ne garantit qu'il le restera, et cette verification est gratuite.
+  if (!CREATE_RESPONSE_URL_PATTERN.test(url)) return { valid: false, reason: "unexpected_url" };
+  if (!ok) return { valid: false, reason: "not_ok" };
+  if (statusCode < 200 || statusCode >= 300) return { valid: false, reason: "bad_status" };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return { valid: false, reason: "invalid_json" };
+  }
+
+  if (typeof parsed !== "object" || parsed === null) return { valid: false, reason: "invalid_json" };
+  const code = (parsed as { code?: unknown }).code;
+  if (code !== 0) return { valid: false, reason: "unexpected_code" };
+
+  const itemId = (parsed as { item?: { id?: unknown } }).item?.id;
+  if (typeof itemId !== "number" || !Number.isInteger(itemId) || itemId <= 0) {
+    return { valid: false, reason: "invalid_item_id" };
+  }
+
+  return { valid: true, vintedItemId: String(itemId) };
+}
+
+// Meme convention d'URL que extractPublishedItemId ci-dessous (pas de slug
+// SEO -- Vinted resout normalement une URL /items/{id} sans slug, la seule
+// donnee qui compte pour l'identification/le rattachement est l'id
+// numerique, jamais l'URL elle-meme).
+function buildVintedItemUrl(vintedItemId: string): string {
+  return `https://www.vinted.fr/items/${vintedItemId}`;
 }
 
 // Fetch des photos deplace ICI (background), pas dans le content script
@@ -249,7 +346,18 @@ function findPublishContentScriptFiles(): string[] {
 export async function handlePublishListing(
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void,
-  onPrefillSummary: (confirmed: string[], pending: string[]) => void = () => {}
+  onPrefillSummary: (confirmed: string[], pending: string[]) => void = () => {},
+  // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) : relaie
+  // PUBLISH_READY_TO_SUBMIT (voir son commentaire dans messages.ts) -- jamais
+  // un declencheur de clic (ecarte, voir en-tete de vinted-publish.ts), juste
+  // une invitation honnete a agir au bon moment.
+  onReadyToSubmit: () => void = () => {},
+  // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : relaie vers l'app que
+  // l'extension attend desormais un clic humain reel sur "Confirmer et
+  // supprimer" (ancienne annonce, uniquement pour republish_listing) --
+  // voir finalizeSuccess() ci-dessous et son fil jusqu'a
+  // performRepublishReplaceTransaction/attemptDeleteOldVintedListing.
+  onAwaitingOldListingDeletion: () => void = () => {}
 ): Promise<RunActionOutcome> {
   let payload = request.payload as unknown as PublishListingPayload;
 
@@ -317,12 +425,41 @@ export async function handlePublishListing(
   const tabId: number = tab.id;
   logger.info("TAB_CREATED", { tabId, url: VINTED_NEW_LISTING_URL, purpose: TAB_PURPOSE, at: Date.now() });
 
+  // Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+  // (2026-08-17), etape 4 (snapshot pre-publication) : capture le PLUS TOT
+  // possible (avant toute chance qu'une redirection /member/{userId} ne se
+  // produise) l'ensemble des vinted_item_id DEJA connus pour ce compte --
+  // lecture Supabase (source deja fiable, pas un nouveau fetch Vinted),
+  // lancee en parallele du reste du flux sans jamais le bloquer. Utilisee
+  // uniquement par reconcilePostSubmitViaMemberRedirect ci-dessous (CAS B),
+  // jamais pour le CAS A (/items/{id}), qui reste inchange.
+  const beforeVintedItemIdsPromise: Promise<Set<string>> = request.vintedAccountId
+    ? listKnownVintedItemIds(request.vintedAccountId)
+    : Promise.resolve(new Set<string>());
+
   return new Promise<RunActionOutcome>((resolve) => {
     let settled = false;
     let tabClosedByHandler = false;
     // Bascule des reception de PUBLISH_PREFILL_SUMMARY -- voir commentaire
     // d'en-tete (keepTabOpen sur timeout uniquement a partir de ce point).
     let reachedManualPhase = false;
+    // Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+    // (2026-08-17) : garde a UN SEUL demarrage -- plusieurs TAB_UPDATED
+    // /member/{userId} successifs (loading -> complete, puis a nouveau apres
+    // ?promo_shown=true, ou apres nos propres chrome.tabs.reload() de retry)
+    // ne doivent jamais declencher plusieurs boucles de reconciliation
+    // paralleles independantes.
+    let reconciliationStarted = false;
+    // Mission "REPUBLICATION : CORRIGER LES DOUBLONS" (2026-08-17) : garde
+    // synchrone, posee AVANT le moindre await -- ferme la course ou le
+    // succes serait signale deux fois (CAS A rejoue, ou CAS A et CAS B
+    // aboutissant presque simultanement) avant que `settled` (mis a jour
+    // seulement a la toute fin de finalizeSuccess(), via settle()) n'ait pu
+    // le refleter. "Rejouer le meme evenement de succes deux fois doit etre
+    // sans effet supplementaire" (demande explicite) -- sans cette garde,
+    // un second appel concurrent relancerait un second rattachement/une
+    // seconde tentative de suppression Vinted.
+    let successFinalizationStarted = false;
     // Mission "PORT MESSAGE FERMÉ" (2026-08-11) : handshake explicite,
     // remplace l'ancien retry aveugle -- PUBLISH_LISTING n'est envoye
     // qu'APRES reception d'un PUBLISH_TAB_READY pousse par le content script
@@ -347,6 +484,18 @@ export async function handlePublishListing(
     let sendPendingOrAcceptedForDocumentInstanceId: string | null = null;
     let publishTabReadyCount = 0;
     let explicitlyInjectedAfterComplete = false;
+    // Mission "DIAGNOSTIC INJECTION/PACKAGING" (2026-08-16) : preuve live
+    // directe -- HANDLE_PUBLISH_REINJECT_FAILED ("Could not load file: ...")
+    // suivi de HANDLE_PUBLISH_NO_READY_SIGNAL, cause confirmee = extension
+    // chargee dans Chrome desynchronisee du dossier dist/ reellement present
+    // sur disque (manifest en memoire pointant vers un chunk hashe par Vite
+    // qui n'existe plus, dist/ ayant ete reconstruit depuis le dernier
+    // chargement/rechargement de l'extension). Capture la raison exacte ICI
+    // pour que le message final distingue ce cas precis (deja rencontre,
+    // desormais diagnostiquable sans nouvelle session live) du message
+    // generique "Vinted a peut-etre change de structure", qui accusait a
+    // tort Vinted alors que la cause reelle etait locale.
+    let reinjectFailedReason: string | null = null;
 
     function attemptSend(reason: string, documentInstanceId: string): void {
       if (sendPendingOrAcceptedForDocumentInstanceId === documentInstanceId) {
@@ -410,11 +559,77 @@ export async function handlePublishListing(
       } else if (message.type === "PUBLISH_PREFILL_SUMMARY") {
         reachedManualPhase = true;
         onPrefillSummary(message.confirmed, message.pending);
+      } else if (message.type === "PUBLISH_READY_TO_SUBMIT") {
+        logger.info("HANDLE_PUBLISH_READY_TO_SUBMIT", { tabId });
+        onReadyToSubmit();
       } else if (message.type === "PUBLISH_RESULT") {
         // N'arrive plus qu'en cas d'echec du remplissage automatise (session
         // expiree, page introuvable...) -- le chemin de succes ne passe plus
         // par ce message, voir onTabUpdated ci-dessous.
         settle(message.outcome);
+      } else if (message.type === "PUBLISH_CREATE_RESPONSE_CAPTURED") {
+        // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17) :
+        // instrumentation ciblee (voir publishCreateResponseCapture.ts) --
+        // journalise TOUJOURS le corps de reponse REEL, quelle que soit sa
+        // validite (utile au diagnostic meme sur un rejet), conservee a
+        // l'identique.
+        logger.info("PUBLISH_CREATE_RESPONSE_BODY_CAPTURED", {
+          tabId,
+          url: message.url,
+          statusCode: message.statusCode,
+          ok: message.ok,
+          bodyText: message.bodyText,
+          transport: message.transport,
+        });
+
+        // CAS C (2026-08-17) -- preuve live obtenue : la reponse REELLE de
+        // creation identifie B directement et sans ambiguite (voir
+        // validatePublishCreateResponse ci-dessus). UNIQUEMENT un nouvel
+        // APPELANT de finalizeSuccess(), le meme choke point unique deja
+        // utilise par CAS A (navigation /items/{id}, onTabUpdated) et CAS B
+        // (reconciliation post-/member/{userId}) -- aucune logique de
+        // rattachement/transaction/suppression dupliquee ici, tout reste
+        // dans performRepublishReplaceTransaction (republishTransaction.ts,
+        // inchange). Une capture invalide n'a strictement AUCUN effet
+        // metier : CAS A/CAS B/le timeout global continuent de fonctionner
+        // exactement comme avant cette mission.
+        const validation = validatePublishCreateResponse(message.url, message.ok, message.statusCode, message.bodyText);
+        if (!validation.valid) {
+          logger.warn("PUBLISH_CREATE_RESPONSE_REJECTED", { tabId, reason: validation.reason, transport: message.transport });
+        } else if (!settled && !successFinalizationStarted) {
+          // Pre-verification purement pour la qualite du log (evite de
+          // logguer "identifie" pour un appel qui va immediatement no-op
+          // dans finalizeSuccess) -- finalizeSuccess() reste neanmoins seul
+          // et unique garant de l'idempotence reelle via son propre garde
+          // synchrone `if (settled || successFinalizationStarted) return;`,
+          // pose AVANT tout await, identique a celui deja utilise par CAS
+          // A/CAS B. Si CAS A/CAS B gagnent la course entre cette ligne et
+          // l'appel ci-dessous (fenetre synchrone, aucun await entre les
+          // deux), ce garde interne absorbe silencieusement le doublon --
+          // aucun nouvel etat n'est necessaire ici.
+          logger.info("AUTO_PUBLISH_NEW_ITEM_IDENTIFIED", {
+            tabId,
+            vintedItemId: validation.vintedItemId,
+            source: "network_response",
+            transport: message.transport,
+          });
+          void finalizeSuccess(validation.vintedItemId, buildVintedItemUrl(validation.vintedItemId));
+        }
+      } else if (message.type === "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS") {
+        // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17),
+        // audit post-echec du 1er test live : log EXPLICITE requis pour
+        // distinguer "instrumentation jamais installee" de "installee mais
+        // transport non intercepte" au prochain test. Envoye une seule fois
+        // par bootPublishContentScript(), en verifiant l'attribut DOM pose
+        // par le nouveau content script MONDE MAIN/document_start (voir
+        // manifest.config.ts) -- plus tot que l'ancienne injection tardive
+        // (chrome.scripting.executeScript au tab "complete", supprimee ici
+        // car confirmee trop tardive lors du test live).
+        if (message.installed) {
+          logger.info("PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED", { tabId });
+        } else {
+          logger.warn("PUBLISH_CREATE_RESPONSE_CAPTURE_MISSING", { tabId });
+        }
       }
       return false;
     }
@@ -447,17 +662,188 @@ export async function handlePublishListing(
             .executeScript({ target: { tabId }, files })
             .then(() => logger.info("HANDLE_PUBLISH_CONTENT_SCRIPT_REINJECTED", { tabId, files }))
             .catch((err) => {
-              // Non fatal : l'injection declarative a peut-etre deja suffi
-              // (PUBLISH_TAB_READY peut arriver independamment de cette
-              // reinjection).
+              // Non fatal en soi (l'injection declarative a peut-etre deja
+              // suffi) -- mais si tabReadyTimeout finit par se declencher SANS
+              // qu'aucun signal pret ne soit jamais arrive, cette raison
+              // precise (fichier manquant, extension desynchronisee de
+              // dist/...) est la cause la plus probable et merite un message
+              // distinct du "Vinted a peut-etre change de structure" generique.
+              reinjectFailedReason = errorMessage(err);
               logger.warn("HANDLE_PUBLISH_REINJECT_FAILED", errorDetails(err));
             });
         }
+        // Note (2026-08-17) : l'injection best-effort de
+        // publishCreateResponseCapture.ts qui vivait ici a ete SUPPRIMEE --
+        // confirmee trop tardive lors d'un test live reel (0 capture malgre
+        // une creation reussie). Remplacee par un content script declaratif
+        // MONDE MAIN + document_start (voir manifest.config.ts), seul point
+        // d'injection assez tot pour patcher fetch/XMLHttpRequest avant que
+        // le bundle Vinted n'en capture sa propre reference native.
       }
 
       const vintedItemId = extractPublishedItemId(updatedTab.url);
-      if (!vintedItemId) return;
-      settle({ status: "success", resultPayload: { vintedItemId, vintedUrl: updatedTab.url! } });
+      if (vintedItemId) {
+        if (!settled) void finalizeSuccess(vintedItemId, updatedTab.url!);
+        return;
+      }
+
+      // Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+      // (2026-08-17), CAS B : preuve live directe -- apres un clic humain
+      // reussi sur "Ajouter", Vinted redirige parfois vers /member/{userId}
+      // (le profil du vendeur) plutot que vers /items/{nouvel_id}. Cette
+      // navigation seule n'est JAMAIS une preuve de succes (demande
+      // explicite) -- uniquement un signal qui declenche une reconciliation
+      // ciblee (voir reconcilePostSubmitViaMemberRedirect), qui seule peut
+      // aboutir a un settle({status:"success"}). N'attend que la navigation
+      // soit STABLE (status:"complete") avant de demarrer, et ne demarre
+      // qu'UNE seule fois par run (reconciliationStarted).
+      if (changeInfo.status === "complete" && !reconciliationStarted) {
+        const memberVintedUserId = extractMemberUserId(updatedTab.url);
+        if (memberVintedUserId) {
+          reconciliationStarted = true;
+          logger.info("HANDLE_PUBLISH_MEMBER_REDIRECT_DETECTED", { tabId, memberVintedUserId, url: updatedTab.url });
+          void reconcilePostSubmitViaMemberRedirect(memberVintedUserId);
+        }
+      }
+    }
+
+    // Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+    // (2026-08-17) -- CAS B ci-dessus. Reutilise TEL QUEL l'infrastructure
+    // Sync Vinted des Lots 1/2 (syncCoordinator.startAccountSync(), qui
+    // correle a une VRAIE relecture wardrobe via l'injection declarative
+    // organique de vinted-profile.ts sur /member/* -- voir manifest.config.ts)
+    // : aucune deuxieme implementation de fetch wardrobe/recordListings.
+    // `openTab` ne cree JAMAIS un nouvel onglet ici -- il RECHARGE l'onglet
+    // de publication deja present sur /member/{userId}, ce qui garantit
+    // deux choses a la fois : (1) une navigation FRAICHE et deterministe
+    // (elimine la course possible entre l'injection organique du content
+    // script -- deja potentiellement en cours au moment ou ce code s'execute
+    // -- et l'enregistrement de la synchro en attente cote syncCoordinator,
+    // qui doit imperativement precéder tout evenement ACCOUNT_DETECTED/
+    // LISTINGS_DETECTED pour pouvoir s'y correler), et (2) un mecanisme de
+    // retry reel (le content script ne se re-execute jamais sans une
+    // NOUVELLE navigation -- un simple nouvel appel a startAccountSync()
+    // SANS recharger attendrait indefiniment des evenements qui ne se
+    // reproduiront jamais).
+    //
+    // Priorite de preuve (demande explicite) : (1) exactement UN nouveau
+    // vinted_item_id absent avant la publication et present apres -> succes
+    // direct ; (2) plusieurs nouveaux -> desambiguisation stricte par
+    // titre+prix EXACTS (jamais un rapprochement flou) ; (3) aucun -> retry
+    // borne (l'index wardrobe Vinted peut avoir un leger delai) ; (4) toujours
+    // ambigu/absent apres tentatives -> erreur explicite, jamais un succes
+    // invente. keepTabOpen:true sur ces deux derniers cas -- l'onglet reste
+    // sur /member/{userId}, ou l'utilisateur peut verifier visuellement.
+    async function reconcilePostSubmitViaMemberRedirect(memberVintedUserId: string): Promise<void> {
+      if (!request.vintedAccountId) {
+        logger.error("HANDLE_PUBLISH_RECONCILE_NO_ACCOUNT_ID", { tabId, memberVintedUserId });
+        return; // Rien a comparer sans compte ResellOS connu -- laisse le timeout global trancher honnetement.
+      }
+      const vintedAccountId = request.vintedAccountId;
+      const beforeIds = await beforeVintedItemIdsPromise;
+      if (settled) return;
+
+      for (let attempt = 1; attempt <= RECONCILE_MAX_ATTEMPTS; attempt++) {
+        if (settled) return;
+        if (attempt > 1) await delay(RECONCILE_RETRY_DELAY_MS);
+        if (settled) return;
+
+        logger.info("HANDLE_PUBLISH_RECONCILE_ATTEMPT", { tabId, attempt, memberVintedUserId, beforeCount: beforeIds.size });
+
+        const syncResult = await startAccountSync(memberVintedUserId, () => {}, async (): Promise<OpenSyncTabResult> => {
+          try {
+            await chrome.tabs.reload(tabId);
+            return { tabId };
+          } catch (err) {
+            return { tabId: null, error: errorMessage(err) };
+          }
+        });
+        if (settled) return;
+
+        if (!syncResult.ok) {
+          logger.warn("HANDLE_PUBLISH_RECONCILE_SYNC_FAILED", {
+            tabId,
+            attempt,
+            reason: syncResult.reason,
+            error: syncResult.error,
+          });
+          if (syncResult.reason === "not_paired") break; // Pas de compte appairé -- réessayer ne changerait rien.
+          continue;
+        }
+
+        const afterIds = await listKnownVintedItemIds(vintedAccountId);
+        const newIds = [...afterIds].filter((id) => !beforeIds.has(id));
+        logger.info("HANDLE_PUBLISH_RECONCILE_DIFF", {
+          tabId,
+          attempt,
+          beforeCount: beforeIds.size,
+          afterCount: afterIds.size,
+          newIdsCount: newIds.length,
+          newIds,
+        });
+
+        if (newIds.length === 1) {
+          const [candidate] = await findListingsByVintedItemIds(vintedAccountId, newIds);
+          if (candidate) {
+            logger.info("HANDLE_PUBLISH_RECONCILE_RESOLVED", { tabId, attempt, vintedItemId: candidate.vintedItemId });
+            await finalizeSuccess(candidate.vintedItemId, candidate.vintedUrl);
+            return;
+          }
+          // Le vinted_item_id est reellement nouveau (diff avant/apres) mais
+          // introuvable dans listings -- incoherence transitoire (ecriture
+          // Supabase pas encore visible) : traite comme "pas encore trouve",
+          // retente au lieu d'inventer un succes.
+        } else if (newIds.length > 1) {
+          const candidates = await findListingsByVintedItemIds(vintedAccountId, newIds);
+          const normalizedRequestedTitle = payload.title.trim().toLowerCase();
+          const matched = candidates.filter(
+            (c) => c.title.trim().toLowerCase() === normalizedRequestedTitle && c.price === payload.price
+          );
+          if (matched.length === 1) {
+            logger.info("HANDLE_PUBLISH_RECONCILE_RESOLVED_BY_TITLE_PRICE", {
+              tabId,
+              attempt,
+              vintedItemId: matched[0].vintedItemId,
+              candidateCount: candidates.length,
+            });
+            await finalizeSuccess(matched[0].vintedItemId, matched[0].vintedUrl);
+            return;
+          }
+          // Ambigu, jamais un choix au hasard (demande explicite) : erreur
+          // terminale immediate, pas de retry (retenter ne desambiguiserait
+          // rien -- le meme ensemble d'annonces resterait candidat).
+          logger.error("HANDLE_PUBLISH_RECONCILE_AMBIGUOUS", {
+            tabId,
+            attempt,
+            newIds,
+            candidateTitles: candidates.map((c) => ({ vintedItemId: c.vintedItemId, title: c.title, price: c.price })),
+            matchedCount: matched.length,
+          });
+          settle(
+            {
+              status: "error",
+              errorMessage:
+                "Plusieurs nouvelles annonces ont été détectées sur ton compte Vinted -- impossible d'identifier celle-ci avec certitude. Vérifie manuellement sur Vinted, puis synchronise.",
+            },
+            { keepTabOpen: true }
+          );
+          return;
+        }
+        // newIds.length === 0 -- l'index wardrobe Vinted n'a peut-etre pas
+        // encore ete mis a jour cote serveur -- boucle vers le prochain essai.
+      }
+
+      if (!settled) {
+        logger.error("HANDLE_PUBLISH_RECONCILE_EXHAUSTED", { tabId, memberVintedUserId, attempts: RECONCILE_MAX_ATTEMPTS });
+        settle(
+          {
+            status: "error",
+            errorMessage:
+              "La publication a probablement réussi sur Vinted (redirection vers ton profil détectée), mais ResellOS n'a pas pu identifier la nouvelle annonce avec certitude après plusieurs tentatives. Vérifie ton profil Vinted, puis synchronise manuellement.",
+          },
+          { keepTabOpen: true }
+        );
+      }
     }
 
     function onRemoved(removedTabId: number): void {
@@ -478,6 +864,51 @@ export async function handlePublishListing(
       chrome.tabs.onUpdated.removeListener(onTabUpdated);
       clearTimeout(globalTimeout);
       clearTimeout(tabReadyTimeout);
+    }
+
+    // Mission "REPUBLICATION : CORRIGER LES DOUBLONS" (2026-08-17) : choke
+    // point UNIQUE des DEUX chemins de succes (CAS A -- /items/{id} direct,
+    // et CAS B -- reconciliation post-/member/{userId}) -- avant cette
+    // mission, chacun appelait settle({status:"success",...}) directement,
+    // sans jamais rattacher la ligne ResellOS ORIGINALE au nouvel item ni
+    // supprimer l'ancienne annonce Vinted. Une republication n'est PAS une
+    // creation independante : c'est un REMPLACEMENT (voir republishTransaction.ts
+    // pour le detail complet de la transaction). B reste toujours confirmee
+    // publiee ici (status:"success") -- meme si le rattachement/la suppression
+    // de l'ancienne annonce echoue partiellement, ne jamais transformer un
+    // succes Vinted reel en erreur ResellOS (voir resultPayload.cleanupRequired
+    // pour ce cas, gere honnetement plutot que masque).
+    async function finalizeSuccess(vintedItemId: string, vintedUrl: string): Promise<void> {
+      if (settled || successFinalizationStarted) return;
+      successFinalizationStarted = true;
+
+      const oldVintedItemId =
+        typeof (payload as { previousVintedItemId?: unknown }).previousVintedItemId === "string"
+          ? ((payload as { previousVintedItemId?: string }).previousVintedItemId as string)
+          : null;
+
+      const transactionResult = await performRepublishReplaceTransaction(
+        {
+          listingId: request.listingId ?? null,
+          vintedAccountId: request.vintedAccountId,
+          oldVintedItemId,
+          newVintedItemId: vintedItemId,
+          newVintedUrl: vintedUrl,
+        },
+        undefined,
+        onAwaitingOldListingDeletion
+      );
+
+      const resultPayload: Record<string, unknown> = { vintedItemId, vintedUrl };
+      if (transactionResult.mergedDuplicateListingId) {
+        resultPayload.mergedDuplicateListingId = transactionResult.mergedDuplicateListingId;
+      }
+      if (transactionResult.reason === "cleanup_required") {
+        resultPayload.cleanupRequired = true;
+        if (transactionResult.cleanupError) resultPayload.cleanupError = transactionResult.cleanupError;
+      }
+
+      settle({ status: "success", resultPayload });
     }
 
     function settle(outcome: RunActionOutcome, options?: { keepTabOpen?: boolean }): void {
@@ -526,11 +957,12 @@ export async function handlePublishListing(
     // honnete et precis plutot qu'un simple "delai depasse" generique --
     // meme discipline qu'editListing.ts::onTabReadyTimeout.
     const tabReadyTimeout = setTimeout(() => {
-      logger.error("HANDLE_PUBLISH_NO_READY_SIGNAL", { tabId, timeoutMs: TAB_READY_TIMEOUT_MS });
+      logger.error("HANDLE_PUBLISH_NO_READY_SIGNAL", { tabId, timeoutMs: TAB_READY_TIMEOUT_MS, reinjectFailedReason });
       settle({
         status: "error",
-        errorMessage:
-          "La page Vinted n'a pas confirmé être prête à temps (le script d'automatisation n'a jamais pu se lancer). Réessaie -- si le problème persiste, la page Vinted a peut-être changé de structure.",
+        errorMessage: reinjectFailedReason
+          ? `Le script d'automatisation n'a pas pu être chargé (${reinjectFailedReason}). L'extension chargée dans Chrome semble désynchronisée du dernier build -- reconstruis l'extension (npm run build) puis recharge-la depuis chrome://extensions avant de réessayer.`
+          : "La page Vinted n'a pas confirmé être prête à temps (le script d'automatisation n'a jamais pu se lancer). Réessaie -- si le problème persiste, la page Vinted a peut-être changé de structure.",
       });
     }, TAB_READY_TIMEOUT_MS);
 

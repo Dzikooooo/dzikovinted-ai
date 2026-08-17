@@ -1,12 +1,21 @@
-import { AlertTriangle, Info } from 'lucide-react';
+import { AlertTriangle, Check, Info } from 'lucide-react';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../actions/ActionStepTimeline';
 import type { PublishStep } from '../../lib/actions/publishSteps';
 import { PUBLISH_STEP_ORDER, PUBLISH_STEP_LABELS } from '../../lib/actions/publishSteps';
 import { Modal } from '../ui/Modal';
 
 interface PublishProgressModalProps {
-  currentStep: PublishStep | 'done' | null;
+  // 'cleanup_required' (mission "CORRIGER LE FAUX TERMINE", 2026-08-17) :
+  // republication ou B est confirmee ET rattachee, mais l'ancienne annonce
+  // Vinted n'a pas pu etre supprimee/confirmee supprimee -- distinct de
+  // 'done' (jamais "Terminé." pour cet etat, republication non totalement
+  // terminee) ET de `error` (B a reellement ete publiee, ce n'est jamais un
+  // echec total de l'action).
+  currentStep: PublishStep | 'done' | 'cleanup_required' | null;
   error?: string | null;
+  // Detail de l'echec de suppression (transactionResult.cleanupError,
+  // extension) -- affiche uniquement avec currentStep==='cleanup_required'.
+  cleanupError?: string | null;
   onClose: () => void;
   // Present uniquement si l'appelant sait naviguer vers le Centre des
   // Actions (StockPage le fournit, d'autres futurs appelants pourraient
@@ -30,17 +39,28 @@ interface PublishProgressModalProps {
   onOpenVinted?: () => void;
   onRetry?: () => void;
   retryDisabled?: boolean;
+  // Republication assistee (2026-08-11) : etat des lieux honnete rapporte
+  // par vinted-publish.ts UNE FOIS le remplissage automatise termine (voir
+  // PUBLISH_PREFILL_SUMMARY) -- `confirmed` n'affiche jamais de coche pour
+  // un champ non reellement relu dans le DOM, `pending` liste ce qu'il reste
+  // a faire manuellement sur Vinted. Absent tant que le message n'est pas
+  // encore arrivé (ou pour toute autre action que publish/republish).
+  prefillSummary?: { confirmed: string[]; pending: string[] } | null;
 }
 
 function buildRows(
-  currentStep: PublishStep | 'done' | null,
+  currentStep: PublishStep | 'done' | 'cleanup_required' | null,
   error: string | null | undefined,
   stepOrder: PublishStep[],
   stepLabels: Record<PublishStep, string>
 ): ActionStepTimelineRow[] {
   const currentIndex = currentStep ? stepOrder.indexOf(currentStep as PublishStep) : -1;
   return stepOrder.map((step, index) => {
-    const done = !error && (currentStep === 'done' || index < currentIndex);
+    // 'cleanup_required' : B a bien franchi toutes les etapes reelles de
+    // publication (seule la suppression de l'ancienne annonce reste en
+    // attente/a echoue) -- les lignes de PUBLICATION restent donc "done",
+    // jamais "pending" comme si rien ne s'etait passe.
+    const done = !error && (currentStep === 'done' || currentStep === 'cleanup_required' || index < currentIndex);
     const active = !error && step === currentStep;
     return {
       key: step,
@@ -53,6 +73,7 @@ function buildRows(
 export default function PublishProgressModal({
   currentStep,
   error,
+  cleanupError,
   onClose,
   onViewAction,
   stepOrder = PUBLISH_STEP_ORDER,
@@ -63,8 +84,9 @@ export default function PublishProgressModal({
   onOpenVinted,
   onRetry,
   retryDisabled,
+  prefillSummary,
 }: PublishProgressModalProps) {
-  const isTerminal = currentStep === 'done' || !!error;
+  const isTerminal = currentStep === 'done' || currentStep === 'cleanup_required' || !!error;
 
   return (
     <Modal onClose={onClose} dismissible={isTerminal} size="sm">
@@ -76,6 +98,35 @@ export default function PublishProgressModal({
         <div className="mt-4 flex items-start gap-2 bg-neon-500/10 border border-neon-500/20 rounded-xl p-3">
           <Info className="w-4 h-4 text-neon-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-neon-300">{hint}</p>
+        </div>
+      )}
+
+      {prefillSummary && (prefillSummary.confirmed.length > 0 || prefillSummary.pending.length > 0) && (
+        <div className="mt-4 bg-dark-400 border border-white/10 rounded-xl p-3 space-y-3">
+          {prefillSummary.confirmed.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">Préremplis</p>
+              <ul className="space-y-1">
+                {prefillSummary.confirmed.map((field) => (
+                  <li key={field} className="flex items-center gap-1.5 text-xs text-neon-300">
+                    <Check className="w-3.5 h-3.5 text-neon-500 flex-shrink-0" /> {field}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {prefillSummary.pending.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">À confirmer sur Vinted</p>
+              <ul className="space-y-1">
+                {prefillSummary.pending.map((field) => (
+                  <li key={field} className="flex items-center gap-1.5 text-xs text-amber-300">
+                    <span className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center text-amber-400">•</span> {field}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -97,6 +148,19 @@ export default function PublishProgressModal({
 
       {currentStep === 'done' && !error && (
         <p className="mt-4 text-sm text-neon-500 font-semibold">Terminé.</p>
+      )}
+
+      {currentStep === 'cleanup_required' && !error && (
+        <div className="mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-amber-300 font-semibold">Republication presque terminée</p>
+            <p className="text-xs text-amber-200/80 mt-1">
+              La nouvelle annonce est bien publiée sur Vinted. L'ancienne annonce n'a en revanche pas pu être
+              supprimée{cleanupError ? ` (${cleanupError})` : ''} — supprime-la manuellement sur Vinted, ou réessaie la republication.
+            </p>
+          </div>
+        </div>
       )}
 
       {error && onOpenVinted && (

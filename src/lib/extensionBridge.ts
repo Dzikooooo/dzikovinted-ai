@@ -83,7 +83,21 @@ function logExtensionIdStatus(): void {
 // comportement normal de chrome.runtime.sendMessage vers un id inconnu : pas
 // d'exception, juste chrome.runtime.lastError dans le callback (ou aucun
 // callback si l'extension n'a jamais recu le message).
-export async function pingExtension(timeoutMs = 400): Promise<boolean> {
+//
+// Bug reel confirme en test live (2026-08-11, republication assistee) :
+// l'ancien defaut de 400ms declenchait un faux "extension non connectee" au
+// clic sur "Republier", alors que l'extension etait reellement appairee et
+// synchronisait (popup + GET_STATUS le confirmaient). Cause : le service
+// worker MV3 de l'extension se suspend apres inactivite ; un sendMessage
+// externe qui arrive pendant cette periode oblige Chrome a le reveiller
+// avant de repondre a onMessageExternal, ce qui peut depasser 400ms sur un
+// build dev/unpacked. Le popup (GET_STATUS via chrome.runtime.sendMessage
+// interne, sans timeout local) n'est jamais concerne par ce probleme : il
+// attend simplement la reponse, aussi longtemps qu'il le faut. 1500ms aligne
+// ce defaut sur getExtensionStatus() ci-dessous, deja calibre pour la meme
+// latence de reveil et deja utilise sans probleme signale par
+// VintedAccountPage.tsx/DashboardLayout.tsx.
+export async function pingExtension(timeoutMs = 1500): Promise<boolean> {
   const runtime = getRuntime();
   if (!EXTENSION_ID || !runtime) {
     devWarn('[ResellOS][pairing] pingExtension() abandonne : EXTENSION_ID ou chrome.runtime absent', {
@@ -93,11 +107,25 @@ export async function pingExtension(timeoutMs = 400): Promise<boolean> {
     return false;
   }
 
+  // Instrumentation TEMPORAIRE (diagnostic Bug Live n2, republication assistee,
+  // 2026-08-10) -- a retirer une fois la cause confirmee. Le code precedent
+  // avalait chrome.runtime.lastError en simple `false`, sans jamais logger le
+  // message reel -- impossible de distinguer "pas de reponse a temps" de
+  // "Chrome a rejete le message avant meme qu'il n'atteigne l'extension"
+  // (ex. origine absente de externally_connectable.matches, voir
+  // manifest.config.ts : ce cas precis s'est deja produit deux fois).
+  const startedAt = Date.now();
+
   return new Promise((resolve) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        devWarn('[ResellOS Bridge] PING timeout local (aucune reponse a temps)', {
+          extensionId: EXTENSION_ID,
+          timeoutMs,
+          elapsedMs: Date.now() - startedAt,
+        });
         resolve(false);
       }
     }, timeoutMs);
@@ -107,13 +135,25 @@ export async function pingExtension(timeoutMs = 400): Promise<boolean> {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        const lastError = runtime.lastError?.message;
         const ok = !runtime.lastError && !!(response as { ok?: boolean } | undefined)?.ok;
+        devLog('[ResellOS Bridge] PING', {
+          extensionId: EXTENSION_ID,
+          response,
+          lastError,
+          durationMs: Date.now() - startedAt,
+          ok,
+        });
         resolve(ok);
       });
-    } catch {
+    } catch (err) {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
+        devWarn('[ResellOS Bridge] PING exception synchrone', {
+          extensionId: EXTENSION_ID,
+          error: err instanceof Error ? err.message : String(err),
+        });
         resolve(false);
       }
     }
@@ -191,11 +231,20 @@ export async function getExtensionStatus(timeoutMs = 1500): Promise<ExtensionSta
   const runtime = getRuntime();
   if (!EXTENSION_ID || !runtime) return null;
 
+  // Instrumentation TEMPORAIRE (diagnostic Bug Live n2, meme raison que
+  // pingExtension() ci-dessus) -- a retirer une fois la cause confirmee.
+  const startedAt = Date.now();
+
   return new Promise((resolve) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
+        devWarn('[ResellOS Bridge] GET_STATUS timeout local (aucune reponse a temps)', {
+          extensionId: EXTENSION_ID,
+          timeoutMs,
+          elapsedMs: Date.now() - startedAt,
+        });
         resolve(null);
       }
     }, timeoutMs);
@@ -205,6 +254,13 @@ export async function getExtensionStatus(timeoutMs = 1500): Promise<ExtensionSta
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        const lastError = runtime.lastError?.message;
+        devLog('[ResellOS Bridge] GET_STATUS', {
+          extensionId: EXTENSION_ID,
+          response,
+          lastError,
+          durationMs: Date.now() - startedAt,
+        });
         // Une extension installee mais pas encore rechargee apres une mise a
         // jour de ResellOS peut repondre {ok:false, error:"Message externe
         // inconnu"} plutot que la forme ExtensionStatus attendue -- ne
@@ -218,10 +274,14 @@ export async function getExtensionStatus(timeoutMs = 1500): Promise<ExtensionSta
         }
         resolve(response as ExtensionStatus);
       });
-    } catch {
+    } catch (err) {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
+        devWarn('[ResellOS Bridge] GET_STATUS exception synchrone', {
+          extensionId: EXTENSION_ID,
+          error: err instanceof Error ? err.message : String(err),
+        });
         resolve(null);
       }
     }
@@ -284,11 +344,31 @@ export interface RunActionOptions {
   // qui ne porte que la reponse finale. N'affecte pas les actions qui ne
   // rapportent aucune progression (le port reste simplement inutilise).
   onProgress?: (step: string) => void;
+  // Republication assistee (2026-08-11) : meme port, message distinct
+  // ("prefill_summary" -- voir ActionProgressPortMessage) -- seul
+  // publish_listing/republish_listing l'emet aujourd'hui, une seule fois par
+  // action. N'affecte aucune autre action (ignore simplement si non fourni).
+  onPrefillSummary?: (confirmed: string[], pending: string[]) => void;
+  // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) : meme
+  // port, message distinct ("ready_to_submit") -- envoye au plus une fois par
+  // action, des que Vinted lui-meme considere le formulaire soumissible (voir
+  // vinted-publish.ts::watchForPublishReadiness). Ne declenche jamais de clic
+  // automatique (ecarte, cause DataDome deja prouvee sur le meme composant
+  // via edit_listing) -- sert uniquement a inviter l'utilisateur a cliquer
+  // au bon moment.
+  onReadyToSubmit?: () => void;
+  // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : meme port, message
+  // distinct ("awaiting_old_listing_deletion") -- envoye une fois republish_listing
+  // seulement, quand l'extension attend desormais un clic humain reel sur
+  // "Confirmer et supprimer" (ancienne annonce, onglet reste ouvert). Ne
+  // constitue jamais une preuve de suppression a lui seul -- seul le
+  // resultat final (resultPayload.cleanupRequired absent/false) l'atteste.
+  onAwaitingOldListingDeletion?: () => void;
 }
 
 const ACTION_PROGRESS_PORT_NAME = "action-progress";
 
-// Delai plus long que pingExtension() (400ms) : une action reelle (Phase
+// Delai plus long que pingExtension() (1500ms) : une action reelle (Phase
 // 3.1+) peut ouvrir un onglet/attendre le content script, un simple ping ne
 // suffit pas comme reference de duree.
 export async function runAction(
@@ -296,20 +376,26 @@ export async function runAction(
   request: ActionRequest,
   options: RunActionOptions = {}
 ): Promise<RunActionResult> {
-  const { timeoutMs = 8000, onProgress } = options;
+  const { timeoutMs = 8000, onProgress, onPrefillSummary, onReadyToSubmit, onAwaitingOldListingDeletion } = options;
   const runtime = getRuntime();
   if (!EXTENSION_ID || !runtime) {
     return { ok: false, error: "Extension non détectée" };
   }
 
   let port: ExtensionPort | null = null;
-  if (onProgress) {
+  if (onProgress || onPrefillSummary || onReadyToSubmit || onAwaitingOldListingDeletion) {
     try {
       port = runtime.connect(EXTENSION_ID, { name: ACTION_PROGRESS_PORT_NAME });
       port.onMessage.addListener((message) => {
-        const progress = message as { type?: string; step?: string } | undefined;
-        if (progress?.type === "progress" && typeof progress.step === "string") {
-          onProgress(progress.step);
+        const portMessage = message as { type?: string; step?: string; confirmed?: unknown; pending?: unknown } | undefined;
+        if (portMessage?.type === "progress" && typeof portMessage.step === "string") {
+          onProgress?.(portMessage.step);
+        } else if (portMessage?.type === "prefill_summary" && Array.isArray(portMessage.confirmed) && Array.isArray(portMessage.pending)) {
+          onPrefillSummary?.(portMessage.confirmed as string[], portMessage.pending as string[]);
+        } else if (portMessage?.type === "ready_to_submit") {
+          onReadyToSubmit?.();
+        } else if (portMessage?.type === "awaiting_old_listing_deletion") {
+          onAwaitingOldListingDeletion?.();
         }
       });
     } catch {
@@ -371,6 +457,166 @@ export async function runAction(
         clearTimeout(timer);
         port?.disconnect();
         resolve({ ok: false, error: translateExtensionError(err instanceof Error ? err.message : String(err)) });
+      }
+    }
+  });
+}
+
+// Mission "SYNC_VINTED_ACCOUNT" (2026-08-16, lot 2 fiabilisation synchro) :
+// remplace le pattern window.open()+poll Supabase (ListingsManagementSection.tsx)
+// par une vraie commande explicite, meme canal externally_connectable que
+// RUN_ACTION ci-dessus. Type duplique depuis extension/src/lib/messages.ts
+// (meme convention de duplication assumee pour RunActionResult/ActionOutcome
+// ci-dessus -- extension/ est un paquet independant).
+export type SyncVintedAccountReason = "success" | "partial_scan" | "not_paired" | "tab_open_failed" | "timeout" | "error";
+export interface SyncVintedAccountResult {
+  ok: boolean;
+  complete: boolean;
+  created: number;
+  updated: number;
+  deletedMarked: number;
+  pagesRead: number;
+  pagesExpected: number;
+  reason: SyncVintedAccountReason;
+  error?: string;
+}
+
+export type SyncStep = "connecting" | "fetching" | "writing";
+
+export interface SyncVintedAccountOptions {
+  timeoutMs?: number;
+  onProgress?: (step: SyncStep) => void;
+}
+
+const SYNC_PROGRESS_PORT_NAME = "sync-progress";
+
+// Chaine EXACTE utilisee au timeout LOCAL ci-dessous (distinct du timeout
+// structure interne a l'extension, reason:"timeout", SYNC_TIMEOUT_MS=90s
+// cote syncCoordinator.ts) -- exportee pour que ListingsManagementSection.tsx
+// puisse distinguer honnetement "aucune reponse du tout" (extension
+// injoignable/service worker mort) d'un resultat structure reellement recu.
+export const SYNC_VINTED_ACCOUNT_TIMEOUT_ERROR = "Délai dépassé (aucune réponse de l'extension)";
+
+// timeoutMs par defaut volontairement PLUS LONG que SYNC_TIMEOUT_MS cote
+// extension (90s) -- le timeout structure de l'extension (reason:"timeout",
+// deja un resultat honnete et exploitable) doit systematiquement arriver en
+// premier ; ce timeout-ci n'est qu'un filet de securite pour le cas ou
+// l'extension elle-meme ne repond plus du tout (ex. service worker tue sans
+// que son propre setTimeout ait pu s'executer).
+export async function syncVintedAccount(
+  vintedUserId: string,
+  vintedUsername: string,
+  options: SyncVintedAccountOptions = {}
+): Promise<SyncVintedAccountResult> {
+  const { timeoutMs = 100000, onProgress } = options;
+  const runtime = getRuntime();
+  if (!EXTENSION_ID || !runtime) {
+    return {
+      ok: false,
+      complete: false,
+      created: 0,
+      updated: 0,
+      deletedMarked: 0,
+      pagesRead: 0,
+      pagesExpected: 0,
+      reason: "error",
+      error: "Extension non détectée",
+    };
+  }
+
+  let port: ExtensionPort | null = null;
+  if (onProgress) {
+    try {
+      port = runtime.connect(EXTENSION_ID, { name: SYNC_PROGRESS_PORT_NAME });
+      port.onMessage.addListener((message) => {
+        const portMessage = message as { type?: string; step?: string } | undefined;
+        if (portMessage?.type === "progress" && typeof portMessage.step === "string") {
+          onProgress(portMessage.step as SyncStep);
+        }
+        // "heartbeat" (voir SyncProgressPortMessage cote extension) :
+        // ignore volontairement -- maintien du service worker uniquement,
+        // aucune signification metier, ne doit jamais declencher onProgress.
+      });
+    } catch {
+      port = null; // la progression est un bonus, pas requis pour obtenir le resultat
+    }
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        devWarn(`[ResellOS][sync][${vintedUserId}] syncVintedAccount() : delai local depasse (${timeoutMs}ms) sans reponse`);
+        port?.disconnect();
+        resolve({
+          ok: false,
+          complete: false,
+          created: 0,
+          updated: 0,
+          deletedMarked: 0,
+          pagesRead: 0,
+          pagesExpected: 0,
+          reason: "timeout",
+          error: SYNC_VINTED_ACCOUNT_TIMEOUT_ERROR,
+        });
+      }
+    }, timeoutMs);
+
+    try {
+      devLog(`[ResellOS][sync][${vintedUserId}] envoi SYNC_VINTED_ACCOUNT vers l'extension`, { vintedUserId, vintedUsername });
+      runtime.sendMessage(EXTENSION_ID, { type: "SYNC_VINTED_ACCOUNT", vintedUserId, vintedUsername }, (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        port?.disconnect();
+        if (runtime.lastError) {
+          resolve({
+            ok: false,
+            complete: false,
+            created: 0,
+            updated: 0,
+            deletedMarked: 0,
+            pagesRead: 0,
+            pagesExpected: 0,
+            reason: "error",
+            error: translateExtensionError(runtime.lastError.message ?? "Échec de la connexion à l'extension"),
+          });
+          return;
+        }
+        const result = response as SyncVintedAccountResult | undefined;
+        if (!result) {
+          resolve({
+            ok: false,
+            complete: false,
+            created: 0,
+            updated: 0,
+            deletedMarked: 0,
+            pagesRead: 0,
+            pagesExpected: 0,
+            reason: "error",
+            error: "Réponse vide de l'extension",
+          });
+          return;
+        }
+        resolve(result.error ? { ...result, error: translateExtensionError(result.error) } : result);
+      });
+    } catch (err) {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        port?.disconnect();
+        resolve({
+          ok: false,
+          complete: false,
+          created: 0,
+          updated: 0,
+          deletedMarked: 0,
+          pagesRead: 0,
+          pagesExpected: 0,
+          reason: "error",
+          error: translateExtensionError(err instanceof Error ? err.message : String(err)),
+        });
       }
     }
   });

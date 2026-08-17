@@ -15,15 +15,19 @@ import { handlePublishListing } from "./handlers/publishListing";
 import { handleEditListing } from "./handlers/editListing";
 import type { ActionKind, PublishStep, RunActionOutcome, RunActionRequest } from "../lib/messages";
 
-// onPrefillSummary (republication assistee, 2026-08-11) : optionnel --
-// seul handlePublishListing.ts le consomme reellement aujourd'hui (voir son
-// commentaire d'en-tete). Un handler qui l'ignore (ex. handleEditListing,
-// signature a 2 parametres) reste assignable ici, TypeScript autorisant une
-// fonction avec moins de parametres declares la ou plus sont attendus.
+// onPrefillSummary (republication assistee, 2026-08-11) / onReadyToSubmit
+// (mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION", 2026-08-16) :
+// optionnels -- seul handlePublishListing.ts les consomme reellement
+// aujourd'hui (voir son commentaire d'en-tete). Un handler qui les ignore
+// (ex. handleEditListing, signature a 2 parametres) reste assignable ici,
+// TypeScript autorisant une fonction avec moins de parametres declares la ou
+// plus sont attendus.
 type ActionHandler = (
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void,
-  onPrefillSummary?: (confirmed: string[], pending: string[]) => void
+  onPrefillSummary?: (confirmed: string[], pending: string[]) => void,
+  onReadyToSubmit?: () => void,
+  onAwaitingOldListingDeletion?: () => void
 ) => Promise<RunActionOutcome>;
 
 const HANDLERS: Partial<Record<ActionKind, ActionHandler>> = {
@@ -74,7 +78,9 @@ export async function runAction(
   request: RunActionRequest,
   onProgress: (step: PublishStep) => void = () => {},
   onKeepalive: () => void = () => {},
-  onPrefillSummary: (confirmed: string[], pending: string[]) => void = () => {}
+  onPrefillSummary: (confirmed: string[], pending: string[]) => void = () => {},
+  onReadyToSubmit: () => void = () => {},
+  onAwaitingOldListingDeletion: () => void = () => {}
 ): Promise<RunActionOutcome> {
   const handler = HANDLERS[request.kind];
   logger.info(`[${request.historyId}] runAction : dispatch vers le handler`, {
@@ -88,7 +94,9 @@ export async function runAction(
   }, KEEPALIVE_INTERVAL_MS);
 
   try {
-    const outcome: RunActionOutcome = handler ? await handler(request, onProgress, onPrefillSummary) : { status: "not_implemented" };
+    const outcome: RunActionOutcome = handler
+      ? await handler(request, onProgress, onPrefillSummary, onReadyToSubmit, onAwaitingOldListingDeletion)
+      : { status: "not_implemented" };
     logger.info(`[${request.historyId}] RUN_ACTION traité`, { kind: request.kind, status: outcome.status });
     return outcome;
   } finally {

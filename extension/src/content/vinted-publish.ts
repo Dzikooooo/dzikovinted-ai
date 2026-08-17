@@ -5,47 +5,40 @@
 // purement lecture) - toujours declenchee par une commande explicite,
 // jamais d'initiative propre (voir EXTENSION.md §8).
 //
-// REPUBLICATION ASSISTEE (2026-08-11, lot dedie) : ce script ne tente plus
-// JAMAIS d'ouvrir le selecteur de categorie ni les pickers d'attributs
-// (etat/taille/marque/couleur/matiere), et ne clique plus JAMAIS sur le
-// bouton de soumission final. Deux raisons distinctes, verifiees separement :
-// 1) resolveCategory() (formFill.ts) leve desormais inconditionnellement --
-//    le trigger du panneau categorie exige un evenement isTrusted:true
-//    (preuve directe A/B testee, voir son commentaire d'en-tete) : aucune
-//    automatisation ne peut jamais l'ouvrir. Consequence en cascade,
-//    documentee dans publishSelectors.ts : les triggers de brand/size/
-//    condition/color/material N'EXISTENT MEME PAS dans le DOM tant qu'une
-//    categorie FEUILLE n'a pas ete choisie -- ce script ne peut donc rien
-//    tenter sur ces 5 champs tant que l'utilisateur n'a pas lui-meme
-//    termine la navigation categorie.
-// 2) Le clic final de soumission n'a jamais ete verifie en conditions
-//    reelles (aucune publication n'a jamais ete tentee, voir l'historique
-//    de ce fichier) -- exactement la meme classe de risque que le bouton
-//    "Valider" de vinted-edit.ts (route de sauvegarde potentiellement
-//    protegee par un anti-bot, voir son commentaire d'en-tete). Plutot que
-//    de decouvrir ce risque en le declenchant automatiquement, la
-//    publication reste desormais un clic 100% humain, exactement comme
-//    edit_listing -- c'est handlePublishListing.ts (background) qui detecte
-//    la reussite reelle, via chrome.tabs.onUpdated (navigation vers
-//    /items/{id nouveau}), jamais ce content script (dont le contexte JS
-//    est de toute facon detruit par une vraie navigation de page).
+// REPUBLICATION ASSISTEE (2026-08-11, lot dedie) : ce script ne clique
+// jamais sur le bouton de soumission final -- jamais verifie en conditions
+// reelles (aucune publication n'a jamais ete tentee via un clic automatise,
+// voir l'historique de ce fichier), meme classe de risque que le bouton
+// "Valider" de vinted-edit.ts (route potentiellement protegee par un
+// anti-bot). La publication reste donc un clic 100% humain -- c'est
+// handlePublishListing.ts (background) qui detecte la reussite reelle, via
+// chrome.tabs.onUpdated (navigation vers /items/{id nouveau}), jamais ce
+// content script (dont le contexte JS est de toute facon detruit par une
+// vraie navigation de page).
+//
+// CATEGORIE -- historique puis mise a jour (2026-08-16) : jusqu'a cette
+// date, resolveCategory() (formFill.ts) levait inconditionnellement car le
+// trigger du panneau categorie exigeait un evenement isTrusted:true (preuve
+// A/B testee a l'epoque) -- ce script ne tentait donc JAMAIS d'ouvrir le
+// selecteur de categorie, laissant les 5 pickers d'attributs (etat/taille/
+// marque/couleur/matiere, qui n'existent dans le DOM qu'apres une categorie
+// FEUILLE choisie) inaccessibles tant que l'utilisateur n'avait pas
+// lui-meme termine la navigation categorie. Un retest live du 2026-08-16 a
+// prouve que ce blocage isTrusted n'est PLUS reproductible sur le DOM
+// actuel (dispatchFullClick() ouvre desormais le panneau normalement) --
+// attemptCategoryPrefill() tente donc maintenant la selection automatique
+// en premier (recherche + desambiguisation par genre, voir categoryMatch.ts
+// et categoryOptionReader.ts), et ne retombe sur l'attente manuelle
+// (watchForCategorySelectionAndPrefillAttributes()) qu'en cas d'echec ou
+// d'ambiguite -- jamais de choix invente, MANUAL_REQUIRED implicite via le
+// retour `false` dans ce cas.
 //
 // Ce script se limite donc a : remplir les champs surs (titre, description,
-// prix, photos -- aucun n'exige d'evenement isTrusted), relire chacun dans
-// le DOM pour ne jamais annoncer confirme ce qui ne l'est pas reellement, et
-// rapporter un etat des lieux honnete (PUBLISH_PREFILL_SUMMARY) avant de
-// laisser la main a l'utilisateur.
-//
-// REPRISE POST-CATEGORIE (mission "FINIR LES CHAMPS MANQUANTS", 2026-08-11) :
-// une fois que l'utilisateur a LUI-MEME choisi une categorie feuille (donc
-// une fois les 5 triggers ci-dessus apparus dans le DOM), ce script tente
-// alors -- en arriere-plan, best-effort -- de reprendre etat/taille/marque/
-// couleur/matiere via selectMatchingOption()/readOptionTexts() (deja
-// prouves en production sur edit_listing) : aucun de ces 5 triggers
-// n'exige lui-meme isTrusted (seul celui de la categorie l'exige), voir
-// watchForCategorySelectionAndPrefillAttributes() plus bas. Non verifie en
-// live sur /items/new au moment ou ce commentaire est ecrit -- best-effort
-// inconditionnel, retombe sur manuel a la moindre incertitude.
+// prix, photos -- aucun n'exige d'evenement isTrusted), tenter la categorie
+// et les attributs qui en dependent avec relecture DOM systematique (jamais
+// annoncer confirme ce qui ne l'est pas reellement), et rapporter un etat
+// des lieux honnete (PUBLISH_PREFILL_SUMMARY) avant de laisser la main a
+// l'utilisateur pour la taille du colis et la soumission finale.
 //
 // Selecteurs verifies en direct le 2026-07-10 (compte matleshop) - voir
 // publishSelectors.ts pour le detail et les points encore a confirmer en
@@ -55,15 +48,16 @@ import { waitForElement, waitForCondition, WaitTimeoutError, describeTimeout } f
 import * as sel from "./publishSelectors";
 import {
   PublishError,
+  describePriceValidationState,
   dispatchEscapeKey,
   dispatchFullClick,
-  parsePriceToNumber,
-  readOptionTexts,
   setNativeValue,
   typeIntoBrandSearchInput,
+  typeIntoPriceField,
   verifyLoggedInAccount,
-  type ReadOptionTextsStep,
+  type PriceValidationState,
 } from "./formFill";
+import { isFormReallyReadyToSubmit, type SaveButtonState } from "./publishReadiness";
 import {
   describeConditionTriggerAfterSelection,
   matchConditionOption,
@@ -71,6 +65,10 @@ import {
 } from "./conditionOptionReader";
 import { readSizeOptionCandidates } from "./sizeOptionReader";
 import { readColorOptionCandidates } from "./colorOptionReader";
+import { matchMaterialOption, readMaterialOptionCandidates } from "./materialOptionReader";
+import { parseMaterials } from "./materials";
+import { readCategoryResultCells } from "./categoryOptionReader";
+import { deriveCategorySearchTerm, describeCategoryMatchAttempt, matchCategoryResult } from "./categoryMatch";
 import { describeMatchAttempt, matchOption, normalize } from "./matchOption";
 import {
   describeExactMatchCandidate,
@@ -80,6 +78,7 @@ import {
   snapshotDropdownDom,
   type DropdownDomSnapshot,
 } from "./attributeDropdownDiagnostics";
+import { openBrandDropdownWithRetry, BRAND_OPEN_MAX_ATTEMPTS } from "./brandDropdownOpen";
 import {
   confirmTriggerValue,
   describeCategoryTriggerDom,
@@ -93,6 +92,12 @@ import {
 import { computeManualFields, replaceManualPlaceholder } from "./publishFieldSummary";
 import { reconstructPhotoFiles } from "./photoReconstruction";
 import { describeAvailableFileInputs } from "./fileInputDiagnostics";
+import { importPhotosWithVerification, type PhotoImportOutcome } from "./photoImportVerification";
+import {
+  PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED_ATTR,
+  PUBLISH_CREATE_RESPONSE_EVENT_NAME,
+  type PublishCreateResponseCapture,
+} from "./publishCreateResponseCapture";
 import { isContentCommand } from "../lib/messages";
 import type { FetchedPhoto, PublishCommandResponse, PublishListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
 import { errorMessage } from "../lib/errorMessage";
@@ -172,6 +177,12 @@ let lastPhotoInjectionStage: string | null = null;
 // bas) ou un nombre > 0 (auquel cas le blocage serait ailleurs). Rendu
 // visible dans le resume final pour trancher ce point sans deviner.
 let lastFilesBuiltCount: number | null = null;
+// Mission "FIABILISER L'IMPORT PHOTOS" (2026-08-17) : consulte par
+// watchForPublishReadiness() -- PUBLISH_READY_TO_SUBMIT ne doit JAMAIS partir
+// tant que ceci ne vaut pas {status:"confirmed", confirmedCount===expectedCount}.
+// `null` = import pas encore termine (etat initial) -- traite comme "pas
+// pret", jamais comme "pret par defaut" (voir publishReadiness.ts).
+let photoImportOutcome: PhotoImportOutcome | null = null;
 function checkForVintedErrorBanner(): void {
   vintedErrorCheckScheduled = false;
   if (vintedErrorBannerAlreadyLogged) return;
@@ -210,6 +221,13 @@ function reportResult(outcome: RunActionOutcome): void {
 function reportPrefillSummary(confirmed: string[], pending: string[]): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PREFILL_SUMMARY", confirmed, pending });
 }
+
+// Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT" (2026-08-16) :
+// meme ordre de grandeur que les autres delais de confirmation de ce fichier
+// (ATTRIBUTE_CONFIRMATION_TIMEOUT_MS plus bas) -- laisse le temps a un
+// eventuel re-render/debounce de validation Vinted apres la frappe simulee,
+// sans jamais bloquer indefiniment.
+const PRICE_CONFIRMATION_TIMEOUT_MS = 5000;
 
 // Remplit titre/description/prix et relit chacun dans le DOM juste apres
 // ecriture -- ne rapporte "confirme" que ce qui a reellement ete verifie,
@@ -278,17 +296,46 @@ async function fillTextFieldsWithConfirmation(
 
   try {
     const priceInput = await waitForElement<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
-    setNativeValue(priceInput, payload.price.toString());
-    // Mission "REPUBLICATION FIDELE" (2026-08-11) : CAUSE CONFIRMEE -- test
-    // live montrant "24,00 €" reellement affiche mais confirmed:false. Le
-    // champ prix Vinted reformate sa valeur ("24" -> "24,00") en reaction
-    // synchrone aux evenements input/change/blur (voir setNativeValue) --
-    // une comparaison de chaines stricte contre "24" echoue alors a tort.
-    // parsePriceToNumber() (deja live-testee cote vinted-edit.ts pour ce
-    // meme champ) normalise les deux cotes avant de comparer.
-    const ok = parsePriceToNumber(priceInput.value) === payload.price;
-    docLog.info("PREFILL_PRICE", { payload: payload.price, elementFound: true, valueAfter: priceInput.value, confirmed: ok });
-    if (ok) confirmed.push("Prix");
+    // Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT"
+    // (2026-08-16) : CAUSE CONFIRMEE -- setNativeValue() ecrit la valeur en UN
+    // SEUL bloc (une seule paire setter+evenements), exactement le mecanisme
+    // deja documente comme insuffisant pour CE MEME champ prix cote edit_listing
+    // (voir typeIntoPriceField ci-dessous, deja live-prouvee sur
+    // vinted-edit.ts::submitEdit avec le meme appel `payload.price.toString()`)
+    // -- Vinted semble exiger un flux de frappes incrementales pour que son
+    // masque de devise recalcule correctement son etat interne, meme quand
+    // l'affichage se reformate cosmetiquement en "24,00 €" apres un bloc
+    // unique. Helper deja eprouve reutilise tel quel, aucune duplication.
+    await typeIntoPriceField(priceInput, payload.price.toString());
+
+    // La comparaison de VALEUR AFFICHEE seule ne prouve plus rien (preuve live
+    // directe : "24,00 €" affiche ET rejete simultanement par Vinted --
+    // "Le champ prix doit être supérieur ou égal à 1.0"). describePriceValidationState()
+    // (formFill.ts) agrege la valeur ET l'etat de validation REEL du champ --
+    // re-interroge a chaque evaluation (waitForCondition), jamais une lecture
+    // synchrone unique juste apres l'ecriture (le re-render/la validation de
+    // Vinted peut etre asynchrone).
+    let lastPriceState: PriceValidationState = describePriceValidationState(priceInput);
+    let priceAccepted = false;
+    try {
+      await waitForCondition(
+        () => {
+          const freshInput = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+          lastPriceState = describePriceValidationState(freshInput);
+          return lastPriceState.parsedValue === payload.price && lastPriceState.valid;
+        },
+        {
+          timeoutMs: PRICE_CONFIRMATION_TIMEOUT_MS,
+          description: "prix reellement accepte par Vinted (valeur ET validite reelle, pas seulement l'affichage)",
+        }
+      );
+      priceAccepted = true;
+    } catch {
+      // lastPriceState porte deja le dernier etat reellement observe.
+    }
+
+    docLog.info("PREFILL_PRICE", { payload: payload.price, elementFound: true, ...lastPriceState, confirmed: priceAccepted });
+    if (priceAccepted) confirmed.push("Prix");
     else pending.push("Prix");
   } catch (err) {
     docLog.error("PREFILL_PRICE_ELEMENT_NOT_FOUND", { error: errorMessage(err) });
@@ -406,45 +453,46 @@ async function injectPhotosWithConfirmation(
     files: files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
   });
 
-  if (files.length === 0) {
-    pending.push("Photos");
-    stepTimestamps.PHOTO_INJECTION_DONE = Date.now();
-    return;
-  }
+  // Mission "FIABILISER L'IMPORT PHOTOS" (2026-08-17) : `expectedCount` est
+  // TOUJOURS le nombre reel de photos de l'annonce SOURCE (photos.length,
+  // deja fige AVANT reconstruction) -- jamais files.length, qui peut deja
+  // etre inferieur si le fetch CDN (background) ou le sniff magic-bytes
+  // ci-dessus a deja perdu des photos. C'est exactement ce qui permettait
+  // avant ce correctif a un import partiel de se faire passer pour complet :
+  // l'ancienne verification n'exigeait jamais plus que files.length,
+  // JAMAIS le compte reel attendu par l'annonce source. Voir
+  // photoImportVerification.ts pour la logique complete (retries bornes,
+  // jamais de reinjection -- evite tout risque de doublon).
+  const expectedCount = photos.length;
 
-  // Mission "diagnostic final PHOTOS + CATEGORIE" (2026-08-11), item 2/3 :
-  // isole DELIBEREMENT de la sequence DataTransfer/change/grid plus bas --
-  // un waitForElement(input) qui echoue ici est une cause RADICALEMENT
-  // differente (selecteur perime, champ jamais rendu) d'un echec APRES avoir
-  // trouve l'input (grid jamais confirmee malgre une assignation reussie).
-  // Les confondre sous un seul PREFILL_PHOTOS_GRID_NOT_CONFIRMED (avant ce
-  // correctif) rendait ce diagnostic precis impossible sans DevTools ouverts
-  // au bon moment.
-  let input: HTMLInputElement;
-  try {
-    input = await waitForElement<HTMLInputElement>(sel.ADD_PHOTOS_INPUT_SELECTOR);
-  } catch (err) {
-    docLog.error("PHOTO_INPUT_NOT_FOUND", {
+  async function injectFilesIntoVintedInput(filesToInject: File[]): Promise<void> {
+    // Mission "diagnostic final PHOTOS + CATEGORIE" (2026-08-11), item 2/3 :
+    // isole DELIBEREMENT de la sequence DataTransfer/change plus bas -- un
+    // waitForElement(input) qui echoue ici est une cause RADICALEMENT
+    // differente (selecteur perime, champ jamais rendu) d'un echec APRES
+    // avoir trouve l'input.
+    let input: HTMLInputElement;
+    try {
+      input = await waitForElement<HTMLInputElement>(sel.ADD_PHOTOS_INPUT_SELECTOR);
+    } catch (err) {
+      docLog.error("PHOTO_INPUT_NOT_FOUND", {
+        selector: sel.ADD_PHOTOS_INPUT_SELECTOR,
+        href: location.href,
+        error: errorMessage(err),
+        availableFileInputs: describeAvailableFileInputs(),
+      });
+      throw err;
+    }
+    lastPhotoInjectionStage = "PHOTO_INPUT_FOUND";
+    docLog.info("PHOTO_INPUT_FOUND", {
       selector: sel.ADD_PHOTOS_INPUT_SELECTOR,
-      href: location.href,
-      error: errorMessage(err),
-      availableFileInputs: describeAvailableFileInputs(),
+      type: input.type,
+      multiple: input.multiple,
+      accept: input.accept,
     });
-    pending.push("Photos");
-    stepTimestamps.PHOTO_INJECTION_DONE = Date.now();
-    return;
-  }
-  lastPhotoInjectionStage = "PHOTO_INPUT_FOUND";
-  docLog.info("PHOTO_INPUT_FOUND", {
-    selector: sel.ADD_PHOTOS_INPUT_SELECTOR,
-    type: input.type,
-    multiple: input.multiple,
-    accept: input.accept,
-  });
 
-  try {
     const dataTransfer = new DataTransfer();
-    files.forEach((file) => dataTransfer.items.add(file));
+    filesToInject.forEach((file) => dataTransfer.items.add(file));
     lastPhotoInjectionStage = "PHOTO_DATATRANSFER_BUILT";
     docLog.info("PHOTO_DATATRANSFER_BUILT", { itemsCount: dataTransfer.items.length, filesCount: dataTransfer.files.length });
 
@@ -454,44 +502,59 @@ async function injectPhotosWithConfirmation(
     lastPhotoInjectionStage = "PHOTO_AFTER_ASSIGN_FILES";
     docLog.info("PHOTO_AFTER_ASSIGN_FILES", { inputFilesLength: input.files?.length ?? 0 });
 
-    // Note (item A du rapport) : AUCUN evenement "input" n'est dispatche ici,
-    // volontairement -- contrairement a setNativeValue() (formFill.ts) pour
-    // les champs texte (input+change+blur), un <input type="file"> n'a pas
-    // de convention "input" equivalente ; React ecoute "change" nativement
-    // pour ce type de champ. Documente plutot que suppose : aucune nouvelle
-    // logique ajoutee ce tour (voir rapport section A).
+    // Note (item A du rapport original) : AUCUN evenement "input" n'est
+    // dispatche ici, volontairement -- contrairement a setNativeValue()
+    // (formFill.ts) pour les champs texte (input+change+blur), un
+    // <input type="file"> n'a pas de convention "input" equivalente ; React
+    // ecoute "change" nativement pour ce type de champ.
     lastPhotoInjectionStage = "PHOTO_BEFORE_CHANGE_EVENT";
     docLog.info("PHOTO_BEFORE_CHANGE_EVENT", {});
     input.dispatchEvent(new Event("change", { bubbles: true }));
     lastPhotoInjectionStage = "PHOTO_AFTER_CHANGE_EVENT";
     docLog.info("PHOTO_AFTER_CHANGE_EVENT", {});
     docLog.info("PREFILL_PHOTOS_INPUT_ASSIGNED", { elementFound: true, filesAssigned: input.files?.length ?? 0 });
+  }
 
-    lastPhotoInjectionStage = "PHOTO_WAITING_FOR_GRID";
-    await waitForCondition(() => {
-      const grid = document.querySelector(sel.MEDIA_UPLOAD_GRID_SELECTOR);
-      return !!grid && grid.querySelectorAll("img").length >= files.length;
-    }, { timeoutMs: 30000 });
+  function countGridThumbnails(): number {
+    const grid = document.querySelector(sel.MEDIA_UPLOAD_GRID_SELECTOR);
+    return grid ? grid.querySelectorAll("img").length : 0;
+  }
 
-    const grid = document.querySelector(sel.MEDIA_UPLOAD_GRID_SELECTOR);
-    const actualCount = grid ? grid.querySelectorAll("img").length : 0;
-    lastPhotoInjectionStage = "PHOTO_GRID_STATE_AFTER_INJECTION";
-    docLog.info("PHOTO_GRID_STATE_AFTER_INJECTION", { imageCount: actualCount, gridFound: !!grid });
-    docLog.info("PREFILL_PHOTOS_GRID_CONFIRMED", { expected: files.length, actualInGrid: actualCount });
-    confirmed.push(`Photos (${files.length})`);
-  } catch (err) {
-    const grid = document.querySelector(sel.MEDIA_UPLOAD_GRID_SELECTOR);
-    const actualCount = grid ? grid.querySelectorAll("img").length : 0;
-    const input = document.querySelector<HTMLInputElement>(sel.ADD_PHOTOS_INPUT_SELECTOR);
-    lastPhotoInjectionStage = "PHOTO_GRID_STATE_AFTER_INJECTION";
-    docLog.info("PHOTO_GRID_STATE_AFTER_INJECTION", { imageCount: actualCount, gridFound: !!grid, timedOut: true });
-    docLog.error("PREFILL_PHOTOS_GRID_NOT_CONFIRMED", {
-      expected: files.length,
-      gridFound: !!grid,
-      actualInGrid: actualCount,
-      inputFilesLength: input?.files?.length ?? null,
-      error: errorMessage(err),
-    });
+  lastPhotoInjectionStage = "PHOTO_WAITING_FOR_GRID";
+  const outcome = await importPhotosWithVerification(
+    files,
+    expectedCount,
+    {
+      countDomThumbnails: countGridThumbnails,
+      injectFiles: injectFilesIntoVintedInput,
+      waitForDomCountOrTimeout: (expected, timeoutMs) =>
+        waitForCondition(() => countGridThumbnails() >= expected, { timeoutMs }).catch(() => {
+          // Timeout de CETTE tentative -- jamais fatal ici, l'appelant relit
+          // toujours countDomThumbnails() juste apres pour l'etat REEL.
+        }),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      onExpected: (detail) => docLog.info("PHOTO_IMPORT_EXPECTED", detail),
+      onAttempt: (detail) => docLog.info("PHOTO_IMPORT_ATTEMPT", detail),
+      onDomCount: (detail) => docLog.info("PHOTO_IMPORT_DOM_COUNT", detail),
+      onRetry: (detail) => docLog.warn("PHOTO_IMPORT_RETRY", detail),
+      onConfirmed: (result) => docLog.info("PHOTO_IMPORT_CONFIRMED", { ...result }),
+      onFailed: (result) => docLog.error("PHOTO_IMPORT_FAILED", { ...result }),
+    },
+    // Rien a injecter et rien a attendre : si le fetch/reconstruction en
+    // amont n'a produit AUCUN fichier alors que l'annonce en attend au
+    // moins un, aucune verification DOM repetee ne peut jamais combler ce
+    // manque -- une seule tentative suffit a le constater (evite ~30s
+    // d'attente pure pour un cas deja perdu avant meme d'atteindre le DOM).
+    files.length === 0 && expectedCount > 0 ? { maxAttempts: 1 } : {}
+  );
+
+  photoImportOutcome = outcome;
+  lastPhotoInjectionStage = "PHOTO_GRID_STATE_AFTER_INJECTION";
+  docLog.info("PHOTO_GRID_STATE_AFTER_INJECTION", { imageCount: outcome.confirmedCount, expected: outcome.expectedCount, status: outcome.status });
+
+  if (outcome.status === "confirmed") {
+    confirmed.push(`Photos (${outcome.confirmedCount})`);
+  } else {
     pending.push("Photos");
   }
   stepTimestamps.PHOTO_INJECTION_DONE = Date.now();
@@ -563,16 +626,6 @@ function describeAvailableTestIds(): string[] {
     .map((el) => el.getAttribute("data-testid") ?? "")
     .filter((id) => ATTRIBUTE_DIAGNOSTIC_KEYWORDS.some((kw) => id.toLowerCase().includes(kw)));
 }
-
-// Mission "REPUBLICATION VINTED : CORRIGER LES 5 ATTRIBUTS APRES CATEGORIE"
-// (2026-08-12) : le catch ci-dessous n'ecrasait jusqu'ici TOUTES les causes
-// d'echec sous le meme "trigger_not_found", alors que la preuve live montre
-// (conditionTriggerFound/sizeTriggerFound/colorTriggerFound: true, cote
-// diagnostic categorie) que le trigger existe reellement -- l'echec reel se
-// produit PLUS TARD (ouverture du dropdown, lecture des options). "step"
-// (via le nouveau callback onStep de readOptionTexts()) permet de savoir
-// EXACTEMENT jusqu'ou on est alle avant l'exception, sans jamais deviner.
-type AttributeStep = "not_started" | ReadOptionTextsStep;
 
 // Mission "FINIR LA REPUBLICATION" (2026-08-13), item 6 : meme mecanisme de
 // confirmation reelle que le chemin dedie Etat (deja valide live), applique
@@ -746,188 +799,6 @@ function watchForHumanClick(spec: AttributePickerSpec): void {
   document.addEventListener("click", handleClick, true);
 }
 
-async function attemptAttributePrefill(spec: AttributePickerSpec, confirmed: string[], pending: string[]): Promise<void> {
-  if (!spec.value) {
-    docLog.info(spec.logName, { label: spec.label, outcome: "no_value" });
-    replaceManualPlaceholder(pending, spec.label, `${spec.label} : donnée manquante (à choisir sur Vinted)`);
-    return;
-  }
-
-  let lastStep: AttributeStep = "not_started";
-  // Mission "IDENTIFIER FACTUELLEMENT LA STRUCTURE DOM REELLE" (2026-08-12) :
-  // baseline capturee UNE FOIS a "before_click" (avant toute interaction) --
-  // chaque diagnostic ulterieur (synthetique OU humain) est diffe contre
-  // CETTE meme reference, pour que les deux sequences restent directement
-  // comparables.
-  let baselineTestIds: string[] | null = null;
-  const onStep = (step: ReadOptionTextsStep, detail: Record<string, unknown>) => {
-    lastStep = step;
-    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step, ...detail });
-
-    if (step === "trigger_found") {
-      const snapshot = logDropdownDiagnostic(spec, "before_click", "synthetic_click");
-      baselineTestIds = snapshot.matchingTestIds;
-    }
-    if (step === "trigger_click_attempted") {
-      logDropdownDiagnostic(spec, "immediately_after_click", "synthetic_click");
-      logDropdownDiff(spec, "immediately_after_click", "synthetic_click", baselineTestIds);
-      for (const delayMs of DROPDOWN_DIAGNOSTIC_DELAYS_MS) {
-        setTimeout(() => {
-          logDropdownDiagnostic(spec, `click_plus_${delayMs}ms`, "synthetic_click");
-          logDropdownDiff(spec, `click_plus_${delayMs}ms`, "synthetic_click", baselineTestIds);
-        }, delayMs);
-      }
-    }
-  };
-
-  try {
-    // Mission "STOPPER LE DEBUG EN BOUCLE" (2026-08-12) : preuve directe de
-    // la valeur REELLEMENT transmise a readOptionTexts() a CET appel precis
-    // -- si le prochain test live montre encore 8000ms dans l'erreur alors
-    // que ce log affiche bien triggerTimeoutMs:20000, la perte se produit
-    // DANS readOptionTexts()/waitForElement() (voir READ_OPTION_TEXTS_CONFIG,
-    // formFill.ts), jamais ici. Mission "CORRIGER LES 5 ATTRIBUTS" : BUG REEL
-    // trouve et corrige dans readOptionTexts() -- le wait du CONTENU du
-    // dropdown ne recevait jamais ce timeout (toujours 8000ms par defaut),
-    // meme quand celui-ci en demandait 20000. Corrige dans formFill.ts, les
-    // deux waits partagent desormais le meme timeout -- CONFIRME EN LIVE
-    // fonctionnel (mission "IDENTIFIER ET CORRIGER LES DERNIERS BLOQUAGES").
-    docLog.info("ATTRIBUTE_PREFILL_ATTEMPT_CONFIG", {
-      field: spec.label,
-      triggerSelector: spec.triggerSelector,
-      contentSelector: spec.contentSelector,
-      triggerTimeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS,
-    });
-    const { items, texts } = await readOptionTexts(spec.triggerSelector, spec.contentSelector, ATTRIBUTE_TRIGGER_TIMEOUT_MS, onStep);
-    const match = matchOption(spec.value, texts);
-    if (!match) {
-      const diagnostic = describeMatchAttempt(spec.value, texts);
-      docLog.warn(spec.logName, { label: spec.label, value: spec.value, optionsCount: texts.length, outcome: "no_reliable_match" });
-      docLog.warn("ATTRIBUTE_MATCH_DIAGNOSTIC", { field: spec.label, ...diagnostic });
-
-      // Mission item F (mission precedente) : preuve live -- MARQUE rapporte
-      // exactMatches.length===2 ("multiple_exact_matches_ambiguous"), deux
-      // <li> visibles/non-caches avec des boundingClientRect differents --
-      // PAS une copie cachee evidente. Mission "DIAGNOSTIC FINAL CLIC HUMAIN"
-      // (2026-08-12), item 6 : ajoute les details STRUCTURELS (parent, <ul>
-      // englobant, ancetres, section proche) pour determiner si ResellOS
-      // agrege deux LISTES differentes (desktop/mobile, groupes distincts...)
-      // -- toujours aucune deduplication tentee ici, seulement l'observation.
-      if (diagnostic.reason === "multiple_exact_matches_ambiguous") {
-        texts.forEach((text, idx) => {
-          if (diagnostic.exactMatches.includes(text)) {
-            docLog.warn("ATTRIBUTE_MATCH_DUPLICATE_CANDIDATE_DIAGNOSTIC", {
-              field: spec.label,
-              ...describeExactMatchCandidate(items[idx], idx, text, normalize(text)),
-              ...describeExactMatchStructure(items[idx]),
-            });
-          }
-        });
-
-        // Mission "FIX LIVE-GROUNDED : TAILLE + COULEUR" (2026-08-13), item 8 :
-        // UNE seule information precise manquait encore pour trancher le
-        // doublon MARQUE ("Polo Ralph Lauren" x2, closestUlClassName partageant
-        // seulement un PREFIXE commun, nearbySectionText null pour les deux --
-        // aucune de ces preuves n'etablit si les deux <li> appartiennent au
-        // MEME <ul> (rendu duplique dans une seule liste) ou a deux <ul>
-        // reellement distincts (deux sections/layouts separes). Comparaison
-        // par IDENTITE de reference (===) sur closest("ul"), purement
-        // observationnelle -- AUCUNE nouvelle heuristique de deduplication,
-        // aucun Set(text), aucune decision prise ici.
-        const ambiguousIndexes = texts
-          .map((text, idx) => (diagnostic.exactMatches.includes(text) ? idx : -1))
-          .filter((idx) => idx !== -1);
-        const closestUls = ambiguousIndexes.map((idx) => items[idx].closest("ul"));
-        const uniqueUls = new Set(closestUls.filter((ul): ul is HTMLUListElement => ul !== null));
-        docLog.warn("ATTRIBUTE_MATCH_DUPLICATE_IDENTITY_DIAGNOSTIC", {
-          field: spec.label,
-          ambiguousCandidateCount: ambiguousIndexes.length,
-          closestUlFoundCount: closestUls.filter((ul) => ul !== null).length,
-          allCandidatesShareSameClosestUl: uniqueUls.size === 1 && closestUls.every((ul) => ul !== null),
-          uniqueClosestUlCount: uniqueUls.size,
-        });
-      }
-
-      document.body.click(); // ferme le picker sans rien selectionner (aucune valeur inventee)
-      replaceManualPlaceholder(
-        pending,
-        spec.label,
-        `${spec.label} : ${spec.value} (aucune correspondance fiable sur Vinted -- à choisir toi-même)`
-      );
-      return;
-    }
-    const index = texts.indexOf(match);
-    items[index].click();
-    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matched: match });
-
-    // Mission "FINIR LA REPUBLICATION" (2026-08-13), item 6 : jusqu'ici ce
-    // chemin generique (Taille/Marque/Couleur/Matiere) rapportait
-    // outcome:"confirmed" des l'instant du clic, sans jamais relire le
-    // trigger -- contrairement au chemin dedie Etat (deja valide live), qui
-    // relit reellement le trigger apres le clic avant de confirmer. Meme
-    // mecanisme applique ici : readTriggerText() + normalize(), confirmed
-    // UNIQUEMENT si le trigger affiche effectivement la valeur choisie.
-    let triggerTextAfterClick: string | null = null;
-    let triggerConfirmed = false;
-    try {
-      await waitForCondition(
-        () => {
-          triggerTextAfterClick = readTriggerText(spec.triggerSelector);
-          if (!triggerTextAfterClick) return false;
-          const normalizedTrigger = normalize(triggerTextAfterClick);
-          const normalizedMatch = normalize(match);
-          return normalizedTrigger === normalizedMatch || normalizedTrigger.includes(normalizedMatch);
-        },
-        { timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS, description: `trigger displays the selected ${spec.label}` }
-      );
-      triggerConfirmed = true;
-    } catch {
-      triggerTextAfterClick = readTriggerText(spec.triggerSelector);
-    }
-
-    if (triggerConfirmed) {
-      docLog.info(spec.logName, { label: spec.label, value: spec.value, matched: match, triggerTextAfterClick, outcome: "confirmed" });
-      replaceManualPlaceholder(pending, spec.label, null);
-      confirmed.push(spec.label);
-    } else {
-      docLog.warn(spec.logName, {
-        label: spec.label,
-        value: spec.value,
-        matched: match,
-        triggerTextAfterClick,
-        outcome: "click_not_confirmed_in_trigger",
-      });
-      replaceManualPlaceholder(
-        pending,
-        spec.label,
-        `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
-      );
-    }
-  } catch (err) {
-    // outcome derive du DERNIER pas reellement franchi -- "trigger_not_found"
-    // ne s'affiche desormais QUE si le trigger n'a jamais ete trouve ("not_started").
-    // Toute autre valeur (ex. "failed_after_trigger_click_attempted") signifie
-    // sans ambiguite que le trigger EXISTAIT et a ete clique, mais que le
-    // contenu du dropdown n'est jamais apparu -- CAUSE EXACTE (isTrusted vs
-    // contentSelector errone vs portal) encore NON CONFIRMEE, voir
-    // ATTRIBUTE_DROPDOWN_DOM_DIAGNOSTIC ci-dessus pour la trancher au
-    // prochain test live.
-    const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
-    docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
-    docLog.warn("TRIGGER_NOT_FOUND_DIAGNOSTIC", {
-      field: spec.label,
-      lastStep,
-      searchedTriggerSelector: spec.triggerSelector,
-      searchedContentSelector: spec.contentSelector,
-      matchingTestIdsPresentInDom: describeAvailableTestIds(),
-    });
-    if (lastStep !== "not_started") {
-      watchForHumanClick(spec);
-    }
-    replaceManualPlaceholder(pending, spec.label, `${spec.label} : ${spec.value} (à sélectionner sur Vinted)`);
-  }
-}
-
 // Mission "FIX REEL DU PICKER ETAT SUR /items/new" (2026-08-12) : ROOT CAUSE
 // CONFIRMEE EN LIVE -- le clic synthetique OUVRE reellement le dropdown Etat
 // (37 nouveaux data-testid apres le clic, voir ATTRIBUTE_DROPDOWN_DOM_DIFF),
@@ -955,10 +826,6 @@ async function attemptAttributePrefill(spec: AttributePickerSpec, confirmed: str
 // valeur choisie.
 type ConditionStep = "not_started" | "trigger_found" | "trigger_click_attempted" | "options_found";
 const CONDITION_CONFIRMATION_TIMEOUT_MS = 5000;
-// Mission "FINALISER ETAT : CONFIRMATION POST-SELECTION" (2026-08-13) : delais
-// de capture du diagnostic CONDITION_TRIGGER_AFTER_SELECTION_DIAGNOSTIC,
-// demandes explicitement ("+100ms / +500ms si necessaire").
-const CONDITION_TRIGGER_DIAGNOSTIC_DELAYS_MS = [100, 500];
 
 async function attemptConditionPrefill(spec: AttributePickerSpec, confirmed: string[], pending: string[]): Promise<void> {
   if (!spec.value) {
@@ -1042,57 +909,42 @@ async function attemptConditionPrefill(spec: AttributePickerSpec, confirmed: str
     matchedCandidate.container.click();
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matchedTestId: matchedCandidate.containerTestId });
 
-    // Mission "FINALISER ETAT : CONFIRMATION POST-SELECTION" (2026-08-13) :
-    // preuve live -- matching/clic corrects (matchedTestId:"condition-2"),
-    // mais readTriggerText() renvoie null sur le trigger apres selection.
-    // AUCUNE propriete DOM n'est encore prouvee fiable pour lire la valeur
-    // reellement selectionnee -- ce diagnostic capture TOUTES les sources
-    // plausibles (valeur d'input, attributs aria, texte du parent, etc.) en
-    // une seule fois, immediatement puis a +100ms/+500ms (les frameworks
-    // reactifs peuvent re-render apres le clic), pour trancher au prochain
-    // test live SANS deviner. Purement observationnel : ne remplace pas
-    // readTriggerText() tant qu'aucune source n'est prouvee (voir plus bas).
-    docLog.info("CONDITION_TRIGGER_AFTER_SELECTION_DIAGNOSTIC", {
-      field: spec.label,
-      timing: "immediately_after_click",
-      ...describeConditionTriggerAfterSelection(spec.triggerSelector),
-    });
-    for (const delayMs of CONDITION_TRIGGER_DIAGNOSTIC_DELAYS_MS) {
-      setTimeout(() => {
-        docLog.info("CONDITION_TRIGGER_AFTER_SELECTION_DIAGNOSTIC", {
-          field: spec.label,
-          timing: `click_plus_${delayMs}ms`,
-          ...describeConditionTriggerAfterSelection(spec.triggerSelector),
-        });
-      }, delayMs);
-    }
-
-    // CONFIRMATION REELLE demandee explicitement : outcome:"confirmed"
-    // uniquement si le trigger Etat affiche effectivement la valeur choisie
-    // apres le clic -- jamais suppose seulement parce que le clic a ete
-    // envoye (contrairement au chemin generique, qui n'a jamais verifie
-    // cela jusqu'ici).
-    // Comparaison contre spec.value (la valeur courte ResellOS deja connue),
-    // PAS contre matchedCandidate.containerText (texte concatene libelle+
-    // description) -- le trigger, une fois la selection appliquee, est cense
-    // afficher le libelle court, pas le texte complet de l'option.
+    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Etat (2026-08-16) :
+    // CAUSE CONFIRMEE EN LIVE via CONDITION_TRIGGER_AFTER_SELECTION_DIAGNOSTIC
+    // (desormais retire, son role est termine) -- immediately_after_click
+    // montrait valueProperty/valueAttribute vides ("") mais click_plus_100ms
+    // et click_plus_500ms montraient tous deux "Très bon état" : le clic
+    // fonctionne bel et bien, Vinted ecrit reellement la valeur dans le
+    // trigger, mais seulement APRES un re-render asynchrone -- l'ancienne
+    // lecture immediate de readTriggerText() (textContent, de toute facon
+    // documente comme toujours vide pour ce trigger precis) ne pouvait donc
+    // jamais confirmer, quelle que soit sa duree d'attente. Remplace par
+    // confirmTriggerValue() (categoryDetection.ts, pure/testee) -- MEME
+    // mecanisme deja utilise et prouve pour Marque/Taille/Couleur (voir
+    // attemptDedicatedPickerPrefill ci-dessous) : re-interroge le trigger
+    // DEPUIS document a CHAQUE evaluation de waitForCondition (jamais une
+    // reference figee), lit .value en egalite stricte normalisee si le
+    // trigger est reellement un <input> (confirme en live ci-dessus),
+    // sinon repli sur textContent -- reutilise a l'identique, aucune
+    // duplication de logique.
     const requestedValue = spec.value;
     let triggerTextAfterClick: string | null = null;
     let triggerConfirmed = false;
     try {
       await waitForCondition(
         () => {
-          triggerTextAfterClick = readTriggerText(spec.triggerSelector);
-          if (!triggerTextAfterClick) return false;
-          const normalizedTrigger = normalize(triggerTextAfterClick);
-          const normalizedRequested = normalize(requestedValue);
-          return normalizedTrigger === normalizedRequested || normalizedTrigger.includes(normalizedRequested);
+          const result = confirmTriggerValue(spec.triggerSelector, requestedValue);
+          triggerTextAfterClick = result.observedValue;
+          return result.confirmed;
         },
-        { timeoutMs: CONDITION_CONFIRMATION_TIMEOUT_MS, description: "trigger displays the selected condition" }
+        {
+          timeoutMs: CONDITION_CONFIRMATION_TIMEOUT_MS,
+          description: "trigger displays the selected condition (re-queried each check, .value then textContent fallback)",
+        }
       );
       triggerConfirmed = true;
     } catch {
-      triggerTextAfterClick = readTriggerText(spec.triggerSelector);
+      triggerTextAfterClick = confirmTriggerValue(spec.triggerSelector, requestedValue).observedValue;
     }
 
     if (triggerConfirmed) {
@@ -1122,7 +974,16 @@ async function attemptConditionPrefill(spec: AttributePickerSpec, confirmed: str
   } catch (err) {
     const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
     docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
-    docLog.warn("TRIGGER_NOT_FOUND_DIAGNOSTIC", {
+    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Marque (2026-08-16) :
+    // renomme depuis "TRIGGER_NOT_FOUND_DIAGNOSTIC" -- preuve live directe
+    // (Etat puis Marque) que ce bloc catch se declenche aussi bien quand le
+    // trigger est reellement introuvable (lastStep:"not_started") QUE quand
+    // il a ete trouve ET clique mais qu'une etape ULTERIEURE echoue
+    // (ex. lastStep:"trigger_click_attempted", outcome:"failed_after_
+    // trigger_click_attempted") -- l'ancien nom affirmait a tort la premiere
+    // cause a chaque fois. `outcome`/`lastStep` (deja loggues juste au-dessus)
+    // restent la seule source de verite sur CE qui a reellement echoue.
+    docLog.warn("ATTRIBUTE_STEP_FAILURE_DIAGNOSTIC", {
       field: spec.label,
       lastStep,
       searchedTriggerSelector: spec.triggerSelector,
@@ -1333,7 +1194,16 @@ async function attemptDedicatedPickerPrefill(
   } catch (err) {
     const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
     docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
-    docLog.warn("TRIGGER_NOT_FOUND_DIAGNOSTIC", {
+    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Marque (2026-08-16) :
+    // renomme depuis "TRIGGER_NOT_FOUND_DIAGNOSTIC" -- preuve live directe
+    // (Etat puis Marque) que ce bloc catch se declenche aussi bien quand le
+    // trigger est reellement introuvable (lastStep:"not_started") QUE quand
+    // il a ete trouve ET clique mais qu'une etape ULTERIEURE echoue
+    // (ex. lastStep:"trigger_click_attempted", outcome:"failed_after_
+    // trigger_click_attempted") -- l'ancien nom affirmait a tort la premiere
+    // cause a chaque fois. `outcome`/`lastStep` (deja loggues juste au-dessus)
+    // restent la seule source de verite sur CE qui a reellement echoue.
+    docLog.warn("ATTRIBUTE_STEP_FAILURE_DIAGNOSTIC", {
       field: spec.label,
       lastStep,
       searchedTriggerSelector: spec.triggerSelector,
@@ -1403,15 +1273,22 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
   let lastStep: BrandStep = "not_started";
 
   try {
-    const trigger = await waitForElement<HTMLElement>(spec.triggerSelector, { timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS });
+    await waitForElement<HTMLElement>(spec.triggerSelector, { timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS });
     lastStep = "trigger_found";
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep });
 
-    dispatchFullClick(trigger);
+    const content = await openBrandDropdownWithRetry({
+      triggerSelector: spec.triggerSelector,
+      contentSelector: spec.contentSelector,
+      searchInputSelector: sel.BRAND_SEARCH_INPUT_SELECTOR,
+      log: docLog,
+    });
     lastStep = "trigger_click_attempted";
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep });
 
-    const content = await waitForElement<HTMLElement>(spec.contentSelector, { timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS });
+    if (!content) {
+      throw new Error(`Brand dropdown never opened after ${BRAND_OPEN_MAX_ATTEMPTS} attempts`);
+    }
     lastStep = "options_found";
     const baselineCount = content.querySelectorAll(sel.BRAND_RESULT_CELL_SELECTOR).length;
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep, optionsCount: baselineCount });
@@ -1585,7 +1462,16 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
   } catch (err) {
     const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
     docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
-    docLog.warn("TRIGGER_NOT_FOUND_DIAGNOSTIC", {
+    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Marque (2026-08-16) :
+    // renomme depuis "TRIGGER_NOT_FOUND_DIAGNOSTIC" -- preuve live directe
+    // (Etat puis Marque) que ce bloc catch se declenche aussi bien quand le
+    // trigger est reellement introuvable (lastStep:"not_started") QUE quand
+    // il a ete trouve ET clique mais qu'une etape ULTERIEURE echoue
+    // (ex. lastStep:"trigger_click_attempted", outcome:"failed_after_
+    // trigger_click_attempted") -- l'ancien nom affirmait a tort la premiere
+    // cause a chaque fois. `outcome`/`lastStep` (deja loggues juste au-dessus)
+    // restent la seule source de verite sur CE qui a reellement echoue.
+    docLog.warn("ATTRIBUTE_STEP_FAILURE_DIAGNOSTIC", {
       field: spec.label,
       lastStep,
       searchedTriggerSelector: spec.triggerSelector,
@@ -1597,6 +1483,231 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
     }
     replaceManualPlaceholder(pending, spec.label, `${spec.label} : ${spec.value} (à sélectionner sur Vinted)`);
   }
+}
+
+// Mission "MATIERE : MULTI-SELECT" (2026-08-16) : chemin DEDIE pour Matiere,
+// distinct de AttributePickerSpec (les 4 autres champs ne portent qu'une
+// seule valeur `.value`) -- Vinted accepte reellement PLUSIEURS matieres
+// cochees simultanement (preuve live directe, voir materialOptionReader.ts
+// pour le detail complet). `materials` DOIT deja etre une liste de valeurs
+// ATOMIQUES au moment de l'appel (voir le site d'appel dans runPublish(),
+// qui applique desormais parseMaterials() en defense sur chaque source --
+// mission "MATIERE : BUG MATCHING", 2026-08-16) : cette fonction ne
+// redecoupe plus rien elle-meme, elle fait confiance a son appelant UNIQUE.
+interface MaterialPickerSpec {
+  logName: string;
+  label: string;
+  triggerSelector: string;
+  contentSelector: string;
+  materials: string[];
+}
+
+type MaterialSelectionOutcome = "confirmed" | "already_checked" | "no_match" | "ambiguous" | "click_not_confirmed" | "open_failed";
+
+interface MaterialSelectionResult {
+  requested: string;
+  outcome: MaterialSelectionOutcome;
+}
+
+// Meme timeout que la confirmation trigger des 4 autres champs (5000ms) --
+// mecanisme different (checkbox.checked plutot qu'une valeur de trigger)
+// mais meme ordre de grandeur, aucune raison connue d'en vouloir un distinct.
+const MATERIAL_CHECKBOX_CONFIRMATION_TIMEOUT_MS = ATTRIBUTE_CONFIRMATION_TIMEOUT_MS;
+
+// Mission "MATIERE : BUG MATCHING" (2026-08-16) : deduplique la liste FINALE
+// de matieres demandees (insensible a la casse) -- necessaire car le site
+// d'appel applique desormais parseMaterials() sur chaque source
+// independamment (payload.materials[i] OU le repli payload.material), ce qui
+// peut produire des doublons entre elements si deux sources se chevauchent
+// (ex. jamais observe en pratique aujourd'hui, mais defensif et gratuit).
+function dedupeMaterialsCaseInsensitive(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+async function attemptMaterialPrefill(spec: MaterialPickerSpec, confirmed: string[], pending: string[]): Promise<void> {
+  if (spec.materials.length === 0) {
+    // Meme raisonnement que l'ancien chemin generique (attemptAttributePrefill,
+    // retire par cette mission) : computeManualFields() (publishFieldSummary.ts)
+    // a DEJA pousse le bon message dans `pending` AVANT que cette fonction ne
+    // s'execute (Matiere fait partie de OPTIONAL_ON_VINTED_LABELS). Ne touche
+    // jamais `pending` dans ce cas.
+    docLog.info(spec.logName, { label: spec.label, outcome: "no_value" });
+    return;
+  }
+
+  const results: MaterialSelectionResult[] = [];
+
+  try {
+    const trigger = await waitForElement<HTMLElement>(spec.triggerSelector, { timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS });
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "trigger_found" });
+
+    dispatchFullClick(trigger);
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "trigger_click_attempted" });
+
+    // Signal reellement observe en live (meme discipline que les 4 autres
+    // champs) : au moins une checkbox d'option canonique presente dans le DOM.
+    await waitForCondition(() => readMaterialOptionCandidates().length > 0, {
+      timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS,
+      description: `${spec.label} option checkboxes appear`,
+    });
+    docLog.info(`${spec.logName}_STEP`, {
+      field: spec.label,
+      step: "options_found",
+      optionsCount: readMaterialOptionCandidates().length,
+    });
+
+    // Une matiere DEJA consommee (matchee, avec succes ou non) par une
+    // iteration precedente n'est plus jamais un candidat valide pour la
+    // suivante -- jamais un double-usage de la meme checkbox pour deux
+    // valeurs demandees distinctes.
+    const usedCandidateIds = new Set<string>();
+
+    for (const requested of spec.materials) {
+      // Re-interroge le DOM a CHAQUE matiere (jamais une reference conservee
+      // entre iterations) -- si Vinted re-rend le panneau entre deux
+      // selections (jamais observe pour Matiere specifiquement, mais deja le
+      // cas prouve pour Marque), une reference perimee ne serait jamais
+      // detectee silencieusement.
+      const freshCandidates = readMaterialOptionCandidates().filter((c) => !usedCandidateIds.has(c.id));
+      const matchResult = matchMaterialOption(requested, freshCandidates);
+
+      if (matchResult.reason === "no_match") {
+        docLog.warn(spec.logName, { label: spec.label, requested, outcome: "no_reliable_match" });
+        results.push({ requested, outcome: "no_match" });
+        continue;
+      }
+      if (matchResult.reason === "ambiguous_match") {
+        docLog.warn(spec.logName, {
+          label: spec.label,
+          requested,
+          outcome: "ambiguous_match",
+          candidateCount: matchResult.matchingCandidates.length,
+        });
+        results.push({ requested, outcome: "ambiguous" });
+        continue;
+      }
+
+      const candidate = matchResult.matched!;
+      usedCandidateIds.add(candidate.id);
+
+      if (candidate.checkbox.checked) {
+        // Deja cochee (etat par defaut Vinted, ou tentative precedente
+        // reussie) -- ne JAMAIS re-cliquer, un second clic decocherait.
+        docLog.info(spec.logName, { label: spec.label, requested, matchedId: candidate.id, outcome: "already_checked" });
+        results.push({ requested, outcome: "already_checked" });
+        continue;
+      }
+
+      dispatchFullClick(candidate.checkbox);
+      try {
+        await waitForCondition(
+          () => {
+            // Re-interroge FRAIS depuis document par id -- jamais la
+            // reference `candidate.checkbox` conservee, qui pourrait etre
+            // devenue perimee si Vinted a re-rendu le panneau apres le clic.
+            const fresh = document.querySelector<HTMLInputElement>(`[data-testid="material-checkbox-${candidate.id}--input"]`);
+            return !!fresh && fresh.checked;
+          },
+          {
+            timeoutMs: MATERIAL_CHECKBOX_CONFIRMATION_TIMEOUT_MS,
+            description: `checkbox for "${requested}" (material-checkbox-${candidate.id}) is checked`,
+          }
+        );
+        docLog.info(spec.logName, { label: spec.label, requested, matchedId: candidate.id, outcome: "confirmed" });
+        results.push({ requested, outcome: "confirmed" });
+      } catch {
+        docLog.warn(spec.logName, { label: spec.label, requested, matchedId: candidate.id, outcome: "click_not_confirmed" });
+        results.push({ requested, outcome: "click_not_confirmed" });
+      }
+    }
+  } catch (err) {
+    // Le trigger/panneau n'a jamais pu etre ouvert -- TOUTES les matieres
+    // demandees deviennent manuelles, jamais une selection partielle
+    // inventee.
+    docLog.warn(spec.logName, {
+      label: spec.label,
+      requestedMaterials: spec.materials,
+      outcome: "open_failed",
+      error: errorMessage(err),
+    });
+    docLog.warn("ATTRIBUTE_STEP_FAILURE_DIAGNOSTIC", {
+      field: spec.label,
+      lastStep: "trigger_or_content_not_found",
+      searchedTriggerSelector: spec.triggerSelector,
+      searchedContentSelector: spec.contentSelector,
+      matchingTestIdsPresentInDom: describeAvailableTestIds(),
+    });
+    // Adaptateur structurel vers AttributePickerSpec -- watchForHumanClick()
+    // ne lit que label/triggerSelector (voir son en-tete), `value` n'est
+    // jamais utilise a l'interieur, uniquement requis par la signature
+    // partagee avec les 4 autres champs.
+    watchForHumanClick({ logName: spec.logName, label: spec.label, triggerSelector: spec.triggerSelector, contentSelector: spec.contentSelector, value: null });
+    for (const requested of spec.materials) results.push({ requested, outcome: "open_failed" });
+  }
+
+  docLog.info("ATTRIBUTE_PREFILL_MATERIAL_SUMMARY", { label: spec.label, requested: spec.materials, results });
+
+  const failed = results.filter((r) => r.outcome !== "confirmed" && r.outcome !== "already_checked");
+  if (failed.length === 0) {
+    // Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT"
+    // (2026-08-16), etape 5 (polish) : preuve live -- Coton + Polyester bien
+    // confirmes (checkbox.checked pour chacun, deja verifie ci-dessus), mais
+    // le panneau Matiere peut rester visuellement ouvert. Fermeture
+    // UNIQUEMENT apres que TOUTES les matieres demandees sont deja
+    // confirmees/deja cochees (confirmed.push() a deja eu lieu juste en
+    // dessous -- cette fermeture est un pur polish visuel, JAMAIS utilisee
+    // comme preuve de confirmation). Meme mecanisme deja live-valide pour
+    // Couleur (Escape, re-verifie via le MEME reader dedie, jamais un delai
+    // arbitraire) : readMaterialOptionCandidates().length > 0 signale que le
+    // panneau est reellement encore ouvert -- si Vinted l'a deja referme
+    // seul (jamais observe pour Matiere), no-op silencieux.
+    const trigger = document.querySelector<HTMLElement>(spec.triggerSelector);
+    const stillOpen = readMaterialOptionCandidates().length > 0;
+    let dropdownClosed: boolean | null = null;
+    if (trigger && stillOpen) {
+      dispatchEscapeKey(trigger);
+      try {
+        await waitForCondition(() => readMaterialOptionCandidates().length === 0, {
+          timeoutMs: MATERIAL_CHECKBOX_CONFIRMATION_TIMEOUT_MS,
+          description: `${spec.label} option picker closes after Escape`,
+        });
+        dropdownClosed = true;
+      } catch {
+        dropdownClosed = false;
+      }
+      docLog.info(`${spec.logName}_STEP`, {
+        field: spec.label,
+        step: "dropdown_closure_attempted",
+        wasStillOpen: stillOpen,
+        closedAfterEscape: dropdownClosed,
+      });
+    }
+    replaceManualPlaceholder(pending, spec.label, null);
+    confirmed.push(spec.label);
+    return;
+  }
+
+  const descriptions = failed.map((r) => {
+    switch (r.outcome) {
+      case "ambiguous":
+        return `${r.requested} (correspondance ambiguë sur Vinted -- à choisir toi-même)`;
+      case "no_match":
+        return `${r.requested} (aucune correspondance fiable sur Vinted -- à choisir toi-même)`;
+      case "open_failed":
+        return `${r.requested} (panneau non ouvert -- à sélectionner toi-même)`;
+      default:
+        return `${r.requested} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`;
+    }
+  });
+  replaceManualPlaceholder(pending, spec.label, `${spec.label} : ${descriptions.join(", ")}`);
 }
 
 // Mission "CORRIGER LA DETECTION POST-SELECTION MANUELLE DE CATEGORIE"
@@ -1625,82 +1736,306 @@ const ATTRIBUTE_TRIGGER_SELECTORS = {
   material: sel.MATERIAL_LIST_TRIGGER_SELECTOR,
 };
 
+const CATEGORY_LABEL = "Catégorie";
+const CATEGORY_SEARCH_FILTER_TIMEOUT_MS = 5000;
+const CATEGORY_SELECTION_CONFIRM_TIMEOUT_MS = 8000;
+
+// Mission "AUTOMATISATION CATEGORIE" (2026-08-16) : tentative AUTOMATIQUE de
+// selection de categorie, appelee en tout premier depuis
+// watchForCategorySelectionAndPrefillAttributes() ci-dessous, avant tout
+// repli manuel. Miroir structurel d'attemptBrandPrefill() (meme sequence :
+// ouvrir -> localiser le vrai champ de recherche -> taper -> attendre une
+// PREUVE POSITIVE, jamais un simple changement de compte -- voir son
+// en-tete pour l'historique du bug "creux transitoire N -> 0" que cette
+// meme discipline evite ici -- -> relire -> matcher -> cliquer -> confirmer)
+// mais avec sa propre logique de recherche/desambiguisation (categoryMatch.ts)
+// et de lecture DOM (categoryOptionReader.ts), le picker categorie n'etant
+// pas un simple picker a options plates comme Marque (resultats ambigus
+// selon la branche de genre, voir categoryMatch.ts). Renvoie true seulement
+// si la categorie est reellement selectionnee ET confirmee -- false dans
+// tous les autres cas (aucune valeur ni categorie inventee), laissant
+// l'appelant retomber integralement sur l'attente manuelle existante.
+//
+// Confirmation post-clic : le texte du trigger categorie est deja documente
+// comme non lisible pour ce champ precis (categoryTriggerFound:true mais
+// texte toujours null, voir CATEGORY_SELECTION_DETECTED plus bas) --
+// confirmTriggerValue() (utilise par Marque/Taille/Etat/Couleur) est donc
+// inutilisable ici. Le signal reutilise est celui DEJA etabli et eprouve
+// par la detection manuelle existante : l'apparition d'au moins un trigger
+// d'attribut (hasAnyAttributeTrigger), qui ne se produit qu'apres une
+// vraie selection de categorie FEUILLE cote Vinted -- jamais une simple
+// fermeture de dropdown, jamais un setTimeout.
+async function attemptCategoryPrefill(
+  payload: PublishListingPayload,
+  confirmed: string[],
+  pending: string[]
+): Promise<boolean> {
+  if (!payload.category) {
+    docLog.info("PREFILL_CATEGORY", { label: CATEGORY_LABEL, outcome: "no_value" });
+    return false;
+  }
+
+  // Capture AVANT tout clic -- si des triggers d'attribut existent deja a
+  // ce point (etat inattendu ici, cette fonction s'execute avant tout autre
+  // traitement de categorie), le signal de confirmation plus bas ne peut
+  // plus prouver que NOTRE clic en est la cause : jamais suppose, voir plus
+  // bas.
+  const initialHadAnyAttributeTrigger = hasAnyAttributeTrigger(readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS));
+
+  try {
+    const trigger = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR, {
+      timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS,
+    });
+    dispatchFullClick(trigger);
+    docLog.info("PREFILL_CATEGORY_STEP", { field: CATEGORY_LABEL, step: "trigger_click_attempted" });
+
+    const content = await waitForElement<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR, {
+      timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS,
+    });
+
+    const searchInput = await waitForElement<HTMLInputElement>(sel.CATEGORY_SEARCH_INPUT_SELECTOR, {
+      root: content,
+      timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS,
+    });
+
+    const { searchTerm, genderHint } = deriveCategorySearchTerm(payload.category);
+    if (!searchTerm) {
+      docLog.warn("PREFILL_CATEGORY", { label: CATEGORY_LABEL, value: payload.category, outcome: "no_search_term" });
+      document.body.click(); // ferme le picker sans rien selectionner
+      return false;
+    }
+
+    // Meme technique native-setter + InputEvent que Marque -- reutilisee
+    // TELLE QUELLE (deja generique, aucune logique specifique a la marque
+    // dans son implementation, voir formFill.ts) plutot que dupliquee.
+    typeIntoBrandSearchInput(searchInput, searchTerm);
+    docLog.info("PREFILL_CATEGORY_STEP", {
+      field: CATEGORY_LABEL,
+      step: "search_input_typed",
+      searchTerm,
+      genderHint,
+      domValueAfterTyping: searchInput.value,
+    });
+
+    try {
+      await waitForCondition(
+        () => {
+          const currentContent = document.querySelector<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
+          if (!currentContent) return false;
+          return readCategoryResultCells(currentContent).some((cell) => normalize(cell.title) === normalize(searchTerm));
+        },
+        {
+          timeoutMs: CATEGORY_SEARCH_FILTER_TIMEOUT_MS,
+          description: "exact category title match appears after typed search text",
+        }
+      );
+    } catch {
+      // Signal inexploitable dans le delai imparti -- continue avec la
+      // liste telle qu'elle est, le matching qui suit reste la garde reelle
+      // (aucune valeur inventee dans tous les cas).
+      docLog.warn("CATEGORY_SEARCH_FILTER_NOT_CONFIRMED", { field: CATEGORY_LABEL, searchTerm });
+    }
+
+    const matchingContent = document.querySelector<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR) ?? content;
+    const cells = readCategoryResultCells(matchingContent);
+    docLog.info("PREFILL_CATEGORY_STEP", {
+      field: CATEGORY_LABEL,
+      step: "options_read_after_filter_attempt",
+      optionsCount: cells.length,
+      titles: cells.map((cell) => cell.title),
+    });
+
+    const matchIndex = matchCategoryResult(cells, payload.category);
+    if (matchIndex === null) {
+      docLog.warn("PREFILL_CATEGORY", {
+        label: CATEGORY_LABEL,
+        value: payload.category,
+        optionsCount: cells.length,
+        outcome: "no_reliable_match",
+      });
+      docLog.warn("CATEGORY_MATCH_DIAGNOSTIC", { ...describeCategoryMatchAttempt(cells, payload.category) });
+      document.body.click(); // ferme le picker sans rien selectionner
+      return false;
+    }
+
+    const matched = cells[matchIndex];
+    matched.element.click();
+    docLog.info("PREFILL_CATEGORY_STEP", {
+      field: CATEGORY_LABEL,
+      step: "option_clicked",
+      matched: { title: matched.title, breadcrumb: matched.breadcrumb },
+    });
+
+    if (initialHadAnyAttributeTrigger) {
+      docLog.warn("PREFILL_CATEGORY", { label: CATEGORY_LABEL, value: payload.category, outcome: "confirmation_signal_unusable" });
+      return false;
+    }
+
+    try {
+      await waitForCondition(() => hasAnyAttributeTrigger(readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS)), {
+        timeoutMs: CATEGORY_SELECTION_CONFIRM_TIMEOUT_MS,
+        description: "attribute controls appear after automatic category selection",
+      });
+    } catch {
+      docLog.warn("PREFILL_CATEGORY", {
+        label: CATEGORY_LABEL,
+        value: payload.category,
+        matched: matched.title,
+        outcome: "click_not_confirmed",
+      });
+      return false;
+    }
+
+    docLog.info("PREFILL_CATEGORY", {
+      label: CATEGORY_LABEL,
+      value: payload.category,
+      matched: { title: matched.title, breadcrumb: matched.breadcrumb },
+      outcome: "confirmed",
+    });
+    replaceManualPlaceholder(pending, CATEGORY_LABEL, null);
+    confirmed.push(CATEGORY_LABEL);
+    return true;
+  } catch (err) {
+    docLog.warn("PREFILL_CATEGORY", { label: CATEGORY_LABEL, value: payload.category, outcome: "error", error: errorMessage(err) });
+    return false;
+  }
+}
+
+// Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) : preuve
+// deja etablie sur le MEME composant Vinted (vinted-edit.ts::submitEdit,
+// 2026-07-25, meme SAVE_BUTTON_SELECTOR "upload-form-save-button") -- un
+// clic synthetique n'a JAMAIS declenche la vraie requete de sauvegarde,
+// route protegee par un service anti-bot (reponse portant
+// "x-datadome: protected") qui exige un evenement isTrusted:true. Decision
+// deja actee de ne pas contourner cette protection -- ce script ne clique
+// donc JAMAIS ce bouton. Il se contente de DETECTER de facon fiable que
+// Vinted lui-meme considere le formulaire soumissible (bouton non-disabled,
+// MEME lecture deja live-validee sur le formulaire d'edition :
+// !saveButton.disabled && aria-disabled !== "true"), pour que l'app puisse
+// inviter l'utilisateur a cliquer au bon moment plutot que de le laisser
+// deviner.
+//
+// Source de verite volontairement UNIQUE : l'etat REEL du bouton Vinted,
+// jamais `pending` (liste STATIQUE calculee une seule fois par
+// reportPrefillSummary(), qui ne se met jamais a jour si l'utilisateur
+// corrige ensuite lui-meme un champ ambigu directement sur Vinted --
+// s'appuyer dessus ferait ne JAMAIS declencher ce signal dans le cas le
+// plus courant, une correspondance automatique ratee puis corrigee a la
+// main). Vinted connait ses propres champs reellement obligatoires pour LA
+// categorie choisie ; ResellOS ne les devine pas.
+// Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : preuve live --
+// le formulaire Vinted etait reellement complet (bouton "Ajouter" visible et
+// actif) mais PUBLISH_READY_TO_SUBMIT n'a jamais ete envoye. Cause la plus
+// probable identifiee par relecture de code (jamais prouvee en live avant ce
+// correctif, donc verifiable via les logs ci-dessous au prochain test) :
+// l'ancienne version capturait `saveButton` UNE SEULE FOIS via
+// waitForElement(), puis interrogeait cette MEME reference pour toujours --
+// exactement la classe de bug deja rencontree et corrigee a plusieurs
+// reprises ailleurs dans ce fichier (categorie, marque : "re-interroge le
+// DOM a chaque evaluation, jamais une reference figee"). Si Vinted remplace
+// le noeud du bouton lors d'un re-render (tres probable, son etat
+// disabled/enabled depend de tout le formulaire), la reference capturee
+// devient orpheline et son `.disabled` ne change plus jamais, meme si un
+// NOUVEAU bouton, bien reel et actif, existe desormais dans le DOM live.
+// Corrige en re-interrogeant `document.querySelector(SAVE_BUTTON_SELECTOR)`
+// A CHAQUE evaluation, jamais une reference fixee en dehors du predicat.
+//
+// Instrumentation demandee explicitement (found/disabled/aria-disabled/
+// texte/etat DOM a chaque check) : dedupliquee sur changement d'etat reel
+// (meme discipline que checkAndLogDomState() pour la categorie) pour rester
+// exploitable sans spam, mais capture bien CHAQUE etat distinct traverse.
+function describeSaveButtonState(): SaveButtonState {
+  const btn = document.querySelector<HTMLButtonElement>(sel.SAVE_BUTTON_SELECTOR);
+  if (!btn) return { found: false, disabled: null, ariaDisabled: null, textContent: null };
+  return {
+    found: true,
+    disabled: btn.disabled,
+    ariaDisabled: btn.getAttribute("aria-disabled"),
+    textContent: btn.textContent?.trim() ?? null,
+  };
+}
+
+// Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT" (2026-08-16) :
+// CAUSE CONFIRMEE en test live -- le bouton "Ajouter" (isSaveButtonReady
+// seul) peut rester non-disabled alors que Vinted affiche encore une erreur
+// de validation bloquante sur le prix ("24,00 €" reellement affiche, ET "Le
+// champ prix doit être supérieur ou égal à 1.0" affiche simultanement).
+// PUBLISH_READY_TO_SUBMIT n'est plus envoye sur le seul etat du bouton :
+// isFormReallyReadyToSubmit() (publishReadiness.ts, pure/testee) exige EN
+// PLUS que describePriceValidationState() (formFill.ts, MEME fonction que la
+// confirmation de remplissage ci-dessus -- source unique de verite) ne
+// rapporte aucune erreur reellement affichee sur le prix. Re-interroge le
+// prix FRAICHEMENT a chaque evaluation (jamais une reference figee), meme
+// discipline que le bouton lui-meme.
+function checkPriceState(): PriceValidationState {
+  return describePriceValidationState(document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR));
+}
+
+async function watchForPublishReadiness(): Promise<void> {
+  let lastLoggedStateKey: string | null = null;
+  function checkAndLogReadinessState(): { buttonState: SaveButtonState; priceState: PriceValidationState; photosImported: boolean | null } {
+    const buttonState = describeSaveButtonState();
+    const priceState = checkPriceState();
+    // Mission "FIABILISER L'IMPORT PHOTOS" (2026-08-17) : troisieme signal
+    // OBLIGATOIRE, meme discipline que le prix -- `photoImportOutcome` est mis
+    // a jour par injectPhotosWithConfirmation() (photoImportVerification.ts,
+    // confirmedCount === expectedCount strictement). `null` (pas encore
+    // termine) et un import echoue sont TOUS LES DEUX traites comme "pas
+    // pret", jamais un succes suppose par defaut.
+    const photosImported = photoImportOutcome === null ? null : photoImportOutcome.status === "confirmed";
+    const stateKey = JSON.stringify({ buttonState, priceState, photosImported });
+    if (stateKey !== lastLoggedStateKey) {
+      lastLoggedStateKey = stateKey;
+      docLog.info("SAVE_READINESS_STATE", { selector: sel.SAVE_BUTTON_SELECTOR, buttonState, priceState, photosImported, photoImportOutcome });
+    }
+    return { buttonState, priceState, photosImported };
+  }
+
+  try {
+    checkAndLogReadinessState(); // etat initial, avant toute attente
+    await waitForCondition(
+      () => {
+        const { buttonState, priceState, photosImported } = checkAndLogReadinessState();
+        return isFormReallyReadyToSubmit(buttonState, priceState, photosImported);
+      },
+      {
+        timeoutMs: ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS,
+        description:
+          "bouton Ajouter cliquable ET aucune erreur de validation prix reellement affichee ET import photos reellement confirme complet (re-interroge a chaque evaluation) -- meme signal bouton deja live-valide sur le formulaire d'edition",
+      }
+    );
+    docLog.info("PUBLISH_READY_TO_SUBMIT", checkAndLogReadinessState());
+    chrome.runtime.sendMessage({ type: "PUBLISH_READY_TO_SUBMIT" });
+  } catch (err) {
+    docLog.warn("PUBLISH_READY_NOT_DETECTED", { error: errorMessage(err), lastObservedState: checkAndLogReadinessState() });
+  }
+}
+
 async function watchForCategorySelectionAndPrefillAttributes(
   payload: PublishListingPayload,
   confirmed: string[],
   pending: string[]
 ): Promise<void> {
-  docLog.info("CATEGORY_MANUAL_REQUIRED", { category: payload.category || null });
-
-  const initialCategoryText = readTriggerText(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
-  const initialAttributesPresent = readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS);
-  const initialHadAnyAttributeTrigger = hasAnyAttributeTrigger(initialAttributesPresent);
-  docLog.info("CATEGORY_WATCH_START", {
-    documentInstanceId: DOCUMENT_INSTANCE_ID,
-    initialCategoryText,
-    initialCategoryValue: initialCategoryText,
-    initialHadAnyAttributeTrigger,
-  });
-  if (import.meta.env.DEV) {
-    docLog.info("CATEGORY_TRIGGER_DOM_DIAGNOSTIC", { ...describeCategoryTriggerDom(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR) });
+  const categoryAutoSelected = await attemptCategoryPrefill(payload, confirmed, pending);
+  let categoryDetected = categoryAutoSelected;
+  if (categoryAutoSelected) {
+    docLog.info("CATEGORY_AUTO_SELECTED", { category: payload.category || null });
+  } else {
+    categoryDetected = await waitForManualCategorySelectionAndConfirm(payload);
   }
+  // Ni l'essai automatique ni l'attente manuelle n'ont detecte de selection
+  // (timeout des 10 minutes atteint) -- s'arrete ici, exactement comme avant
+  // cette mission (return immediat sur CATEGORY_SELECTION_NOT_DETECTED).
+  // Sans cette garde, l'attente d'attributs ci-dessous rejouerait un second
+  // timeout de 10 minutes pour rien (aucune categorie choisie => aucun
+  // trigger d'attribut ne peut jamais apparaitre).
+  if (!categoryDetected) return;
 
-  // Deduplique : ne journalise CATEGORY_DOM_CHANGE que si l'etat observe a
-  // reellement change depuis le dernier log -- evite de spammer a chaque
-  // mutation brute (le panneau categorie peut muter tres frequemment pendant
-  // la navigation de l'utilisateur dans l'arbre).
-  let lastLoggedStateKey: string | null = null;
-  function checkAndLogDomState(): CategoryDetectionState {
-    const categoryText = readTriggerText(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
-    const attributesPresent = readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS);
-    const stateKey = JSON.stringify({ categoryText, ...attributesPresent });
-    if (stateKey !== lastLoggedStateKey) {
-      lastLoggedStateKey = stateKey;
-      docLog.info("CATEGORY_DOM_CHANGE", {
-        currentCategoryText: categoryText,
-        currentCategoryValue: categoryText,
-        categoryTriggerFound: !!document.querySelector(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR),
-        ...attributesPresent,
-      });
-    }
-    return { categoryText, attributesPresent };
-  }
-
-  let detectionMethod: CategoryDetectionMethod | null = null;
-  try {
-    await waitForCondition(
-      () => {
-        const state = checkAndLogDomState();
-        const method = detectCategorySelection(state, {
-          categoryText: initialCategoryText,
-          hadAnyAttributeTrigger: initialHadAnyAttributeTrigger,
-        });
-        if (method) detectionMethod = method;
-        return method !== null;
-      },
-      { timeoutMs: ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS, description: "category selected (direct value or attribute controls appearing)" }
-    );
-  } catch (err) {
-    docLog.info("CATEGORY_SELECTION_NOT_DETECTED", { error: errorMessage(err), initialCategoryText, initialHadAnyAttributeTrigger });
-    return;
-  }
-
-  const currentCategoryText = readTriggerText(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
-  docLog.info("CATEGORY_SELECTION_DETECTED", {
-    previousValue: initialCategoryText,
-    currentValue: currentCategoryText,
-    detectionMethod,
-  });
-  if (import.meta.env.DEV) {
-    docLog.info("CATEGORY_TRIGGER_DOM_DIAGNOSTIC", { ...describeCategoryTriggerDom(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR) });
-  }
-
-  // Si le chemin direct a deja detecte (categoryText a change), les
-  // attributs peuvent ne pas encore etre rendus -- attente separee comme
-  // avant. Si c'est le repli structurel qui a detecte (attribute_controls_appeared),
-  // cette attente resout immediatement (predicat deja vrai au premier check),
-  // conformement a la demande explicite de ne plus attendre pour rien une
-  // fois le repli satisfait.
+  // Que la categorie ait ete resolue automatiquement ou manuellement, cette
+  // attente resout immediatement dans le premier cas (predicat deja vrai --
+  // confirme a l'interieur d'attemptCategoryPrefill()) et se comporte
+  // exactement comme avant dans le second (attente reelle jusqu'a ce que
+  // l'utilisateur termine sa navigation manuelle).
   try {
     await waitForCondition(() => hasAnyAttributeTrigger(readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS)), {
       timeoutMs: ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS,
@@ -1781,13 +2116,43 @@ async function watchForCategorySelectionAndPrefillAttributes(
     confirmed,
     pending
   );
-  await attemptAttributePrefill(
+  // Mission "MATIERE : MULTI-SELECT" (2026-08-16) : chemin DEDIE
+  // (attemptMaterialPrefill) au lieu du reader generique -- preuve live
+  // directe (diagnostic fourni par l'utilisateur, pas un script ResellOS)
+  // que le conteneur reel est "category-material-multi-list-content"
+  // (JAMAIS CATEGORY_DROPDOWN_CONTENT_SELECTOR, que l'ancien code reutilisait
+  // a tort) et que Vinted accepte reellement PLUSIEURS matieres cochees
+  // simultanement -- voir materialOptionReader.ts pour le detail complet de
+  // cette preuve. `payload.materials` (tableau derive cote app, voir
+  // src/lib/materials.ts::parseMaterials) est la source prioritaire ; repli
+  // sur `payload.material` seul si `materials` est absent/vide --
+  // retro-compatibilite avec tout appelant qui ne peuplerait pas encore ce
+  // nouveau champ.
+  //
+  // Mission "MATIERE : BUG MATCHING" (2026-08-16) -- CAUSE EXACTE prouvee en
+  // live : ce repli enveloppait auparavant `payload.material` BRUT (jamais
+  // decoupe) dans un tableau a UN SEUL element -- si la chaine source
+  // contenait deja plusieurs matieres jointes ("Coton, Polyester", ex. un
+  // appelant pas encore aligne sur payload.materials), attemptMaterialPrefill()
+  // ne recevait qu'UNE seule "matiere" logique ("Coton, Polyester" entier),
+  // qui ne matchait evidemment aucune option Vinted reelle
+  // (outcome:"no_reliable_match" confirme en direct). parseMaterials()
+  // (./materials.ts, miroir de src/lib/materials.ts) est desormais applique
+  // en DEFENSE sur CHAQUE element -- que la source soit deja un tableau
+  // correctement scinde (cas nominal, flatMap devient un no-op par element)
+  // OU le repli scalaire brut -- jamais suppose deja atomique.
+  const requestedMaterials = dedupeMaterialsCaseInsensitive(
+    payload.materials && payload.materials.length > 0
+      ? payload.materials.flatMap((m) => parseMaterials(m))
+      : parseMaterials(payload.material)
+  );
+  await attemptMaterialPrefill(
     {
       logName: "PREFILL_MATERIAL",
       label: "Matière",
       triggerSelector: sel.MATERIAL_LIST_TRIGGER_SELECTOR,
-      contentSelector: sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR,
-      value: payload.material,
+      contentSelector: sel.MATERIAL_LIST_CONTENT_SELECTOR,
+      materials: requestedMaterials,
     },
     confirmed,
     pending
@@ -1795,6 +2160,85 @@ async function watchForCategorySelectionAndPrefillAttributes(
 
   docLog.info("ATTRIBUTE_PREFILL_SUMMARY", { confirmed, pending });
   reportPrefillSummary(confirmed, pending);
+}
+
+// Mission "CORRIGER LA DETECTION POST-SELECTION MANUELLE DE CATEGORIE"
+// (2026-08-12), extraite telle quelle de watchForCategorySelectionAndPrefillAttributes()
+// (2026-08-16) pour isoler l'attente manuelle du nouvel essai automatique
+// qui la precede desormais -- AUCUN changement de comportement ici, meme
+// logique, memes logs, meme timeout. Renvoie desormais un booleen (detection
+// reussie ou non) plutot que rien, pour que l'appelant sache s'il doit
+// enchainer sur l'attente des attributs ou s'arreter net (voir son en-tete).
+async function waitForManualCategorySelectionAndConfirm(payload: PublishListingPayload): Promise<boolean> {
+  docLog.info("CATEGORY_MANUAL_REQUIRED", { category: payload.category || null });
+
+  const initialCategoryText = readTriggerText(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
+  const initialAttributesPresent = readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS);
+  const initialHadAnyAttributeTrigger = hasAnyAttributeTrigger(initialAttributesPresent);
+  docLog.info("CATEGORY_WATCH_START", {
+    documentInstanceId: DOCUMENT_INSTANCE_ID,
+    initialCategoryText,
+    initialCategoryValue: initialCategoryText,
+    initialHadAnyAttributeTrigger,
+  });
+  if (import.meta.env.DEV) {
+    docLog.info("CATEGORY_TRIGGER_DOM_DIAGNOSTIC", { ...describeCategoryTriggerDom(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR) });
+  }
+
+  // Deduplique : ne journalise CATEGORY_DOM_CHANGE que si l'etat observe a
+  // reellement change depuis le dernier log -- evite de spammer a chaque
+  // mutation brute (le panneau categorie peut muter tres frequemment pendant
+  // la navigation de l'utilisateur dans l'arbre).
+  let lastLoggedStateKey: string | null = null;
+  function checkAndLogDomState(): CategoryDetectionState {
+    const categoryText = readTriggerText(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
+    const attributesPresent = readAttributeTriggerPresence(ATTRIBUTE_TRIGGER_SELECTORS);
+    const stateKey = JSON.stringify({ categoryText, ...attributesPresent });
+    if (stateKey !== lastLoggedStateKey) {
+      lastLoggedStateKey = stateKey;
+      docLog.info("CATEGORY_DOM_CHANGE", {
+        currentCategoryText: categoryText,
+        currentCategoryValue: categoryText,
+        categoryTriggerFound: !!document.querySelector(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR),
+        ...attributesPresent,
+      });
+    }
+    return { categoryText, attributesPresent };
+  }
+
+  let detectionMethod: CategoryDetectionMethod | null = null;
+  try {
+    await waitForCondition(
+      () => {
+        const state = checkAndLogDomState();
+        const method = detectCategorySelection(state, {
+          categoryText: initialCategoryText,
+          hadAnyAttributeTrigger: initialHadAnyAttributeTrigger,
+        });
+        if (method) detectionMethod = method;
+        return method !== null;
+      },
+      { timeoutMs: ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS, description: "category selected (direct value or attribute controls appearing)" }
+    );
+  } catch (err) {
+    docLog.info("CATEGORY_SELECTION_NOT_DETECTED", { error: errorMessage(err), initialCategoryText, initialHadAnyAttributeTrigger });
+    return false;
+  }
+
+  const currentCategoryText = readTriggerText(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR);
+  docLog.info("CATEGORY_SELECTION_DETECTED", {
+    previousValue: initialCategoryText,
+    currentValue: currentCategoryText,
+    detectionMethod,
+  });
+  if (import.meta.env.DEV) {
+    docLog.info("CATEGORY_TRIGGER_DOM_DIAGNOSTIC", { ...describeCategoryTriggerDom(sel.CATEGORY_DROPDOWN_TRIGGER_SELECTOR) });
+  }
+  // L'attente de "au moins un trigger d'attribut" et la suite (Etat/Taille/
+  // Marque/Couleur/Matiere) vivent desormais dans l'appelant
+  // (watchForCategorySelectionAndPrefillAttributes()) -- commune aux deux
+  // chemins (auto ET manuel), voir son en-tete.
+  return true;
 }
 
 // Mission "diagnostic final PHOTOS + CATEGORIE" (2026-08-11), item 1 : un
@@ -1836,6 +2280,13 @@ async function runPublish(payload: PublishListingPayload, photos: FetchedPhoto[]
         // PHOTO_INPUT_FOUND) ou si le blocage est ailleurs.
         photosFetchedSuccessfully: photos.filter((p) => p.arrayBuffer !== null).length,
         filesBuiltCount: lastFilesBuiltCount,
+        // Mission "FIABILISER L'IMPORT PHOTOS" (2026-08-17) : etat REEL au
+        // sens du nouvel invariant (confirmedCount === expectedCount sur les
+        // vignettes Vinted, pas seulement "des fichiers ont ete envoyes") --
+        // voir photoImportVerification.ts. `success` ci-dessus reste derive
+        // de la MEME source de verite (confirmed.push ne se produit que sur
+        // outcome.status==="confirmed").
+        importOutcome: photoImportOutcome,
       },
       // Categorie : JAMAIS automatisee sur ce formulaire (voir l'en-tete du
       // fichier + formFill.ts::resolveCategory) -- Vinted exige un clic
@@ -1906,6 +2357,13 @@ async function runPublishOnce(
     // l'utilisateur choisisse sa categorie), et rappelle reportPrefillSummary()
     // elle-meme une fois terminee pour mettre a jour la modale dynamiquement.
     void watchForCategorySelectionAndPrefillAttributes(payload, confirmed, pending);
+    // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) :
+    // demarre INDEPENDAMMENT de watchForCategorySelectionAndPrefillAttributes
+    // (jamais imbriquee dans ses branches de sortie anticipee) -- se contente
+    // d'attendre que le bouton Vinted lui-meme devienne cliquable, quelle que
+    // soit la facon dont le formulaire y arrive (automatise ou entierement
+    // corrige a la main par l'utilisateur). Voir son en-tete pour le detail.
+    void watchForPublishReadiness();
 
     // A partir d'ici, plus aucune ecriture DOM synchrone ni aucun clic
     // automatique garanti -- l'utilisateur termine lui-meme la categorie (et,
@@ -1971,6 +2429,12 @@ if (publishGlobalScope.__resellosPublishBooted) {
 }
 
 function bootPublishContentScript(): void {
+  // Mission "DIAGNOSTIC INJECTION/PACKAGING" (2026-08-16) : point de repere
+  // MINIMAL confirmant que ce fichier a reellement ete execute -- distinct de
+  // PUBLISH_TAB_READY_SENT plus bas (qui suppose deja que l'enregistrement du
+  // listener a reussi). Utile pour distinguer "le fichier ne s'est jamais
+  // charge du tout" (aucun log ici) de "charge mais bloque avant l'envoi".
+  docLog.info("PUBLISH_CONTENT_SCRIPT_BOOTING", { href: location.href, documentInstanceId: DOCUMENT_INSTANCE_ID });
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // Loggue TOUT message recu ICI, AVANT le filtre isContentCommand -- si
     // isContentCommand rejetait un message (structure inattendue, echec de
@@ -2034,6 +2498,46 @@ function bootPublishContentScript(): void {
     // canal distinct).
     return false;
   });
+
+  // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17) :
+  // relais PUREMENT DIAGNOSTIQUE et temporaire -- publishCreateResponseCapture.ts
+  // (injecte separement, monde MAIN, voir handlePublishListing.ts) dispatche
+  // cet evenement CustomEvent sur `document` des qu'il observe une vraie
+  // reponse de POST /api/v2/item_upload/items ; ce content script (monde
+  // ISOLATED, meme document) peut l'ecouter -- mecanisme standard de pont
+  // MAIN<->ISOLATED. Relaye tel quel au background pour journalisation
+  // uniquement, aucune decision metier ne depend encore de cet evenement.
+  document.addEventListener(PUBLISH_CREATE_RESPONSE_EVENT_NAME, (event) => {
+    const detail = (event as CustomEvent<PublishCreateResponseCapture>).detail;
+    docLog.info("PUBLISH_CREATE_RESPONSE_EVENT_RECEIVED", {
+      url: detail.url,
+      statusCode: detail.statusCode,
+      ok: detail.ok,
+      transport: detail.transport,
+    });
+    chrome.runtime.sendMessage({
+      type: "PUBLISH_CREATE_RESPONSE_CAPTURED",
+      url: detail.url,
+      statusCode: detail.statusCode,
+      ok: detail.ok,
+      bodyText: detail.bodyText,
+      transport: detail.transport,
+    });
+  });
+
+  // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17), audit
+  // post-echec du 1er test live : verifie l'attribut DOM pose par
+  // publishCreateResponseCapture.ts (installe en document_start, monde
+  // MAIN -- voir manifest.config.ts) pour distinguer, au prochain test,
+  // "instrumentation jamais installee" (attribut absent, ex. build pas
+  // rechargee, entree manifest cassee) de "installee mais transport non
+  // intercepte" (attribut present, mais toujours 0 capture). document_idle
+  // survient TOUJOURS apres document_start, donc aucune course possible
+  // ici -- contrairement a un CustomEvent, un attribut DOM persiste et peut
+  // etre lu a tout moment sans destinataire deja enregistre au prealable.
+  const createCaptureInstalled = document.documentElement.hasAttribute(PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED_ATTR);
+  docLog.info("PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS_CHECKED", { installed: createCaptureInstalled });
+  chrome.runtime.sendMessage({ type: "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS", installed: createCaptureInstalled });
 
   // Signal de disponibilite (voir commentaire ci-dessus) -- envoye juste
   // apres l'enregistrement du listener, pour que handlePublishListing.ts

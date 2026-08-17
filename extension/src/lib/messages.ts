@@ -68,6 +68,15 @@ export interface PublishListingPayload {
   condition: string;
   color: string | null;
   material: string | null;
+  // Mission "MATIERE : MULTI-SELECT" (2026-08-16) : Vinted accepte plusieurs
+  // matieres (preuve live directe -- voir vinted-publish.ts::attemptMaterialPrefill
+  // et materialOptionReader.ts). Optionnel/retro-compatible : `material`
+  // (ci-dessus) reste la source de verite historique, `materials` est
+  // derive cote app (src/lib/materials.ts::parseMaterials) quand disponible.
+  // Le content script utilise `materials` si non vide, sinon replie sur
+  // `material` seul -- aucun appelant existant qui ne peuplerait QUE
+  // `material` n'est jamais casse.
+  materials?: string[];
   imageUrls: string[];
   packageSize: "small" | "medium" | "large";
   expectedVintedUsername: string;
@@ -184,6 +193,79 @@ export interface VerifyEditFieldsPayload {
   expected: Partial<Record<"title" | "description" | "price", string>>;
 }
 
+// Mission "REPUBLICATION : DIAGNOSTIC LIVE SUPPRESSION ANCIENNE ANNONCE
+// VINTED" (2026-08-17) : flow reel confirme en direct par l'utilisateur --
+// page /items/{id} -> bouton "Supprimer" -> modale "Supprimer l'article" ->
+// bouton "Confirmer et supprimer" (voir extension/src/content/
+// deleteFlowSelectors.ts). vintedItemId cible STRICTEMENT l'ANCIENNE annonce
+// (jamais derive d'un titre/prix, voir republishTransaction.ts) -- le
+// content script (vinted-item.ts) refuse d'agir si la page chargee ne
+// correspond pas exactement a cet id (garde "mauvais item interdit").
+export interface DeleteListingPayload {
+  vintedItemId: string;
+  historyId?: string;
+}
+
+// DeleteStep : etapes de progression du flow de suppression, rapportees via
+// DELETE_PROGRESS -- distinct de PublishStep (vocabulaire propre a cette
+// action, jamais reutilise pour publish/edit).
+// "waiting_for_manual_confirm_click" : DECISION D'ARCHITECTURE, meme
+// raisonnement que submitEdit() (vinted-edit.ts, 2026-07-25) -- la
+// suppression reelle (clic sur "Confirmer et supprimer") declenche tres
+// probablement la meme classe de requete mutante protegee anti-bot que la
+// sauvegarde d'edition (deja prouvee exiger isTrusted:true sur ce meme
+// site) ; aucun nouveau test synthetique n'a ete tente ici (destructeur et
+// irreversible, jamais le bon moment pour verifier une hypothese) -- le
+// clic sur "Supprimer" (ouverture de la modale, purement cote client) reste
+// en revanche automatise, coherent avec la preuve deja etablie qu'un clic
+// synthetique atteint bien le DOM/les handlers JS, seule la requete reseau
+// finale exige un evenement de confiance.
+export type DeleteStep =
+  | "loading"
+  | "trigger_found"
+  | "trigger_clicked"
+  | "modal_confirmed"
+  | "waiting_for_manual_confirm_click"
+  | "confirm_clicked";
+
+export type DeleteFailureReason =
+  | "wrong_item"
+  | "trigger_not_found"
+  | "modal_not_found"
+  | "confirm_button_not_found"
+  | "confirm_click_timeout";
+
+// `alreadyGone` (2026-08-17, cas "ancienne annonce deja absente") : l'annonce
+// ciblee n'affiche deja plus de donnee produit (ld+json) des le chargement --
+// rien a supprimer, jamais une erreur "bouton introuvable" pour ce cas
+// precis (voir handleDeleteListing, vinted-item.ts).
+export type DeleteListingOutcome =
+  | { ok: true; alreadyGone: boolean }
+  | { ok: false; reason: DeleteFailureReason; errorMessage: string };
+
+// Mission "CORRIGER LA REPETITION DELETE_LISTING" (2026-08-17) -- CAUSE
+// RACINE PROUVEE en test live (documentInstanceId identique sur toute la
+// sequence repetee, aucun DELETE_LISTENER_DUPLICATE_BOOT_DETECTED) : le
+// listener DELETE_LISTING (vinted-item.ts) ne repondait JAMAIS (ni
+// sendResponse, ni return true) -- exactement le meme bug deja corrige pour
+// PUBLISH_LISTING (voir PublishCommandResponse ci-dessus, mission "ACK
+// PUBLISH_LISTING MANQUANT"). Chrome pouvait alors fermer le port avant
+// reponse ("message port closed before a response was received."), meme
+// quand le content script avait deja reellement recu la commande et demarre
+// handleDeleteListing() -- withRetry() (deleteOldListing.ts) traitait ce
+// faux negatif comme un echec d'envoi et renvoyait DELETE_LISTING, demarrant
+// plusieurs handleDeleteListing() concurrents dans le MEME document (jamais
+// un document duplique). Meme structure de reponse et de garde que
+// PublishCommandResponse : `duplicate:true` si un handleDeleteListing() est
+// deja en cours dans ce document (voir deleteHandlingInFlight, vinted-item.ts) --
+// accepte proprement SANS en relancer un second.
+export interface DeleteCommandResponse {
+  ok: true;
+  accepted: true;
+  duplicate: boolean;
+  documentInstanceId: string;
+}
+
 // Background -> content script, via chrome.tabs.sendMessage.
 //
 // AUTO_ENRICH_REQUESTED (audit "prefill partiel", 2026-08-10) : envoye a un
@@ -197,7 +279,8 @@ export type ContentCommand =
   | { type: "PUBLISH_LISTING"; payload: PublishListingPayload; photos: FetchedPhotoWire[] }
   | { type: "EDIT_LISTING"; payload: EditListingPayload }
   | { type: "VERIFY_EDIT_FIELDS"; payload: VerifyEditFieldsPayload }
-  | { type: "AUTO_ENRICH_REQUESTED" };
+  | { type: "AUTO_ENRICH_REQUESTED" }
+  | { type: "DELETE_LISTING"; payload: DeleteListingPayload };
 
 // Reponse directe (callback de chrome.tabs.sendMessage) a AUTO_ENRICH_REQUESTED
 // -- distincte de ContentReport (qui porte des messages POUSSES par le
@@ -282,6 +365,21 @@ export interface PublishCommandResponse {
 // le vendeur n'avait jamais renseigne). Cote handlePublishListing.ts,
 // reception de ce message marque aussi le debut de la phase d'attente d'un
 // clic reel de l'utilisateur (voir keepTabOpen sur timeout).
+// PUBLISH_READY_TO_SUBMIT (mission "CLIC FINAL + CONFIRMATION POST-
+// PUBLICATION", 2026-08-16) : le clic automatique sur "Ajouter" a ete
+// ecarte -- preuve deja etablie sur le MEME composant Vinted (vinted-edit.ts
+// ::submitEdit, 2026-07-25) qu'un clic synthetique n'atteint jamais la
+// vraie route de sauvegarde (protegee par un service anti-bot, exige un
+// evenement isTrusted:true), decision deliberement non revisitee ici. Ce
+// signal remplace le clic automatique par une DETECTION honnete : envoye
+// UNE FOIS par vinted-publish.ts des que le bouton "Ajouter" lui-meme
+// passe non-disabled (meme lecture deja live-validee sur le formulaire
+// d'edition), pour que l'app puisse inviter l'utilisateur a cliquer au bon
+// moment plutot que de le laisser deviner. Ne prouve PAS que ResellOS a
+// tout prerempli (voir PUBLISH_PREFILL_SUMMARY pour cela) -- prouve
+// uniquement que Vinted lui-meme considere desormais le formulaire
+// soumissible, quelle que soit la part automatisee vs. corrigee a la main
+// par l'utilisateur entre-temps.
 // PUBLISH_TAB_READY (mission "port message ferme", 2026-08-11) : MEME cause
 // racine et MEME correctif qu'EDIT_TAB_READY ci-dessus, appliques a
 // publish_listing -- vinted-publish.ts se chargeait de facon asynchrone sur
@@ -297,6 +395,7 @@ export type ContentReport =
   | { type: "PUBLISH_PROGRESS"; step: PublishStep }
   | { type: "PUBLISH_RESULT"; outcome: RunActionOutcome }
   | { type: "PUBLISH_PREFILL_SUMMARY"; confirmed: string[]; pending: string[] }
+  | { type: "PUBLISH_READY_TO_SUBMIT" }
   | { type: "PUBLISH_TAB_READY"; documentInstanceId: string }
   | { type: "EDIT_TAB_READY" }
   | { type: "EDIT_SAVE_SUBMITTED"; vintedItemId: string; vintedUrl: string }
@@ -312,12 +411,44 @@ export type ContentReport =
       // entree porte desormais son propre verdict, source unique de verite.
       details: Record<string, { expected: string; actual: string | null; matches: boolean }>;
     }
-  | { type: "EDIT_FIELD_FILL_FAILED"; errorMessage: string };
+  | { type: "EDIT_FIELD_FILL_FAILED"; errorMessage: string }
+  // documentInstanceId (2026-08-17, mission "DIAGNOSTIC LIVE MINIMAL --
+  // SUPPRESSION DE A") : identifiant unique par execution du module
+  // vinted-item.ts (crypto.randomUUID(), meme pattern que DOCUMENT_INSTANCE_ID
+  // dans vinted-publish.ts) -- purement diagnostique, permet de distinguer
+  // "plusieurs handleDeleteListing() concurrents dans le meme document" de
+  // "plusieurs onglets/documents distincts" au prochain test live. Aucune
+  // decision metier ne depend de ce champ.
+  | { type: "DELETE_PROGRESS"; step: DeleteStep; documentInstanceId: string }
+  | { type: "DELETE_RESULT"; outcome: DeleteListingOutcome; documentInstanceId: string }
+  // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17) :
+  // instrumentation ciblee et temporaire -- relaie le corps de reponse de
+  // POST /api/v2/item_upload/items, capture cote page (monde MAIN, voir
+  // publishCreateResponseCapture.ts) jusqu'au background pour journalisation.
+  // `transport` distingue fetch/XMLHttpRequest (audit 2026-08-17 : la
+  // premiere version ne patchait que fetch et n'a rien capture lors d'un
+  // test live reel malgre une creation reussie -- XHR desormais couvert
+  // aussi). Aucune decision metier ne depend encore de ce message --
+  // uniquement de la preuve avant d'implementer l'identification reelle de B.
+  | { type: "PUBLISH_CREATE_RESPONSE_CAPTURED"; url: string; statusCode: number; ok: boolean; bodyText: string; transport: "fetch" | "xhr" }
+  // Envoye une seule fois au demarrage du content script (bootPublishContentScript,
+  // document_idle) : confirme si l'attribut DOM pose par
+  // publishCreateResponseCapture.ts (installe en document_start, monde MAIN)
+  // est bien present -- seul moyen fiable de distinguer "instrumentation
+  // jamais installee" de "installee mais transport non intercepte" au
+  // prochain test live.
+  | { type: "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS"; installed: boolean };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PUBLISH_LISTING" || type === "EDIT_LISTING" || type === "VERIFY_EDIT_FIELDS" || type === "AUTO_ENRICH_REQUESTED";
+  return (
+    type === "PUBLISH_LISTING" ||
+    type === "EDIT_LISTING" ||
+    type === "VERIFY_EDIT_FIELDS" ||
+    type === "AUTO_ENRICH_REQUESTED" ||
+    type === "DELETE_LISTING"
+  );
 }
 
 export function isContentReport(msg: unknown): msg is ContentReport {
@@ -327,11 +458,16 @@ export function isContentReport(msg: unknown): msg is ContentReport {
     type === "PUBLISH_PROGRESS" ||
     type === "PUBLISH_RESULT" ||
     type === "PUBLISH_PREFILL_SUMMARY" ||
+    type === "PUBLISH_READY_TO_SUBMIT" ||
     type === "PUBLISH_TAB_READY" ||
     type === "EDIT_TAB_READY" ||
     type === "EDIT_SAVE_SUBMITTED" ||
     type === "EDIT_VERIFICATION_RESULT" ||
-    type === "EDIT_FIELD_FILL_FAILED"
+    type === "EDIT_FIELD_FILL_FAILED" ||
+    type === "DELETE_PROGRESS" ||
+    type === "DELETE_RESULT" ||
+    type === "PUBLISH_CREATE_RESPONSE_CAPTURED" ||
+    type === "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS"
   );
 }
 
@@ -351,10 +487,40 @@ export const ACTION_PROGRESS_PORT_NAME = "action-progress";
 // PUBLISH_PREFILL_SUMMARY (voir ContentReport) jusqu'a l'app via le meme
 // port persistant que la progression -- l'app n'a besoin de cette
 // information qu'une seule fois par action, jamais rejouee comme "progress".
+// "ready_to_submit" (mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION",
+// 2026-08-16) : relaie PUBLISH_READY_TO_SUBMIT (voir ContentReport) jusqu'a
+// l'app -- comme prefill_summary, une seule fois par action, jamais rejouee.
+// "awaiting_old_listing_deletion" (mission "CORRIGER LE FAUX TERMINE",
+// 2026-08-17) : relaie DELETE_PROGRESS{step:"waiting_for_manual_confirm_click"}
+// (voir deleteOldListing.ts) vers l'app -- AVANT toute preuve de suppression,
+// uniquement pour que ResellOS affiche un etat explicite ("confirmation de
+// suppression requise sur Vinted") plutot que de laisser l'utilisateur
+// deviner ce qui se passe pendant l'attente du clic humain. N'implique
+// jamais, a lui seul, qu'une suppression a reussi -- seul REPUBLISH_COMPLETED
+// (voir republishTransaction.ts) le fait.
 export type ActionProgressPortMessage =
   | { type: "progress"; step: PublishStep }
   | { type: "prefill_summary"; confirmed: string[]; pending: string[] }
+  | { type: "ready_to_submit" }
+  | { type: "awaiting_old_listing_deletion" }
   | { type: "heartbeat" };
+
+// Mission "SYNC_VINTED_ACCOUNT" (2026-08-16, lot 2 fiabilisation synchro) :
+// port DEDIE, SEPARE de ACTION_PROGRESS_PORT_NAME -- volontairement, pour ne
+// jamais interferer avec une republication/edition en cours (qui possede
+// deja son propre port + son propre `activeProgressPort` cote background).
+// Une synchro et une action d'ecriture Vinted restent deux flux totalement
+// independants, jamais partages.
+export const SYNC_PROGRESS_PORT_NAME = "sync-progress";
+export type SyncStep = "connecting" | "fetching" | "writing";
+// "heartbeat" (lot 2) : MEME risque MV3 documente que ACTION_PROGRESS_PORT_NAME
+// ci-dessus (service worker eligible a la suspension par Chrome apres ~30s
+// sans appel d'API reel) -- une synchro peut legitimement attendre jusqu'a
+// SYNC_TIMEOUT_MS (90s, voir syncCoordinator.ts) sans aucun appel chrome.*
+// entre l'ouverture de l'onglet et la reception de LISTINGS_DETECTED. Meme
+// distinction que pour les actions : jamais rejoue comme "progress" (l'app
+// ne doit jamais journaliser une etape en double pour le meme heartbeat).
+export type SyncProgressPortMessage = { type: "progress"; step: SyncStep } | { type: "heartbeat" };
 
 // App web -> background, via chrome.runtime.sendMessage(EXTENSION_ID, ...)
 // (externally_connectable, limite a l'origine de l'app - voir manifest.config.ts)
@@ -366,12 +532,34 @@ export type ActionProgressPortMessage =
 // logique metier : memes fonctions pair()/unpair()/getStatus() (voir
 // background/index.ts), qui ne lisent/ecrivent jamais que la session locale
 // de l'extension -- aucune donnee sensible supplementaire exposee a l'app.
+// Mission "SYNC_VINTED_ACCOUNT" (2026-08-16, lot 2 fiabilisation synchro) :
+// remplace le pattern window.open()+poll Supabase (ListingsManagementSection.tsx)
+// par une VRAIE commande explicite, meme canal externally_connectable que
+// RUN_ACTION. La reponse REUTILISE tel quel le resultat structure de
+// sync.ts::recordListings() (lot 1 -- complete/created/updated/deletedMarked)
+// et ajoute pagesRead/pagesExpected (wardrobeApi.ts::WardrobeFetchResult,
+// portes par LISTINGS_DETECTED, voir plus bas) : aucune deuxieme logique de
+// decision "complete/partiel/echec" n'est recreee ici.
+export type SyncVintedAccountReason = "success" | "partial_scan" | "not_paired" | "tab_open_failed" | "timeout" | "error";
+export interface SyncVintedAccountResult {
+  ok: boolean;
+  complete: boolean;
+  created: number;
+  updated: number;
+  deletedMarked: number;
+  pagesRead: number;
+  pagesExpected: number;
+  reason: SyncVintedAccountReason;
+  error?: string;
+}
+
 export type ExternalMessage =
   | { type: "PING" }
   | { type: "PAIR"; access_token: string; refresh_token: string }
   | { type: "GET_STATUS" }
   | { type: "UNPAIR" }
-  | { type: "RUN_ACTION"; request: RunActionRequest };
+  | { type: "RUN_ACTION"; request: RunActionRequest }
+  | { type: "SYNC_VINTED_ACCOUNT"; vintedUserId: string; vintedUsername: string };
 
 export type ExternalResponse = { ok: true } | { ok: false; error: string };
 
@@ -439,7 +627,27 @@ export type InternalMessage =
   | { type: "GET_STATUS" }
   | { type: "UNPAIR" }
   | { type: "ACCOUNT_DETECTED"; vintedUserId: string; vintedUsername: string }
-  | { type: "LISTINGS_DETECTED"; vintedUserId: string; vintedUsername: string; listings: ListingPayload[] }
+  // `complete` (mission "FIABILISATION SYNCHRO VINTED, lot 1", 2026-08-16) :
+  // false quand la pagination Vinted (wardrobeApi.ts) s'est arretee avant
+  // d'avoir lu toutes les pages attendues -- `listings` peut alors etre un
+  // sous-ensemble reel mais INCOMPLET. sync.ts::recordListings() DOIT
+  // refuser toute logique de suppression (vinted_status='deleted') et ne
+  // JAMAIS avancer vinted_accounts.listings_synced_at tant que ce champ
+  // n'est pas true.
+  // `pagesRead`/`pagesExpected` (mission "SYNC_VINTED_ACCOUNT", lot 2) :
+  // portes tels quels depuis wardrobeApi.ts::WardrobeFetchResult jusqu'au
+  // resultat final SYNC_VINTED_ACCOUNT -- purement diagnostiques/informatifs,
+  // jamais utilises pour une decision metier (seul `complete` gouverne le
+  // marquage `deleted`, voir sync.ts).
+  | {
+      type: "LISTINGS_DETECTED";
+      vintedUserId: string;
+      vintedUsername: string;
+      listings: ListingPayload[];
+      complete: boolean;
+      pagesRead: number;
+      pagesExpected: number;
+    }
   | { type: "IMPORT_ITEM_REQUESTED"; vintedUsername: string; item: SingleItemPayload }
   | { type: "CHECK_ITEM_LINKED_REQUESTED"; vintedUsername: string; vintedItemId: string }
   | RelayLogEntryMessage
@@ -466,7 +674,14 @@ export type InternalResponse = StatusResponse | ExternalResponse;
 export function isExternalMessage(msg: unknown): msg is ExternalMessage {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;
   const type = (msg as { type: unknown }).type;
-  return type === "PING" || type === "PAIR" || type === "GET_STATUS" || type === "UNPAIR" || type === "RUN_ACTION";
+  return (
+    type === "PING" ||
+    type === "PAIR" ||
+    type === "GET_STATUS" ||
+    type === "UNPAIR" ||
+    type === "RUN_ACTION" ||
+    type === "SYNC_VINTED_ACCOUNT"
+  );
 }
 
 export function isInternalMessage(msg: unknown): msg is InternalMessage {

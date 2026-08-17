@@ -11,6 +11,7 @@ import {
   type AttributeTriggerPresence,
   type AttributeTriggerSelectors,
 } from "../categoryDetection";
+import { waitForCondition, WaitTimeoutError } from "../domWait";
 
 const NO_ATTRIBUTES: AttributeTriggerPresence = {
   brandTriggerFound: false,
@@ -457,5 +458,109 @@ describe("confirmTriggerValue", () => {
     const result = confirmTriggerValue('[data-testid="absent"]', "L");
     expect(result.confirmed).toBe(false);
     expect(result.observedValue).toBeNull();
+  });
+
+  // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Etat (2026-08-16) :
+  // preuve live directe -- le trigger Etat (category-condition-single-list-
+  // input) est bien un <input>, exactement comme Taille/Couleur ci-dessus
+  // (jusqu'ici seuls testes ici) -- vinted-publish.ts::attemptConditionPrefill
+  // reutilise desormais confirmTriggerValue() pour ce trigger, ce cas n'etait
+  // pas encore couvert dans ce fichier.
+  function makeConditionInput(value: string): void {
+    const input = document.createElement("input");
+    input.setAttribute("data-testid", "category-condition-single-list-input");
+    input.value = value;
+    document.body.appendChild(input);
+  }
+
+  it("Etat -- confirms when requested 'Très bon état' and input.value is exactly 'Très bon état' (live-confirmed case)", () => {
+    makeConditionInput("Très bon état");
+    const result = confirmTriggerValue('[data-testid="category-condition-single-list-input"]', "Très bon état");
+    expect(result.confirmed).toBe(true);
+    expect(result.observedValue).toBe("Très bon état");
+  });
+
+  // CAUSE RACINE confirmee en live (2026-08-16) : immediately_after_click,
+  // le trigger Etat porte valueProperty:"" ET valueAttribute:"" (chaine
+  // vide, PAS absente) -- readTriggerValue() traite deja une valeur vide
+  // comme "pas de valeur exploitable" (voir son propre commentaire),
+  // renvoie donc null, et confirmTriggerValue() retombe sur
+  // readTriggerText() -- lui-meme structurellement vide pour un <input>
+  // (aucun noeud texte enfant). Preuve directe que lire IMMEDIATEMENT apres
+  // le clic ne peut jamais confirmer, quelle que soit la valeur demandee.
+  it("Etat -- does NOT confirm immediately after a click when input.value is still an empty string (the exact live sequence before re-render)", () => {
+    makeConditionInput("");
+    const result = confirmTriggerValue('[data-testid="category-condition-single-list-input"]', "Très bon état");
+    expect(result.confirmed).toBe(false);
+    expect(result.observedValue).toBeNull();
+  });
+});
+
+// Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Etat (2026-08-16) :
+// couvre le DELAI de mise a jour du trigger lui-meme -- pas seulement
+// confirmTriggerValue() en isolation (deja couvert ci-dessus), mais son
+// usage reel dans une attente polling (waitForCondition, domWait.ts),
+// exactement comme vinted-publish.ts::attemptConditionPrefill. Reproduit la
+// sequence live prouvee : valeur vide juste apres le clic, peuplee
+// seulement apres un re-render asynchrone -- la confirmation ne doit
+// reussir qu'APRES cette mise a jour, jamais avant, et jamais via un
+// setTimeout fixe utilise comme preuve (le polling doit reellement observer
+// la mutation DOM).
+describe("confirmTriggerValue + waitForCondition -- delayed trigger update (live sequence)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("only confirms once the trigger's value is updated asynchronously after the click -- never on the initial empty read", async () => {
+    const input = document.createElement("input");
+    input.setAttribute("data-testid", "category-condition-single-list-input");
+    input.value = ""; // etat immediately_after_click reellement observe en live
+    document.body.appendChild(input);
+
+    let observedAtStart: string | null = "not_checked";
+    const promise = waitForCondition(
+      () => {
+        const result = confirmTriggerValue('[data-testid="category-condition-single-list-input"]', "Très bon état");
+        if (observedAtStart === "not_checked") observedAtStart = result.observedValue;
+        return result.confirmed;
+      },
+      { timeoutMs: 2000, description: "trigger displays the selected condition" }
+    );
+
+    // Simule le re-render asynchrone de Vinted (confirme en live a +100ms) --
+    // un vrai changement de propriete DOM, jamais un simple delai.
+    setTimeout(() => {
+      input.value = "Très bon état";
+      // input.value seul ne declenche aucune mutation observable par
+      // MutationObserver (ce n'est pas un attribut) -- force une mutation
+      // d'attribut reelle sur le meme element pour que waitForCondition()
+      // re-evalue le predicat, exactement comme le re-render React reel
+      // (qui, lui, mute bien le DOM) le ferait.
+      input.setAttribute("data-updated", "true");
+    }, 30);
+
+    await expect(promise).resolves.toBeUndefined();
+    // Preuve que le premier check (avant la mutation) a bien vu la valeur
+    // vide -- la confirmation n'a jamais ete "chanceuse" sur un premier essai.
+    expect(observedAtStart).toBeNull();
+    expect(input.value).toBe("Très bon état");
+  });
+
+  it("still rejects with WaitTimeoutError if the trigger value never actually changes to the requested condition", async () => {
+    const input = document.createElement("input");
+    input.setAttribute("data-testid", "category-condition-single-list-input");
+    input.value = "";
+    document.body.appendChild(input);
+
+    await expect(
+      waitForCondition(
+        () => confirmTriggerValue('[data-testid="category-condition-single-list-input"]', "Très bon état").confirmed,
+        { timeoutMs: 50, description: "trigger displays the selected condition" }
+      )
+    ).rejects.toBeInstanceOf(WaitTimeoutError);
   });
 });

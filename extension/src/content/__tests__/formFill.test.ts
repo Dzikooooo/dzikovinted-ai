@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  describePriceValidationState,
   dispatchEscapeKey,
   parsePriceToNumber,
   readOptionTexts,
@@ -108,28 +109,133 @@ describe("typeIntoBrandSearchInput", () => {
   });
 });
 
-// Mission "BRAND KEYBOARD EVENT EXPERIMENT" (2026-08-13) : typeIntoPriceField()
-// (le champ prix, DEJA live-prouve independamment) reste totalement
-// INCHANGE par cette mission -- ce test le prouve directement, la meme
-// discipline "ne jamais toucher un champ deja valide" que le reste de cette
-// session.
-describe("typeIntoPriceField (non-regression -- untouched by the brand keyboard event experiment)", () => {
-  it("still dispatches change and blur (no keydown/keyup) -- proves the price field's own sequence was never modified", async () => {
+// Mission "ROUND PRIX -- micro-test synthetique complet" (2026-08-17) :
+// REMPLACE l'ancien test "no keydown/keyup" (mission "BRAND KEYBOARD EVENT
+// EXPERIMENT", 2026-08-13) -- celui-ci affirmait explicitement l'ABSENCE de
+// ces evenements comme preuve de non-regression a l'epoque ; cette mission
+// modifie DELIBEREMENT typeIntoPriceField() pour reproduire la sequence
+// humaine complete (comparaison live directe TEST A/TEST B, voir son
+// commentaire d'en-tete dans formFill.ts) -- l'ancien test serait donc
+// desormais un faux negatif s'il restait tel quel. EXPERIMENTAL : isTrusted
+// reste toujours false sur tous ces evenements (impossible a falsifier
+// depuis jsdom comme depuis un vrai navigateur) -- ces tests ne pretendent
+// jamais le contraire, ils prouvent uniquement l'ORDRE et la COMPLETUDE de
+// la sequence.
+describe("typeIntoPriceField -- sequence complete (mission ROUND PRIX, 2026-08-17)", () => {
+  function captureAllEvents(input: HTMLInputElement): Array<{ type: string; isTrusted: boolean; key: string | null; code: string | null; inputType: string | null; data: string | null }> {
+    const captured: Array<{ type: string; isTrusted: boolean; key: string | null; code: string | null; inputType: string | null; data: string | null }> = [];
+    for (const type of ["focus", "keydown", "keypress", "beforeinput", "input", "keyup", "change", "blur"]) {
+      input.addEventListener(type, (e) => {
+        captured.push({
+          type: e.type,
+          isTrusted: e.isTrusted,
+          key: e instanceof KeyboardEvent ? e.key : null,
+          code: e instanceof KeyboardEvent ? e.code : null,
+          inputType: e instanceof InputEvent ? e.inputType : null,
+          data: e instanceof InputEvent ? e.data : null,
+        });
+      });
+    }
+    return captured;
+  }
+
+  it("emits keydown -> beforeinput(deleteContentBackward) -> input(deleteContentBackward) -> keyup for the initial clear (no keypress for Backspace)", async () => {
+    const input = document.createElement("input");
+    input.value = "old";
+    document.body.appendChild(input);
+    const captured = captureAllEvents(input);
+
+    await typeIntoPriceField(input, "");
+
+    // focus (el.focus(), deja existant avant cette mission) puis les 4
+    // evenements d'effacement pour une valeur cible vide (aucun caractere
+    // insere ensuite) -- ordre exact.
+    expect(captured.map((c) => c.type)).toEqual(["focus", "keydown", "beforeinput", "input", "keyup", "change", "blur"]);
+    expect(captured.some((c) => c.type === "keypress")).toBe(false);
+    const [, keydown, beforeinput, inputEvt, keyup] = captured;
+    expect(keydown.key).toBe("Backspace");
+    expect(beforeinput.inputType).toBe("deleteContentBackward");
+    expect(inputEvt.inputType).toBe("deleteContentBackward");
+    expect(keyup.key).toBe("Backspace");
+  });
+
+  it("emits keydown -> keypress -> beforeinput -> input -> keyup for EACH inserted character, in this exact order", async () => {
     const input = document.createElement("input");
     document.body.appendChild(input);
-
-    const eventTypes: string[] = [];
-    ["input", "change", "blur", "keydown", "keyup"].forEach((type) => {
-      input.addEventListener(type, () => eventTypes.push(type));
-    });
+    const captured = captureAllEvents(input);
 
     await typeIntoPriceField(input, "24");
 
+    // focus + effacement (4) + 2 caracteres x 5 evenements + change + blur.
+    expect(captured.map((c) => c.type)).toEqual([
+      "focus",
+      "keydown",
+      "beforeinput",
+      "input",
+      "keyup",
+      "keydown",
+      "keypress",
+      "beforeinput",
+      "input",
+      "keyup",
+      "keydown",
+      "keypress",
+      "beforeinput",
+      "input",
+      "keyup",
+      "change",
+      "blur",
+    ]);
+
+    const firstCharSequence = captured.slice(5, 10);
+    expect(firstCharSequence.map((c) => c.type)).toEqual(["keydown", "keypress", "beforeinput", "input", "keyup"]);
+    expect(firstCharSequence[0].key).toBe("2"); // keydown
+    expect(firstCharSequence[1].key).toBe("2"); // keypress
+    expect(firstCharSequence[2].data).toBe("2"); // beforeinput
+    expect(firstCharSequence[2].inputType).toBe("insertText");
+    expect(firstCharSequence[3].data).toBe("2"); // input
+    expect(firstCharSequence[3].inputType).toBe("insertText");
+    expect(firstCharSequence[4].key).toBe("2"); // keyup
+
+    const secondCharSequence = captured.slice(10, 15);
+    expect(secondCharSequence[0].key).toBe("4");
+    expect(secondCharSequence[2].data).toBe("4");
+
     expect(input.value).toBe("24");
-    expect(eventTypes).not.toContain("keydown");
-    expect(eventTypes).not.toContain("keyup");
-    expect(eventTypes).toContain("change");
-    expect(eventTypes).toContain("blur");
+  });
+
+  it("no SYNTHETICALLY CONSTRUCTED event (keydown/keypress/beforeinput/input/keyup/change/blur) carries isTrusted:true -- EXPERIMENTAL, never pretends otherwise (excludes the native 'focus' event produced by el.focus() itself, pre-existing since before this mission)", async () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const captured = captureAllEvents(input);
+
+    await typeIntoPriceField(input, "5");
+
+    const constructedEvents = captured.filter((c) => c.type !== "focus");
+    expect(constructedEvents.length).toBeGreaterThan(0);
+    expect(constructedEvents.every((c) => c.isTrusted === false)).toBe(true);
+  });
+
+  it("still emits change and blur at the very end, after all character sequences", async () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const captured = captureAllEvents(input);
+
+    await typeIntoPriceField(input, "7");
+
+    expect(captured.at(-2)?.type).toBe("change");
+    expect(captured.at(-1)?.type).toBe("blur");
+  });
+
+  it("derives a plausible KeyboardEvent.code for digits and the decimal separator", async () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const captured = captureAllEvents(input);
+
+    await typeIntoPriceField(input, "9.5");
+
+    const keydowns = captured.filter((c) => c.type === "keydown" && c.key !== "Backspace");
+    expect(keydowns.map((c) => c.code)).toEqual(["Digit9", "Period", "Digit5"]);
   });
 });
 
@@ -343,5 +449,121 @@ describe("dispatchEscapeKey", () => {
     dispatchEscapeKey(child);
 
     expect(receivedOnParent).toBe(true);
+  });
+});
+
+// Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT" (2026-08-16) :
+// CAUSE CONFIRMEE en test live -- "24,00 €" reellement AFFICHE dans le champ
+// (donc parsePriceToNumber() confirmerait deja une egalite stricte) alors que
+// Vinted affichait simultanement "Le champ prix doit être supérieur ou égal
+// à 1.0" et que ResellOS annoncait pourtant "Tout est prêt". Une comparaison
+// de VALEUR AFFICHEE seule ne prouve donc plus rien -- describePriceValidationState()
+// agrege validity.valid/aria-invalid/le texte d'erreur reellement rapporte en
+// direct, jamais une seule chaine comparee. Ces tests couvrent scenarios A/B/E
+// de la mission (A: affiche mais invalide => pas confirme ; B: reellement
+// accepte => confirme ; E: generique, jamais un prix hardcode a 24).
+describe("describePriceValidationState", () => {
+  function makeInput(form: boolean = true): { input: HTMLInputElement; container: HTMLFormElement | HTMLDivElement } {
+    const container = form ? document.createElement("form") : document.createElement("div");
+    const input = document.createElement("input");
+    container.appendChild(input);
+    document.body.appendChild(container);
+    return { input, container: container as HTMLFormElement };
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  // Scenario A de la mission : la VALEUR affichee correspond deja au prix
+  // demande, mais Vinted a marque le champ invalide (setCustomValidity() est
+  // le mecanisme standard qu'un composant controle utilise pour piloter
+  // validity.valid/validationMessage sur un <input> quel que soit son type,
+  // y compris type="text" -- un <input type="number" min="1"> natif ne
+  // s'applique pas ici, Vinted utilise un champ de type texte avec masque de
+  // devise). Doit rester PAS CONFIRME malgre la valeur affichee correcte.
+  it("scenario A: value displayed matches the requested price, but Vinted marked the field invalid -- NOT confirmed", () => {
+    const { input } = makeInput();
+    input.value = "24,00 €";
+    input.setCustomValidity("Le champ prix doit être supérieur ou égal à 1.0");
+
+    const state = describePriceValidationState(input);
+
+    expect(state.parsedValue).toBe(24);
+    expect(state.validityValid).toBe(false);
+    expect(state.valid).toBe(false);
+  });
+
+  // Scenario B : aucune erreur de validation reelle -- confirme.
+  it("scenario B: value matches and Vinted reports no validation error -- confirmed", () => {
+    const { input } = makeInput();
+    input.value = "24,00 €";
+
+    const state = describePriceValidationState(input);
+
+    expect(state.parsedValue).toBe(24);
+    expect(state.validityValid).toBe(true);
+    expect(state.ariaInvalid).toBeNull();
+    expect(state.errorTextFound).toBe(false);
+    expect(state.valid).toBe(true);
+  });
+
+  it("scenario E: works for a generic price, never hardcoded to 24 -- proven here with 87,50", () => {
+    const { input } = makeInput();
+    input.value = "87,50 €";
+
+    const state = describePriceValidationState(input);
+
+    expect(state.parsedValue).toBe(87.5);
+    expect(state.valid).toBe(true);
+  });
+
+  it("treats aria-invalid=true as invalid even if validity.valid is true (defensive second signal)", () => {
+    const { input } = makeInput();
+    input.value = "24,00 €";
+    input.setAttribute("aria-invalid", "true");
+
+    const state = describePriceValidationState(input);
+
+    expect(state.validityValid).toBe(true);
+    expect(state.ariaInvalid).toBe("true");
+    expect(state.valid).toBe(false);
+  });
+
+  // Signal de secours textuel (2e couche, jamais la seule condition) : le
+  // texte EXACT rapporte en direct par l'utilisateur, recherche scopee au
+  // <form> englobant -- jamais tout le document (ne doit jamais confondre
+  // une erreur affichee sur un AUTRE champ).
+  it("treats the exact live-reported error text nearby as invalid, even if validity.valid/aria-invalid don't flag it (defensive fallback)", () => {
+    const { input, container } = makeInput();
+    input.value = "24,00 €";
+    const errorSpan = document.createElement("span");
+    errorSpan.textContent = "Le champ prix doit être supérieur ou égal à 1.0";
+    container.appendChild(errorSpan);
+
+    const state = describePriceValidationState(input);
+
+    expect(state.errorTextFound).toBe(true);
+    expect(state.valid).toBe(false);
+  });
+
+  it("does NOT match an error text found outside the price field's own <form> (scoped search, never document-wide)", () => {
+    const { input } = makeInput();
+    input.value = "24,00 €";
+    const unrelatedError = document.createElement("span");
+    unrelatedError.textContent = "Le champ prix doit être supérieur ou égal à 1.0";
+    document.body.appendChild(unrelatedError); // hors du <form>, jamais scanne
+
+    const state = describePriceValidationState(input);
+
+    expect(state.errorTextFound).toBe(false);
+    expect(state.valid).toBe(true);
+  });
+
+  it("is permissive (valid:true) when the price input cannot be found -- never blocks readiness on an unobservable field", () => {
+    const state = describePriceValidationState(null);
+
+    expect(state.found).toBe(false);
+    expect(state.valid).toBe(true);
   });
 });

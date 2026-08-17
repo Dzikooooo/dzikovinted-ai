@@ -1,20 +1,4 @@
-import { needsRepublish } from '../listingStatus';
 import type { ActionCheck } from './types';
-
-// P-03 (audit pre-beta 2026-08-03) : resolveCategory() (extension/src/content/
-// formFill.ts) leve desormais inconditionnellement une erreur -- le picker
-// categorie Vinted exige une interaction isTrusted:true impossible a simuler
-// (regression confirmee le 26/07). publish_listing/republish_listing
-// echouent donc a 100% aujourd'hui. Bloque au niveau du check plutot que de
-// laisser ouvrir un onglet Vinted pour un echec garanti -- retire ce check
-// des le jour ou resolveCategory() a une vraie solution.
-export const checkPublishTemporarilyDisabled: ActionCheck = () => ({
-  ok: false,
-  failure: {
-    code: 'publish_temporarily_disabled',
-    message: "La publication automatique sur Vinted est temporairement indisponible (correctif en cours sur la sélection de catégorie) -- réessaie plus tard.",
-  },
-});
 
 export const checkAuthenticated: ActionCheck = (ctx) => {
   if (!ctx.userId) {
@@ -70,27 +54,6 @@ export const checkListingHasPhotos: ActionCheck = (_ctx, deps) => {
   return { ok: true };
 };
 
-// Categorie et etat sont les deux SEULS champs texte que Vinted refuse
-// structurellement de laisser vides -- confirme des deux cotes du pipeline
-// deja teste en direct : extension/src/content/vinted-edit.ts appelle
-// selectMatchingOption(..., { required: true }) uniquement pour l'etat
-// (brand/size/color/material utilisent { required: false }), et
-// resolveCategory() n'a pas d'equivalent optionnel. Volontairement limite a
-// ces deux champs (demande explicite 2026-07-23, "n'ajoute pas de regles
-// produit arbitraires") -- ne bloque QUE publish_listing (une nouvelle
-// annonce envoie toujours ces deux champs) et jamais edit_listing (qui
-// n'envoie que les champs reellement modifies, changedFields, invisible a
-// ce niveau de verification -- voir StockPage.tsx::buildEditPayload).
-export const checkListingHasRequiredVintedFields: ActionCheck = (_ctx, deps) => {
-  if (!deps.targetListing?.category) {
-    return { ok: false, failure: { code: 'missing_category', message: "L'annonce n'a pas de catégorie renseignée." } };
-  }
-  if (!deps.targetListing?.condition) {
-    return { ok: false, failure: { code: 'missing_condition', message: "L'annonce n'a pas d'état renseigné." } };
-  }
-  return { ok: true };
-};
-
 export const checkListingNotAlreadyPublished: ActionCheck = (_ctx, deps) => {
   if (deps.targetListing?.vinted_item_id) {
     return {
@@ -114,14 +77,24 @@ export const checkListingAlreadyPublished: ActionCheck = (_ctx, deps) => {
   return { ok: true };
 };
 
-// republish_listing : symetrique de checkListingNotAlreadyPublished (bloque
-// publish_listing) et checkListingAlreadyPublished (exige un vinted_item_id
-// pour edit_listing) -- ce check autorise republish_listing exactement sur
-// les annonces "en Republication" (voir needsRepublish, listingStatus.ts),
-// avec un message distinct pour chaque cas de refus plutot qu'un message
-// generique (demande explicite : "comportement si l'annonce d'origine est
-// masquee, supprimee, vendue ou inconnue" doit etre traite explicitement).
-export const checkListingNeedsRepublish: ActionCheck = (_ctx, deps) => {
+// Republication V2 (audit P1, 2026-08-10) -- BUG LIVE reel confirme : cette
+// fonction s'appelait checkListingNeedsRepublish et bloquait avec
+// "Cette annonce est deja en ligne sur Vinted." (code already_live) des que
+// needsRepublish() (listingStatus.ts) rendait false, c'est-a-dire des qu'une
+// annonce etait genuinement online/reserved sur Vinted. Or "republier une
+// annonce toujours en ligne pour relancer sa visibilite" est precisement le
+// cas d'usage produit principal -- confirme par le Decision Engine lui-meme
+// (src/lib/insights/recommendations.ts::matchConsidererRepublication, chemin
+// B : annonce dormante MAIS toujours en ligne) qui recommandait deja cette
+// action a l'utilisateur avant meme que le bouton "Republier" n'existe.
+// needsRepublish()/NEEDS_REPUBLISH_VINTED_STATUSES restent inchanges et
+// gardent leur role actuel (filtrer l'onglet "Republication" sur les
+// annonces qui ne sont structurellement plus visibles nulle part) -- ce
+// n'est PAS le meme critere que "peut-on lancer une republication", d'ou la
+// separation. Seule condition reelle desormais : l'annonce existe, n'est
+// pas vendue, n'est pas un brouillon inacheve. Etre en ligne, masquee,
+// supprimee ou jamais publiee sont tous des etats republiables.
+export const checkListingRepublishEligible: ActionCheck = (_ctx, deps) => {
   const listing = deps.targetListing;
   if (!listing) {
     return { ok: false, failure: { code: 'listing_not_found', message: "L'annonce ciblée est introuvable." } };
@@ -136,12 +109,6 @@ export const checkListingNeedsRepublish: ActionCheck = (_ctx, deps) => {
     return {
       ok: false,
       failure: { code: 'listing_not_in_stock', message: "Cette annonce est en brouillon -- termine-la avant de la republier." },
-    };
-  }
-  if (!needsRepublish(listing)) {
-    return {
-      ok: false,
-      failure: { code: 'already_live', message: 'Cette annonce est déjà en ligne sur Vinted.' },
     };
   }
   return { ok: true };

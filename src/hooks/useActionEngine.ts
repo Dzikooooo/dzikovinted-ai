@@ -26,11 +26,15 @@ export interface PrepareActionOptions {
 // Delai plus genereux que le defaut de extensionBridge.runAction() (8s) :
 // une action reelle (Phase 3.1+) peut ouvrir un onglet, remplir un
 // formulaire et importer des photos, largement plus long qu'un simple
-// aller-retour de message. Porte a 120000ms (2026-07-18), cense avec
-// GLOBAL_TIMEOUT_MS cote extension (editListing.ts) -- le pire cas cumule
-// des attentes de chargement de formulaire (chacune plafonnee a 30s sur
-// la base d'une mesure reelle) approchait deja l'ancien plafond de 90s.
-const ACTION_TIMEOUT_MS = 120000;
+// aller-retour de message. Porte a 600000ms (10 min, 2026-08-11, lot
+// republication assistee) : publish_listing/republish_listing attendent
+// desormais un clic 100% humain sur Vinted (voir handlePublishListing.ts::
+// GLOBAL_TIMEOUT_MS, meme valeur, meme raison) -- une duree humaine, pas une
+// duree de script. N'affecte pas edit_listing, dont le propre plafond
+// interne (editListing.ts::GLOBAL_TIMEOUT_MS = 120000ms, deja mesure)
+// continue de gouverner son comportement reel bien avant cette limite
+// exterieure.
+const ACTION_TIMEOUT_MS = 600000;
 
 export interface UseActionEngineResult {
   prepareAction: <TPayload>(
@@ -41,8 +45,19 @@ export interface UseActionEngineResult {
     { ok: true; prepared: PreparedAction<TPayload> } | { ok: false; failure: { code: string; message: string } }
   >;
   // onProgress est optionnel : les actions sans progression (Phase 3, avant
-  // le premier handler reel) l'ignorent simplement.
-  confirmAction: (prepared: PreparedAction, onProgress?: (step: string) => void) => Promise<ActionResult>;
+  // le premier handler reel) l'ignorent simplement. onPrefillSummary (2026-08-11,
+  // republication assistee) : idem, seul publish_listing/republish_listing
+  // l'emet aujourd'hui. onReadyToSubmit (mission "CLIC FINAL + CONFIRMATION
+  // POST-PUBLICATION", 2026-08-16) : idem, signale que le bouton Vinted
+  // lui-meme est devenu cliquable -- jamais un declencheur de clic
+  // automatique (voir vinted-publish.ts::watchForPublishReadiness).
+  confirmAction: (
+    prepared: PreparedAction,
+    onProgress?: (step: string) => void,
+    onPrefillSummary?: (confirmed: string[], pending: string[]) => void,
+    onReadyToSubmit?: () => void,
+    onAwaitingOldListingDeletion?: () => void
+  ) => Promise<ActionResult>;
   cancelAction: (prepared: PreparedAction) => Promise<ActionResult>;
 }
 
@@ -129,6 +144,15 @@ export function useActionEngine(): UseActionEngineResult {
   // connait pas ce concept (reste generique), donc le cablage se fait ici,
   // au niveau du hook, via un abonnement enregistre juste avant confirm().
   const progressListenersRef = useRef(new Map<string, (step: string) => void>());
+  // Republication assistee (2026-08-11) : meme cablage que progressListenersRef
+  // ci-dessus, pour PUBLISH_PREFILL_SUMMARY -- voir extensionBridge.ts.
+  const prefillSummaryListenersRef = useRef(new Map<string, (confirmed: string[], pending: string[]) => void>());
+  // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) : meme
+  // cablage, pour PUBLISH_READY_TO_SUBMIT -- voir extensionBridge.ts.
+  const readyToSubmitListenersRef = useRef(new Map<string, () => void>());
+  // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : meme cablage, pour
+  // "awaiting_old_listing_deletion" -- voir extensionBridge.ts.
+  const awaitingOldListingDeletionListenersRef = useRef(new Map<string, () => void>());
 
   const engine = useMemo(
     () =>
@@ -174,11 +198,20 @@ export function useActionEngine(): UseActionEngineResult {
             const message = ACTION_STEP_LOG_MESSAGES[step as ActionStep] ?? step;
             void logActionEntry(historyId, step as ActionStep, message);
           };
+          const callerPrefillSummary = prefillSummaryListenersRef.current.get(historyId);
+          const callerReadyToSubmit = readyToSubmitListenersRef.current.get(historyId);
+          const callerAwaitingOldListingDeletion = awaitingOldListingDeletionListenersRef.current.get(historyId);
           const result = await runActionViaExtension(historyId, request, {
             timeoutMs: ACTION_TIMEOUT_MS,
             onProgress: wrappedProgress,
+            onPrefillSummary: callerPrefillSummary,
+            onReadyToSubmit: callerReadyToSubmit,
+            onAwaitingOldListingDeletion: callerAwaitingOldListingDeletion,
           });
           progressListenersRef.current.delete(historyId);
+          prefillSummaryListenersRef.current.delete(historyId);
+          readyToSubmitListenersRef.current.delete(historyId);
+          awaitingOldListingDeletionListenersRef.current.delete(historyId);
           if (!result.ok) {
             return { status: 'error', errorMessage: result.error ?? "Échec de communication avec l'extension" };
           }
@@ -271,9 +304,24 @@ export function useActionEngine(): UseActionEngineResult {
   );
 
   const confirmAction = useCallback(
-    async (prepared: PreparedAction, onProgress?: (step: string) => void) => {
+    async (
+      prepared: PreparedAction,
+      onProgress?: (step: string) => void,
+      onPrefillSummary?: (confirmed: string[], pending: string[]) => void,
+      onReadyToSubmit?: () => void,
+      onAwaitingOldListingDeletion?: () => void
+    ) => {
       if (onProgress) {
         progressListenersRef.current.set(prepared.id, onProgress);
+      }
+      if (onPrefillSummary) {
+        prefillSummaryListenersRef.current.set(prepared.id, onPrefillSummary);
+      }
+      if (onReadyToSubmit) {
+        readyToSubmitListenersRef.current.set(prepared.id, onReadyToSubmit);
+      }
+      if (onAwaitingOldListingDeletion) {
+        awaitingOldListingDeletionListenersRef.current.set(prepared.id, onAwaitingOldListingDeletion);
       }
       await logActionEntry(prepared.id, 'awaiting_confirmation', ACTION_STEP_LOG_MESSAGES.awaiting_confirmation);
 

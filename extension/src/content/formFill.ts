@@ -135,6 +135,59 @@ export function setNativeValue(
   }
 }
 
+// Deduit le KeyboardEvent.code plausible pour un caractere du prix (chiffres
+// et separateur decimal uniquement -- payload.price.toString() ne produit
+// jamais autre chose). Purement cosmetique pour le realisme de la sequence
+// synthetique -- rien dans Vinted n'est suppose lire ce champ precis pour
+// valider quoi que ce soit, mais autant rester fidele a ce qu'un vrai
+// clavier produirait.
+function deriveKeyCodeForDigitChar(char: string): string {
+  if (/^[0-9]$/.test(char)) return `Digit${char}`;
+  if (char === ".") return "Period";
+  if (char === ",") return "Comma";
+  return "";
+}
+
+// Mission "ROUND PRIX -- micro-test synthetique complet" (2026-08-17) :
+// reproduit la sequence EXACTE d'evenements observee en direct pour une
+// vraie frappe humaine (TEST B, PRICE_INPUT_EVENT_TRACE) -- keydown ->
+// keypress -> beforeinput -> input -> keyup pour un caractere insere.
+// EXPERIMENTAL : isTrusted reste TOUJOURS false sur ces evenements
+// synthetiques (propriete native du navigateur, jamais falsifiable depuis
+// JavaScript, voir waitForTrustedClick ailleurs dans ce projet) -- ce
+// correctif teste UNIQUEMENT l'hypothese "sequence d'evenements
+// incomplete", jamais l'hypothese isTrusted (qui reste structurellement
+// invalidable depuis un content script).
+function dispatchPriceCharacterInsertSequence(
+  el: HTMLInputElement,
+  setter: ((this: HTMLInputElement, v: string) => void) | undefined,
+  char: string,
+  valueAfter: string
+): void {
+  const keyInit: KeyboardEventInit = { key: char, code: deriveKeyCodeForDigitChar(char), bubbles: true, cancelable: true };
+  el.dispatchEvent(new KeyboardEvent("keydown", keyInit));
+  el.dispatchEvent(new KeyboardEvent("keypress", keyInit));
+  el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: char }));
+  setter?.call(el, valueAfter);
+  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: char }));
+  el.dispatchEvent(new KeyboardEvent("keyup", keyInit));
+}
+
+// Meme mission -- sequence d'effacement (Backspace) EXACTEMENT comme
+// specifiee : keydown Backspace -> beforeinput deleteContentBackward ->
+// input deleteContentBackward -> keyup Backspace. Deliberement SANS
+// keypress (absent de la sequence humaine specifiee pour l'effacement --
+// coherent avec le comportement des navigateurs reels, qui n'emettent
+// jamais keypress pour une touche non imprimable).
+function dispatchPriceClearSequence(el: HTMLInputElement, setter: ((this: HTMLInputElement, v: string) => void) | undefined): void {
+  const keyInit: KeyboardEventInit = { key: "Backspace", code: "Backspace", bubbles: true, cancelable: true };
+  el.dispatchEvent(new KeyboardEvent("keydown", keyInit));
+  el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteContentBackward" }));
+  setter?.call(el, "");
+  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  el.dispatchEvent(new KeyboardEvent("keyup", keyInit));
+}
+
 // Ecriture par frappe caractere par caractere, reservee au champ PRIX de
 // la page d'edition (/items/{id}/edit) -- BUG REEL demontre en test manuel
 // direct le 2026-07-16 : setNativeValue() (ecriture "98" en un seul bloc,
@@ -148,21 +201,32 @@ export function setNativeValue(
 // caractere ajoute) produit fidelement "98,00 €", stable apres blur.
 // N'affecte QUE ce champ -- titre/description/autres champs continuent
 // d'utiliser setNativeValue (jamais reproduit comme fautif ailleurs).
+//
+// Mission "ROUND PRIX -- micro-test synthetique complet" (2026-08-17) :
+// CAUSE PROBABLE identifiee par comparaison live directe -- le prix ecrit
+// par ResellOS s'affiche correctement ("24,00 €") mais est refuse au
+// submit, alors qu'une frappe humaine identique est acceptee. La trace
+// live (PRICE_INPUT_EVENT_TRACE) montre que la frappe humaine emet
+// keydown/keypress/beforeinput/input/keyup pour CHAQUE caractere, alors que
+// l'ancienne version de cette fonction n'emettait qu'un seul "input" par
+// caractere (aucun evenement clavier). Cette version reproduit la sequence
+// complete -- si Vinted accepte desormais le prix sans retape humaine, la
+// cause etait la sequence incomplete ; si le refus persiste malgre une
+// sequence identique, isTrusted (impossible a produire depuis ce contexte)
+// est isole comme verrou principal.
 export async function typeIntoPriceField(el: HTMLInputElement, value: string): Promise<void> {
   const fieldLabel = el.getAttribute("data-testid") ?? el.tagName;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
 
   el.focus();
   el.setSelectionRange(0, el.value.length);
-  setter?.call(el, "");
-  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  dispatchPriceClearSequence(el, setter);
   console.log(`[ResellOS][STEP] FIELD_CLEARED (frappe simulee)`, { field: fieldLabel, domValueAfter: el.value });
 
   let current = "";
   for (const char of value) {
     current += char;
-    setter?.call(el, current);
-    el.dispatchEvent(new InputEvent("input", { bubbles: true, data: char, inputType: "insertText" }));
+    dispatchPriceCharacterInsertSequence(el, setter, char, current);
     // Delai court entre chaque caractere : laisse le composant Vinted
     // (masque de devise controle) traiter chaque frappe individuellement
     // plutot que de recevoir plusieurs evenements synchrones empiles avant
@@ -227,6 +291,62 @@ export function parsePriceToNumber(raw: string | null): number | null {
   if (normalized === "") return null;
   const value = parseFloat(normalized);
   return Number.isNaN(value) ? null : value;
+}
+
+// Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT" (2026-08-16) :
+// CAUSE CONFIRMEE par preuve live directe -- "24,00 €" reellement AFFICHE dans
+// le champ (donc parsePriceToNumber() ci-dessus confirme deja une egalite
+// stricte avec la valeur demandee) alors que Vinted affiche simultanement
+// "Le champ prix doit être supérieur ou égal à 1.0" et que ResellOS annoncait
+// pourtant "Tout est prêt". La comparaison de VALEUR AFFICHEE seule ne prouve
+// donc plus rien : elle peut rester correcte visuellement (reformatage
+// cosmetique de Vinted) alors que l'etat de validation INTERNE du champ reste
+// invalide (ex. Vinted appelle setCustomValidity() sur ce meme <input> quand
+// le montant qu'il a reellement parse est hors bornes -- mecanisme standard,
+// fonctionne quel que soit le type de l'input, contrairement a min/max qui ne
+// s'appliquent qu'aux inputs type=number). Cette fonction agrege TOUS les
+// signaux de preuve reels explicitement autorises par la mission (validity.
+// valid, aria-invalid, disparition du message d'erreur) plutot qu'une simple
+// comparaison de chaine -- source UNIQUE de verite reutilisee a la fois par
+// la confirmation de remplissage (vinted-publish.ts::fillTextFieldsWithConfirmation)
+// et par la readiness (vinted-publish.ts::watchForPublishReadiness, via
+// publishReadiness.ts), jamais deux logiques divergentes.
+//
+// PRICE_ERROR_TEXT_PATTERN : texte EXACT rapporte en direct par l'utilisateur
+// (pas invente) -- signal de secours purement textuel, jamais la seule
+// condition (valid exige AUSSI validity.valid et l'absence d'aria-invalid),
+// pour rester robuste si Vinted ne cable pas setCustomValidity() sur ce champ
+// precis. Recherche scopee au <form> englobant (jamais tout le document) pour
+// ne jamais confondre une erreur affichee sur un AUTRE champ.
+const PRICE_ERROR_TEXT_PATTERN = /doit être (supérieur|supérieure) ou égal/i;
+
+export interface PriceValidationState {
+  found: boolean;
+  domValue: string | null;
+  parsedValue: number | null;
+  validityValid: boolean | null; // null uniquement si l'element est introuvable
+  validationMessage: string | null;
+  ariaInvalid: string | null;
+  errorTextFound: boolean;
+  // Agrege tous les signaux ci-dessus -- found:false vaut `true` (permissif :
+  // impossible de prouver une erreur sur un champ qu'on ne peut pas observer,
+  // jamais transforme en blocage indefini de la readiness pour ce cas).
+  valid: boolean;
+}
+
+export function describePriceValidationState(priceInput: HTMLInputElement | null): PriceValidationState {
+  if (!priceInput) {
+    return { found: false, domValue: null, parsedValue: null, validityValid: null, validationMessage: null, ariaInvalid: null, errorTextFound: false, valid: true };
+  }
+  const domValue = priceInput.value;
+  const parsedValue = parsePriceToNumber(domValue);
+  const validityValid = priceInput.validity.valid;
+  const validationMessage = priceInput.validationMessage || null;
+  const ariaInvalid = priceInput.getAttribute("aria-invalid");
+  const scope = priceInput.closest("form") ?? document.body;
+  const errorTextFound = PRICE_ERROR_TEXT_PATTERN.test(scope.textContent ?? "");
+  const valid = validityValid && ariaInvalid !== "true" && !errorTextFound;
+  return { found: true, domValue, parsedValue, validityValid, validationMessage, ariaInvalid, errorTextFound, valid };
 }
 
 export async function fillTextFields(fields: { title: string; description: string; price: number }): Promise<void> {

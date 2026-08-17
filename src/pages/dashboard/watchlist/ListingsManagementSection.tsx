@@ -27,7 +27,7 @@ import PublishConfirmationModal, { type PackageSize } from '../../../components/
 import PublishProgressModal from '../../../components/publish/PublishProgressModal';
 import { EditListingModal } from '../../../components/stock/EditListingModal';
 import { ListingDetailModal } from '../../../components/listings/ListingDetailModal';
-import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR } from '../../../lib/extensionBridge';
+import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR, syncVintedAccount, type SyncStep, type SyncVintedAccountResult } from '../../../lib/extensionBridge';
 import { formatRelativeSync } from '../../../lib/formatRelativeTime';
 import { AGING_STOCK_DAYS } from '../../../lib/insights/constants';
 import { isActivelyInStock } from '../../../lib/listingStatus';
@@ -39,6 +39,7 @@ import type { PublishListingPayload } from '../../../lib/actions/handlers/publis
 import type { RepublishListingPayload } from '../../../lib/actions/handlers/republishListing';
 import type { EditableFieldName, EditListingPayload } from '../../../lib/actions/handlers/editListing';
 import { buildEditSuccessSyncFields, formatTitleWithSku, runSkuRepair } from '../../../lib/sku';
+import { parseMaterials } from '../../../lib/materials';
 import { formatEUR } from '../../../lib/currency';
 import type { ActionKind } from '../../../lib/actions/types';
 import type { ListingRecommendationResult } from '../../../lib/insights/types';
@@ -46,11 +47,12 @@ import { needsRepublish } from '../../../lib/listingStatus';
 import { devLog, devWarn, devError } from '../../../lib/devLog';
 import { notifySale } from '../../../hooks/useNotifications';
 
-// description/category/condition sont ici garantis non-vides par
-// checkListingHasRequiredVintedFields (checks.ts) avant que publish_listing
-// ne puisse etre prepare -- le "?? ''" satisfait uniquement le type
-// (PublishListingPayload les declare `string`, jamais envoyes vides en
-// pratique pour cette action).
+// category/condition peuvent reellement etre vides ici (aucun check ne
+// bloque plus dessus depuis le 2026-08-11, republication assistee -- voir
+// publishListing.ts) : "?? ''" satisfait uniquement le type
+// (PublishListingPayload les declare `string`), Vinted les affiche comme
+// champs manuels a completer quoi qu'il arrive (voir
+// publishFieldSummary.ts::computeManualFields cote extension).
 function buildPublishPayload(listing: Listing, account: VintedAccount, packageSize: PackageSize): PublishListingPayload {
   return {
     title: formatTitleWithSku(listing.title, listing.sku),
@@ -62,6 +64,12 @@ function buildPublishPayload(listing: Listing, account: VintedAccount, packageSi
     condition: listing.condition ?? '',
     color: listing.color || null,
     material: listing.material || null,
+    // Mission "MATIERE : MULTI-SELECT" (2026-08-16) : parseMaterials()
+    // interprete le champ texte libre EXISTANT (aucun nouveau champ de
+    // formulaire) -- une valeur simple ("Coton") produit un tableau a un
+    // seul element, comportement identique a avant pour la grande majorite
+    // des annonces.
+    materials: parseMaterials(listing.material),
     imageUrls: listing.image_urls,
     packageSize,
     expectedVintedUsername: account.vinted_username,
@@ -111,10 +119,53 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'unknown', label: 'Problèmes' },
 ];
 
+// SYNC_WINDOW_NAME reste utilise par la branche "tous les comptes"
+// ci-dessous (aucun compte precis a cibler, window.open() reste le seul
+// mecanisme possible). Mission "SYNC_VINTED_ACCOUNT" (2026-08-16, lot 2) :
+// SYNC_POLL_INTERVAL_MS/SYNC_POLL_MAX_ATTEMPTS supprimes -- le poll Supabase
+// sur listings_synced_at (jamais une preuve fiable, voir syncVintedAccount())
+// est remplace par le resultat structure direct de la commande explicite.
 const SYNC_WINDOW_NAME = 'resellos_vinted_sync';
-const SYNC_POLL_INTERVAL_MS = 3000;
-const SYNC_POLL_MAX_ATTEMPTS = 10;
 const PAGE_SIZE = 30;
+
+// Libelles honnetes des etapes de synchro (voir SyncStep, extensionBridge.ts) --
+// affiches en direct sur le bouton pendant la synchro, jamais un simple
+// "Synchronisation..." generique qui ne dit rien du deroulement reel.
+const SYNC_STEP_LABELS: Record<SyncStep, string> = {
+  connecting: 'Connexion à Vinted...',
+  fetching: 'Récupération des annonces...',
+  writing: 'Écriture des annonces...',
+};
+
+// Construit un message final honnete a partir du resultat structure de
+// syncVintedAccount() -- AUCUNE synchro partielle ou echouee n'est jamais
+// presentee comme un succes (voir la mission : "ne doit jamais afficher
+// 'synchronisé' quand complete=false"). tone pilote la couleur du message
+// (voir son usage dans le JSX ci-dessous).
+function describeSyncResult(result: SyncVintedAccountResult): { tone: 'success' | 'warning' | 'error'; message: string } {
+  if (!result.ok) {
+    switch (result.reason) {
+      case 'not_paired':
+        return { tone: 'error', message: "Extension non appairée à ce compte ResellOS. Reconnecte-la dans Compte Vinted." };
+      case 'tab_open_failed':
+        return { tone: 'error', message: `Impossible d'ouvrir Vinted${result.error ? ` : ${result.error}` : '.'}` };
+      case 'timeout':
+        return { tone: 'error', message: 'Échec — aucune réponse de Vinted dans le délai imparti (session expirée ou profil injoignable).' };
+      default:
+        return { tone: 'error', message: result.error ? `Échec de la synchronisation : ${result.error}` : 'Échec de la synchronisation.' };
+    }
+  }
+  const total = result.created + result.updated;
+  if (!result.complete) {
+    return {
+      tone: 'warning',
+      message: `Synchronisation partielle — ${result.pagesRead}/${result.pagesExpected} pages lues (${total} annonce(s) traitée(s), rien supprimé par prudence).`,
+    };
+  }
+  const parts = [`${total} annonce(s) synchronisée(s)`];
+  if (result.deletedMarked > 0) parts.push(`${result.deletedMarked} retirée(s)`);
+  return { tone: 'success', message: parts.join(' · ') };
+}
 
 interface ListingsManagementSectionProps {
   onViewAction?: (actionId: string) => void;
@@ -152,7 +203,9 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
 
   const [extensionState, setExtensionState] = useState<'checking' | 'not-installed' | 'ready'>('checking');
   const [syncing, setSyncing] = useState(false);
+  const [syncPhase, setSyncPhase] = useState<SyncStep | null>(null);
   const [syncHint, setSyncHint] = useState<string | null>(null);
+  const [syncTone, setSyncTone] = useState<'success' | 'warning' | 'error' | null>(null);
 
   const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
   const [editingItem, setEditingItem] = useState<Listing | null>(null);
@@ -167,8 +220,16 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   // l'ouverture reelle de l'onglet) sans aucune etape intermediaire.
   const [pendingUpdate, setPendingUpdate] = useState<{ listing: Listing; changedFields: EditableFieldName[] } | null>(null);
   const [publishState, setPublishState] = useState<{
-    step: PublishStep | 'done' | null;
+    // 'cleanup_required' (mission "CORRIGER LE FAUX TERMINE", 2026-08-17) :
+    // B est confirmee et rattachee, mais l'ancienne annonce Vinted n'a pas
+    // pu etre supprimee/confirmee supprimee -- distinct de 'done', jamais
+    // affiche comme "Terminé." (voir PublishProgressModal.tsx).
+    step: PublishStep | 'done' | 'cleanup_required' | null;
     error: string | null;
+    // Detail de l'echec de suppression (resultPayload.cleanupError, voir
+    // republishTransaction.ts/deleteOldListing.ts) -- non null uniquement
+    // avec step==='cleanup_required'.
+    cleanupError: string | null;
     historyId: string | null;
     kind: ActionKind | null;
     changedFields: EditableFieldName[] | null;
@@ -177,6 +238,22 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     // sans toucher aux fichiers P-04 (pas de reprise ciblee de la seule
     // phase de verification, voir le plan valide).
     listing: Listing | null;
+    // Republication assistee (2026-08-11) : etat des lieux honnete rapporte
+    // une seule fois par vinted-publish.ts (PUBLISH_PREFILL_SUMMARY) --
+    // null tant qu'il n'est pas encore arrivé, jamais pour edit_listing.
+    prefillSummary: { confirmed: string[]; pending: string[] } | null;
+    // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) :
+    // true des que PUBLISH_READY_TO_SUBMIT est recu (bouton Vinted lui-meme
+    // devenu cliquable) -- jamais pour edit_listing (deja son propre hint
+    // statique MANUAL_CLICK_HINT). Ne declenche jamais de clic automatique,
+    // voir vinted-publish.ts::watchForPublishReadiness.
+    readyToSubmit: boolean;
+    // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : true des que
+    // l'extension attend un clic humain reel sur "Confirmer et supprimer"
+    // (ancienne annonce, republish_listing uniquement) -- pilote le hint
+    // "Confirmation de suppression requise sur Vinted", jamais une preuve
+    // de suppression a lui seul.
+    awaitingOldListingDeletion: boolean;
   } | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
   // Desactive "Réessayer" des le premier clic, le temps que runVintedAction()
@@ -263,7 +340,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   };
 
   const runVintedAction = async (kind: ActionKind, payload: PublishListingPayload | RepublishListingPayload | EditListingPayload, listing: Listing) => {
-    if (publishState && publishState.step !== 'done' && !publishState.error) {
+    if (publishState && publishState.step !== 'done' && publishState.step !== 'cleanup_required' && !publishState.error) {
       devWarn('[ResellOS][action] runVintedAction ignore : une action est deja en cours', {
         kind,
         listingId: listing.id,
@@ -273,7 +350,29 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     }
 
     const changedFields = kind === 'edit_listing' ? (payload as EditListingPayload).changedFields : null;
-    setPublishState({ step: 'preparing', error: null, historyId: null, kind, changedFields, listing });
+    // Republication assistee (2026-08-11) : capturee via une variable locale
+    // plutot qu'un etat React separe -- runVintedAction() reste sequentiel
+    // (await), donc chaque setPublishState() suivant peut simplement lire sa
+    // valeur la plus recente sans risque de course.
+    let prefillSummary: { confirmed: string[]; pending: string[] } | null = null;
+    // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) :
+    // meme capture par variable locale que prefillSummary ci-dessus.
+    let readyToSubmit = false;
+    // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : meme capture que
+    // readyToSubmit ci-dessus, pour "awaiting_old_listing_deletion".
+    let awaitingOldListingDeletion = false;
+    setPublishState({
+      step: 'preparing',
+      error: null,
+      cleanupError: null,
+      historyId: null,
+      kind,
+      changedFields,
+      listing,
+      prefillSummary,
+      readyToSubmit,
+      awaitingOldListingDeletion,
+    });
     devLog(`[ResellOS][action] prepareAction('${kind}')`, { listingId: listing.id, payload });
 
     if (kind === 'edit_listing') {
@@ -291,18 +390,97 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     const prepared = await prepareAction(kind, payload, { listingId: listing.id, targetListing: listing });
     if (!prepared.ok) {
       devWarn('[ResellOS][action] prepare() refuse par les checks :', prepared.failure);
-      setPublishState({ step: null, error: prepared.failure.message, historyId: null, kind, changedFields, listing });
+      setPublishState({
+        step: null,
+        error: prepared.failure.message,
+        cleanupError: null,
+        historyId: null,
+        kind,
+        changedFields,
+        listing,
+        prefillSummary,
+        readyToSubmit,
+        awaitingOldListingDeletion,
+      });
       return;
     }
     const historyId = prepared.prepared.id;
     devLog(`[ResellOS][action][${historyId}] prepare() ok, confirmAction() lance`);
 
-    const result = await confirmAction(prepared.prepared, (step) => {
-      devLog(`[ResellOS][action][${historyId}] progression :`, step);
-      if (!isPublishStep(step)) return;
-      const displayStep = kind === 'edit_listing' ? normalizeEditStepForDisplay(step) : step;
-      setPublishState({ step: displayStep, error: null, historyId, kind, changedFields, listing });
-    });
+    const result = await confirmAction(
+      prepared.prepared,
+      (step) => {
+        devLog(`[ResellOS][action][${historyId}] progression :`, step);
+        if (!isPublishStep(step)) return;
+        const displayStep = kind === 'edit_listing' ? normalizeEditStepForDisplay(step) : step;
+        setPublishState({
+          step: displayStep,
+          error: null,
+          cleanupError: null,
+          historyId,
+          kind,
+          changedFields,
+          listing,
+          prefillSummary,
+          readyToSubmit,
+          awaitingOldListingDeletion,
+        });
+      },
+      (confirmed, pending) => {
+        devLog(`[ResellOS][action][${historyId}] etat des lieux du prereplissage :`, { confirmed, pending });
+        prefillSummary = { confirmed, pending };
+        setPublishState({
+          step: 'publishing',
+          error: null,
+          cleanupError: null,
+          historyId,
+          kind,
+          changedFields,
+          listing,
+          prefillSummary,
+          readyToSubmit,
+          awaitingOldListingDeletion,
+        });
+      },
+      () => {
+        devLog(`[ResellOS][action][${historyId}] formulaire Vinted pret a etre soumis (bouton non-disabled)`);
+        readyToSubmit = true;
+        setPublishState({
+          step: 'publishing',
+          error: null,
+          cleanupError: null,
+          historyId,
+          kind,
+          changedFields,
+          listing,
+          prefillSummary,
+          readyToSubmit,
+          awaitingOldListingDeletion,
+        });
+      },
+      () => {
+        // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : l'extension
+        // attend desormais un clic humain reel sur "Confirmer et supprimer"
+        // (ancienne annonce, onglet reste ouvert) -- affiche un etat
+        // explicite plutot que de laisser deviner l'utilisateur. Ne
+        // remplace jamais 'step' (reste 'publishing') : seul ce booleen
+        // pilote le hint, exactement comme readyToSubmit ci-dessus.
+        devLog(`[ResellOS][action][${historyId}] confirmation de suppression requise sur Vinted (ancienne annonce)`);
+        awaitingOldListingDeletion = true;
+        setPublishState({
+          step: 'publishing',
+          error: null,
+          cleanupError: null,
+          historyId,
+          kind,
+          changedFields,
+          listing,
+          prefillSummary,
+          readyToSubmit,
+          awaitingOldListingDeletion,
+        });
+      }
+    );
     devLog(`[ResellOS][action][${historyId}] retour dans ResellOS, resultat :`, result.outcome);
 
     if (kind === 'edit_listing') {
@@ -333,7 +511,18 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           .then((r) => devLog(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind})`, r))
           .catch(() => devWarn(`[ResellOS][action][${historyId}] auto-reparation SKU (post-${kind}) : echec ignore (best-effort)`));
       }
-      setPublishState({ step: 'syncing', error: null, historyId, kind, changedFields, listing });
+      setPublishState({
+        step: 'syncing',
+        error: null,
+        cleanupError: null,
+        historyId,
+        kind,
+        changedFields,
+        listing,
+        prefillSummary,
+        readyToSubmit,
+        awaitingOldListingDeletion,
+      });
       await load();
       // Sans ce refetch, la recommandation affichee restait celle calculee
       // avant l'action (perimee jusqu'a la prochaine synchro passive) --
@@ -344,7 +533,33 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       // deja respecte de facto, puisque action_log.completed_at est ecrit
       // avant ce point et que useInsights relit action_log a chaque appel.
       void refetchInsights();
-      setPublishState({ step: 'done', error: null, historyId, kind, changedFields, listing });
+      // BUG REEL confirme en test live (mission "CORRIGER LE FAUX TERMINE",
+      // 2026-08-17) : ResellOS affichait "Terminé." des que
+      // result.outcome.status valait 'success', SANS JAMAIS verifier
+      // resultPayload.cleanupRequired -- alors que finalizeSuccess()
+      // (extension, publishListing.ts) retourne TOUJOURS status:'success'
+      // pour une republication, meme quand l'ancienne annonce Vinted n'a
+      // pas ete supprimee/confirmee supprimee (reason:"cleanup_required",
+      // voir republishTransaction.ts). Consequence : "Terminé" pouvait
+      // s'afficher alors que l'ancienne annonce restait bel et bien en
+      // ligne sur Vinted -- exactement le faux succes rapporte. La
+      // republication n'est reellement terminee que si B est confirmee ET
+      // rattachee ET (aucune ancienne annonce a supprimer OU suppression
+      // reellement confirmee) -- seul resultPayload.cleanupRequired le dit.
+      const resultPayload = result.outcome.resultPayload as { cleanupRequired?: boolean; cleanupError?: string } | undefined;
+      const cleanupRequired = !!resultPayload?.cleanupRequired;
+      setPublishState({
+        step: cleanupRequired ? 'cleanup_required' : 'done',
+        error: null,
+        cleanupError: cleanupRequired ? (resultPayload?.cleanupError ?? null) : null,
+        historyId,
+        kind,
+        changedFields,
+        listing,
+        prefillSummary,
+        readyToSubmit,
+        awaitingOldListingDeletion,
+      });
     } else if (result.outcome.status === 'error') {
       await load();
       // Simplifie le seul cas "clic manuel non detecte" pour l'affichage
@@ -357,18 +572,72 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         kind === 'edit_listing' && isManualClickTimeout(result.outcome.errorMessage)
           ? MANUAL_CLICK_TIMEOUT_MESSAGE
           : result.outcome.errorMessage;
-      setPublishState({ step: null, error: displayError, historyId, kind, changedFields, listing });
+      setPublishState({
+        step: null,
+        error: displayError,
+        cleanupError: null,
+        historyId,
+        kind,
+        changedFields,
+        listing,
+        prefillSummary,
+        readyToSubmit,
+        awaitingOldListingDeletion,
+      });
     } else {
-      setPublishState({ step: null, error: "Cette action n'est pas encore disponible.", historyId, kind, changedFields, listing });
+      setPublishState({
+        step: null,
+        error: "Cette action n'est pas encore disponible.",
+        cleanupError: null,
+        historyId,
+        kind,
+        changedFields,
+        listing,
+        prefillSummary,
+        readyToSubmit,
+        awaitingOldListingDeletion,
+      });
     }
+  };
+
+  // BUG REEL confirme en test live (2026-08-11) : le bouton "Republier"
+  // appelait setPublishingItem(listing) inconditionnellement, mais
+  // PublishConfirmationModal n'est monte que si {publishingItem &&
+  // selectedAccount} -- si le filtre de compte est sur "Tous les comptes"
+  // (selectedAccountId==='all', l'etat par defaut tant que l'utilisateur n'a
+  // jamais touche l'AccountSwitcher, voir VintedAccountFilterContext.tsx),
+  // selectedAccount vaut null et la modale ne s'affichait jamais -- clic
+  // silencieux, aucune erreur, aucun log, le flow extension n'etait meme pas
+  // atteint. handleConfirmUpdate() (edit_listing, juste en dessous) gerait
+  // deja ce meme cas correctement en affichant une erreur explicite via
+  // publishState -- ce garde-fou manquait uniquement pour publish/republish.
+  // Meme message, meme mecanisme, pour que l'utilisateur comprenne toujours
+  // pourquoi rien ne se passe plutot que de deviner.
+  const handleRequestPublish = (listing: Listing) => {
+    if (!selectedAccount) {
+      setPublishState({
+        step: null,
+        error: "Aucun compte Vinted sélectionné dans le filtre en haut de page. Sélectionne le compte de cette annonce avant de republier.",
+        cleanupError: null,
+        historyId: null,
+        kind: listing.vinted_item_id ? 'republish_listing' : 'publish_listing',
+        changedFields: null,
+        listing,
+        prefillSummary: null,
+        readyToSubmit: false,
+        awaitingOldListingDeletion: false,
+      });
+      return;
+    }
+    setPublishingItem(listing);
   };
 
   const handleConfirmPublish = async (packageSize: PackageSize) => {
     if (!publishingItem || !selectedAccount) return;
     const listing = publishingItem;
     setPublishingItem(null);
-    // vinted_item_id present = annonce deja publiee (mais plus en ligne,
-    // voir checks.ts::checkListingNeedsRepublish) -> republish_listing.
+    // vinted_item_id present = annonce deja publiee, en ligne ou non (voir
+    // checks.ts::checkListingRepublishEligible) -> republish_listing.
     // Absent = jamais publiee -> publish_listing classique. Choix invisible
     // pour l'utilisateur (un seul bouton "Republier"/"Publier" en amont),
     // mais determine la bonne action et donc le bon check cote moteur.
@@ -384,10 +653,14 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       setPublishState({
         step: null,
         error: "Aucun compte Vinted sélectionné dans le filtre en haut de page. Sélectionne le compte de cette annonce avant de réessayer.",
+        cleanupError: null,
         historyId: null,
         kind: 'edit_listing',
         changedFields,
         listing,
+        prefillSummary: null,
+        readyToSubmit: false,
+        awaitingOldListingDeletion: false,
       });
       return;
     }
@@ -416,42 +689,46 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     void handleConfirmUpdate(listing, changedFields).finally(() => setRetryInFlight(false));
   };
 
+  // Mission "SYNC_VINTED_ACCOUNT" (2026-08-16, lot 2 fiabilisation synchro) :
+  // remplace window.open()+poll Supabase par une commande explicite et
+  // tracable (syncVintedAccount(), voir extensionBridge.ts) -- le succes
+  // n'est plus jamais infere du seul listings_synced_at, mais lu directement
+  // dans le resultat structure retourne par l'extension (reutilise tel quel
+  // le resultat de recordListings(), lot 1). La branche "tous les comptes"
+  // (aucun compte precis a cibler) reste inchangee : window.open() est le
+  // seul mecanisme possible dans ce cas.
   const handleSync = () => {
+    if (syncing) return; // protection anti double-clic (en plus du bouton disabled)
     if (selectedAccountId === 'all' || !selectedAccount) {
       window.open('https://www.vinted.fr', SYNC_WINDOW_NAME);
       setSyncHint(
         "Ouvre le profil du compte à synchroniser dans l'onglet qui vient de s'ouvrir — la synchronisation se lance automatiquement, aucune action supplémentaire n'est nécessaire côté ResellOS."
       );
+      setSyncTone(null);
       return;
     }
     const target = selectedAccount;
-    const before = target.listings_synced_at;
-    window.open(`https://www.vinted.fr/member/${target.vinted_user_id}`, SYNC_WINDOW_NAME);
     setSyncing(true);
+    setSyncPhase('connecting');
     setSyncHint(null);
+    setSyncTone(null);
 
-    let attempts = 0;
-    const poll = async () => {
-      attempts += 1;
-      const { data } = await supabase
-        .from('vinted_accounts')
-        .select('listings_synced_at')
-        .eq('id', target.id)
-        .maybeSingle();
-      if (data?.listings_synced_at && data.listings_synced_at !== before) {
-        setSyncing(false);
+    void syncVintedAccount(target.vinted_user_id, target.vinted_username, {
+      onProgress: (step) => setSyncPhase(step),
+    }).then(async (result) => {
+      setSyncing(false);
+      setSyncPhase(null);
+      const { tone, message } = describeSyncResult(result);
+      setSyncTone(tone);
+      setSyncHint(message);
+      // Une synchro partielle a quand meme pu ecrire des annonces sures
+      // (voir recordListings(), lot 1) -- rafraichir dans tous les cas ou
+      // un traitement reel a eu lieu (ok:true), jamais sur un echec pur.
+      if (result.ok) {
         await refreshAccounts();
         await load();
-        return;
       }
-      if (attempts >= SYNC_POLL_MAX_ATTEMPTS) {
-        setSyncing(false);
-        setSyncHint(`Aucune synchronisation détectée. Vérifie que tu es bien connecté à Vinted en tant que ${target.label} dans l'onglet ouvert.`);
-        return;
-      }
-      setTimeout(poll, SYNC_POLL_INTERVAL_MS);
-    };
-    setTimeout(poll, SYNC_POLL_INTERVAL_MS);
+    });
   };
 
   const accountLabel = (vintedAccountId: string | null) => accounts.find((a) => a.id === vintedAccountId)?.label ?? '?';
@@ -540,13 +817,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
 
   const selectedItems = items.filter((i) => selected.has(i.id));
   const singleSelected = selected.size === 1 ? selectedItems[0] : null;
-  // P-03 (audit pre-beta 2026-08-03) : publish_listing/republish_listing
-  // echouent a 100% aujourd'hui (resolveCategory() casse depuis le 26/07,
-  // voir extension/src/content/formFill.ts) -- bouton desactive plutot que
-  // de laisser cliquer vers un echec garanti. checkPublishTemporarilyDisabled
-  // (src/lib/actions/checks.ts) bloque deja le moteur d'action en defense en
-  // profondeur ; ce commentaire documente pourquoi le bouton lui-meme est
-  // aussi grise, pas seulement le moteur.
+  // Republication assistee (2026-08-11) : le bouton "Republier" (comme
+  // "Publier" depuis PublishConfirmationModal) reste actif -- resolveCategory()
+  // (extension/src/content/formFill.ts) ne bloque plus la preparation entiere,
+  // voir vinted-publish.ts. La categorie et les autres champs qui exigent un
+  // clic isTrusted restent 100% manuels, mais le flux n'echoue plus a 100%.
 
   const runBulkDelete = async () => {
     setBulkDeleting(true);
@@ -617,7 +892,15 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             <span className={syncFreshnessClass(lastSyncedAt)}>· Dernière synchro : {formatRelativeSync(lastSyncedAt)}</span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            {syncHint && <p className="text-xs text-amber-400 max-w-sm">{syncHint}</p>}
+            {syncHint && (
+              <p
+                className={`text-xs max-w-sm ${
+                  syncTone === 'success' ? 'text-green-400' : syncTone === 'error' ? 'text-red-400' : 'text-amber-400'
+                }`}
+              >
+                {syncHint}
+              </p>
+            )}
             <Button
               onClick={handleSync}
               disabled={syncing || extensionState !== 'ready'}
@@ -625,7 +908,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
               variant={syncNeedsAttention ? 'primary' : 'ghost'}
               icon={<RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />}
             >
-              {syncing ? 'Synchronisation...' : selectedAccountId === 'all' ? 'Ouvrir Vinted' : 'Synchroniser maintenant'}
+              {syncing
+                ? (syncPhase ? SYNC_STEP_LABELS[syncPhase] : 'Synchronisation en cours...')
+                : selectedAccountId === 'all'
+                  ? 'Ouvrir Vinted'
+                  : 'Synchroniser maintenant'}
             </Button>
           </div>
         </div>
@@ -676,9 +963,9 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             variant="secondary"
             size="sm"
             icon={<UploadCloud className="w-3.5 h-3.5" />}
-            disabled
-            title="Publication automatique sur Vinted temporairement indisponible (correctif en cours) -- réessaie plus tard"
-            onClick={() => singleSelected && setPublishingItem(singleSelected)}
+            disabled={!singleSelected}
+            title={!singleSelected ? 'Sélectionne une seule annonce pour la republier' : undefined}
+            onClick={() => singleSelected && handleRequestPublish(singleSelected)}
           >
             Republier
           </Button>
@@ -816,6 +1103,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         <PublishProgressModal
           currentStep={publishState.step}
           error={publishState.error}
+          cleanupError={publishState.cleanupError}
           onClose={() => setPublishState(null)}
           onViewAction={
             onViewAction && publishState.historyId
@@ -838,7 +1126,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 // jamais rapportee comme un step distinct, elle correspond en
                 // pratique a l'etape "publishing" affichee ici.
                 hint:
-                  publishState.step && publishState.step !== 'done' && !publishState.error
+                  // 'cleanup_required' n'est jamais produit pour edit_listing
+                  // (aucune ancienne annonce a nettoyer, voir runVintedAction) --
+                  // exclu ici uniquement pour que normalizeEditStepForDisplay()
+                  // (qui n'accepte que PublishStep) reste type-safe.
+                  publishState.step && publishState.step !== 'done' && publishState.step !== 'cleanup_required' && !publishState.error
                     ? normalizeEditStepForDisplay(publishState.step) === 'publishing'
                       ? MANUAL_CLICK_HINT
                       : undefined
@@ -856,10 +1148,38 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                     : undefined,
                 retryDisabled: retryInFlight,
               }
-            : publishState.kind === 'republish_listing'
+            : publishState.kind === 'republish_listing' || publishState.kind === 'publish_listing'
               ? {
-                  title: 'Republication en cours',
-                  errorTitle: 'Échec de la republication',
+                  title: publishState.kind === 'republish_listing' ? 'Republication en cours' : 'Publication en cours',
+                  errorTitle: publishState.kind === 'republish_listing' ? 'Échec de la republication' : 'Échec de la publication',
+                  // Republication assistee (2026-08-11) : des que le
+                  // remplissage automatise est termine (PUBLISH_PREFILL_SUMMARY
+                  // recu, voir runVintedAction), l'etape "publishing" ne
+                  // decrit plus une automatisation en cours mais l'attente du
+                  // clic reel de l'utilisateur sur Vinted -- meme principe que
+                  // MANUAL_CLICK_HINT pour edit_listing. Mission "CLIC FINAL +
+                  // CONFIRMATION POST-PUBLICATION" (2026-08-16) : une fois
+                  // PUBLISH_READY_TO_SUBMIT recu (bouton Vinted lui-meme
+                  // devenu cliquable, voir runVintedAction), le hint devient
+                  // affirmatif plutot que d'inviter a "terminer" des champs
+                  // deja termines -- jamais un declencheur de clic
+                  // automatique (ecarte, voir vinted-publish.ts::
+                  // watchForPublishReadiness).
+                  hint:
+                    // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : priorite
+                    // la plus haute -- survient APRES le clic sur "Ajouter"
+                    // (B deja publiee), pendant que l'extension attend le clic
+                    // humain sur "Confirmer et supprimer" (ancienne annonce,
+                    // onglet reste ouvert par ResellOS). Etat explicite demande :
+                    // ne jamais laisser deviner l'utilisateur pendant cette attente.
+                    publishState.step === 'publishing' && !publishState.error && publishState.awaitingOldListingDeletion
+                      ? "Confirmation de suppression requise sur Vinted : ouvre l'onglet de l'ancienne annonce (déjà ouvert par ResellOS) et clique sur « Confirmer et supprimer »."
+                      : publishState.step === 'publishing' && !publishState.error && publishState.readyToSubmit
+                        ? 'Tout est prêt : clique sur le bouton « Ajouter » dans l\'onglet Vinted pour publier ton annonce.'
+                        : publishState.step === 'publishing' && !publishState.error && publishState.prefillSummary
+                          ? "ResellOS a prérempli ce qu'il pouvait sur l'onglet Vinted ouvert. Termine la catégorie et les champs signalés « À confirmer », puis clique toi-même sur le bouton de publication Vinted."
+                          : undefined,
+                  prefillSummary: publishState.prefillSummary,
                 }
               : {})}
         />

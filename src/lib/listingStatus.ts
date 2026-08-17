@@ -13,11 +13,14 @@ export function isActivelyInStock(item: Listing): boolean {
 }
 
 // Annonces jamais publiees ou plus visibles sur Vinted, mais toujours en
-// stock cote ResellOS -- meme logique d'eligibilite que le bouton "Republier"
-// (ListingsManagementSection.tsx) et que le check d'action correspondant
-// (checks.ts::checkListingNeedsRepublish). Partagee ici (deplacee depuis
-// ListingsManagementSection.tsx le 2026-08-01) pour que l'onglet
-// Republication et le check business ne divergent jamais.
+// stock cote ResellOS -- alimente UNIQUEMENT l'onglet "Republication"
+// (filtre de decouverte dans ListingsManagementSection.tsx), plus le check
+// d'eligibilite reel du bouton "Republier" (checks.ts::
+// checkListingRepublishEligible, plus large depuis Republication V2,
+// 2026-08-10 : autorise aussi une annonce genuinement en ligne -- voir son
+// commentaire). Les deux criteres ont volontairement divergé : "l'onglet
+// Republication te montre les annonces qui ont un probleme structurel" reste
+// un critere different de "peux-tu cliquer Republier sur cette annonce".
 const NEEDS_REPUBLISH_VINTED_STATUSES: ReadonlySet<string> = new Set(['hidden', 'deleted', 'draft', 'unknown']);
 
 export function needsRepublish(item: Listing): boolean {

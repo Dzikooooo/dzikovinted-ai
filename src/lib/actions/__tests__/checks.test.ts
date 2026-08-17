@@ -5,10 +5,9 @@ import {
   checkExtensionConnected,
   checkListingAlreadyPublished,
   checkListingHasPhotos,
-  checkListingHasRequiredVintedFields,
   checkListingLoaded,
-  checkListingNeedsRepublish,
   checkListingNotAlreadyPublished,
+  checkListingRepublishEligible,
   checkListingOwnership,
   checkNoScanInProgress,
 } from '../checks';
@@ -134,47 +133,6 @@ describe('checkListingHasPhotos', () => {
   });
 });
 
-describe('checkListingHasRequiredVintedFields', () => {
-  it('passes when category and condition are both set', () => {
-    const result = checkListingHasRequiredVintedFields(
-      makeActionContext(),
-      makeCheckDeps({ targetListing: makeListing({ category: 'Sweats', condition: 'Bon etat' }) })
-    );
-    expect(result.ok).toBe(true);
-  });
-
-  it('fails with missing_category when category is null', () => {
-    const result = checkListingHasRequiredVintedFields(
-      makeActionContext(),
-      makeCheckDeps({ targetListing: makeListing({ category: null, condition: 'Bon etat' }) })
-    );
-    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'missing_category' }) });
-  });
-
-  it('fails with missing_condition when condition is null', () => {
-    const result = checkListingHasRequiredVintedFields(
-      makeActionContext(),
-      makeCheckDeps({ targetListing: makeListing({ category: 'Sweats', condition: null }) })
-    );
-    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'missing_condition' }) });
-  });
-
-  it('fails with missing_category when no listing is loaded', () => {
-    const result = checkListingHasRequiredVintedFields(makeActionContext(), makeCheckDeps({ targetListing: null }));
-    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'missing_category' }) });
-  });
-
-  it('does not flag brand/size/color/material -- only category and condition are objectively required', () => {
-    const result = checkListingHasRequiredVintedFields(
-      makeActionContext(),
-      makeCheckDeps({
-        targetListing: makeListing({ category: 'Sweats', condition: 'Bon etat', brand: null, size: null, color: null, material: null }),
-      })
-    );
-    expect(result.ok).toBe(true);
-  });
-});
-
 describe('checkListingNotAlreadyPublished', () => {
   it('passes when the listing has no vinted_item_id yet', () => {
     const result = checkListingNotAlreadyPublished(
@@ -216,9 +174,9 @@ describe('checkListingAlreadyPublished', () => {
   });
 });
 
-describe('checkListingNeedsRepublish', () => {
+describe('checkListingRepublishEligible', () => {
   it('passes for a listing that was published but is no longer live (hidden)', () => {
-    const result = checkListingNeedsRepublish(
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'hidden' }) })
     );
@@ -226,7 +184,7 @@ describe('checkListingNeedsRepublish', () => {
   });
 
   it('passes for a listing that was deleted on Vinted', () => {
-    const result = checkListingNeedsRepublish(
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'deleted' }) })
     );
@@ -234,7 +192,7 @@ describe('checkListingNeedsRepublish', () => {
   });
 
   it('passes for a listing never published at all', () => {
-    const result = checkListingNeedsRepublish(
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: null, vinted_status: null }) })
     );
@@ -242,12 +200,12 @@ describe('checkListingNeedsRepublish', () => {
   });
 
   it('fails with listing_not_found when no listing is loaded', () => {
-    const result = checkListingNeedsRepublish(makeActionContext(), makeCheckDeps({ targetListing: null }));
+    const result = checkListingRepublishEligible(makeActionContext(), makeCheckDeps({ targetListing: null }));
     expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'listing_not_found' }) });
   });
 
   it('fails with listing_sold when the listing is already sold', () => {
-    const result = checkListingNeedsRepublish(
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'vendu', vinted_item_id: '123', vinted_status: 'hidden' }) })
     );
@@ -255,27 +213,52 @@ describe('checkListingNeedsRepublish', () => {
   });
 
   it('fails with listing_not_in_stock when the listing is still a draft', () => {
-    const result = checkListingNeedsRepublish(
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'draft', vinted_item_id: null, vinted_status: null }) })
     );
     expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'listing_not_in_stock' }) });
   });
 
-  it('fails with already_live when the listing is genuinely online on Vinted (anti-duplicate)', () => {
-    const result = checkListingNeedsRepublish(
+  // BUG LIVE reel (Republication V2, confirme 2026-08-10) : Albin/test live
+  // a reproduit "Cette annonce est deja en ligne sur Vinted." en cliquant
+  // Republier sur une annonce genuinement online (prix 24e, marque Polo
+  // Ralph Lauren, taille L, sur Vinted au moment du clic) -- exactement le
+  // cas d'usage normal d'une republication (relancer une annonce qui
+  // performe mal MAIS reste en ligne). Ces deux tests prouvent le fix :
+  // l'ancien code retournait already_live ici, desormais ok:true.
+  it('passes when the listing is genuinely online on Vinted -- republishing a live listing is the normal case, not a duplicate', () => {
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'online' }) })
     );
-    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_live' }) });
+    expect(result).toEqual({ ok: true });
   });
 
-  it('fails with already_live when the listing is reserved on Vinted', () => {
-    const result = checkListingNeedsRepublish(
+  it('passes when the listing is reserved on Vinted', () => {
+    const result = checkListingRepublishEligible(
       makeActionContext(),
       makeCheckDeps({ targetListing: makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'reserved' }) })
     );
-    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_live' }) });
+    expect(result).toEqual({ ok: true });
+  });
+});
+
+// Section 17 (Republication V2) : preuve explicite que publish_listing et
+// republish_listing restent bien SEPARES sur ce point precis -- meme
+// annonce (deja en ligne, vinted_item_id present), deux verdicts opposes,
+// chacun logique pour son propre flow.
+describe('publish_listing vs republish_listing on an already-live listing', () => {
+  it('checkListingNotAlreadyPublished (publish_listing) blocks a listing that already has a vinted_item_id', () => {
+    const listing = makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'online' });
+    const result = checkListingNotAlreadyPublished(makeActionContext(), makeCheckDeps({ targetListing: listing }));
+    expect(result).toEqual({ ok: false, failure: expect.objectContaining({ code: 'already_published' }) });
+  });
+
+  it('checkListingRepublishEligible (republish_listing) allows the exact same listing', () => {
+    const listing = makeListing({ status: 'en_stock', vinted_item_id: '123', vinted_status: 'online' });
+    const result = checkListingRepublishEligible(makeActionContext(), makeCheckDeps({ targetListing: listing }));
+    expect(result).toEqual({ ok: true });
   });
 });
 

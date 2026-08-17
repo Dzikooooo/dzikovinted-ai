@@ -94,8 +94,29 @@ export function buildManifest(isBeta = false) {
     // extension/src/, aucun resultat) -- une permission Chrome non justifiee
     // est un risque et une confusion pour rien.
     //
-    permissions: ["storage", "tabs", "scripting"],
-    host_permissions: ["https://www.vinted.fr/*"],
+    // "webRequest" ajoutee (2026-08-17, mission "AUTOMATISER ENTIEREMENT LA
+    // SUPPRESSION DE A") : uniquement pour observer en LECTURE SEULE (aucun
+    // "blocking" dans extraInfoSpec) les headers/corps de
+    // POST /api/v2/items/{id}/delete la prochaine fois qu'une suppression
+    // reelle a lieu -- voir deleteRequestInstrumentation.ts. Necessaire pour
+    // classer cette route (protegee par le service anti-bot comme les deux
+    // autres mutations deja confirmees protegees, ou rejouable normalement)
+    // sans deviner ni sacrifier une nouvelle annonce reelle juste pour lire
+    // ces headers a la main.
+    permissions: ["storage", "tabs", "scripting", "webRequest"],
+    // https://*.vinted.net/* (2026-08-10, audit "prefill partiel" -- CORS
+    // confirme en test live sur images1.vinted.net) : le CDN photo de Vinted
+    // est un domaine DISTINCT de vinted.fr et ne renvoie aucun header
+    // Access-Control-Allow-Origin -- un fetch() depuis le content script
+    // (soumis au CORS de la PAGE, vinted.fr) echoue toujours, quelle que
+    // soit cette permission. host_permissions ne beneficie qu'aux fetch()
+    // emis depuis un contexte D'EXTENSION (background/popup), jamais depuis
+    // un content script -- c'est pourquoi le fetch des photos est deplace
+    // dans handlePublishListing.ts (background), voir son commentaire.
+    // Wildcard sur le sous-domaine (imagesN.vinted.net, sharding CDN
+    // classique) plutot qu'un domaine unique code en dur -- toujours borne a
+    // vinted.net, jamais un domaine tiers.
+    host_permissions: ["https://www.vinted.fr/*", "https://*.vinted.net/*"],
     externally_connectable: {
       matches: buildExternallyConnectableMatches(isBeta),
     },
@@ -109,6 +130,24 @@ export function buildManifest(isBeta = false) {
       matches: ["https://www.vinted.fr/items/new*"],
       js: ["src/content/vinted-publish.ts"],
       run_at: "document_idle",
+    },
+    {
+      // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17) :
+      // instrumentation ciblee et TEMPORAIRE (voir
+      // publishCreateResponseCapture.ts). MONDE MAIN + document_start est le
+      // SEUL point d'injection assez tot pour patcher window.fetch/
+      // XMLHttpRequest avant que le bundle JS de Vinted n'en capture sa
+      // propre reference native -- la premiere version (injection tardive
+      // via chrome.scripting.executeScript au tab "complete", voir
+      // handlePublishListing.ts) n'a RIEN capture lors d'un test live reel
+      // malgre une creation reussie (POST confirme 200 par
+      // chrome.webRequest). Champ `world` supporte nativement par
+      // content_scripts depuis Chrome 111 (MV3) -- aucune permission
+      // supplementaire necessaire.
+      matches: ["https://www.vinted.fr/items/new*"],
+      js: ["src/content/publishCreateResponseCaptureBoot.ts"],
+      world: "MAIN",
+      run_at: "document_start",
     },
     {
       // Fiche d'une annonce existante (import intelligent, sprint V1) --

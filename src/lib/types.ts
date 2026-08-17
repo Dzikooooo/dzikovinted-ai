@@ -219,8 +219,8 @@ export interface Listing {
   // description/category/color/material a la creation -- ces colonnes
   // valent reellement null a l'execution pour ces lignes. Corrige pour
   // que le type reflete la realite (voir EditListingModal.tsx pour la
-  // normalisation cote formulaire, et checks.ts::checkListingHasRequiredVintedFields
-  // pour la garde avant toute publication).
+  // normalisation cote formulaire -- category/condition manquants ne
+  // bloquent plus publish_listing/republish_listing, voir publishListing.ts).
   description: string | null;
 
   brand: string | null;

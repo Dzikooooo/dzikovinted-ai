@@ -39,23 +39,27 @@ async function reportSkuRepair(
 // doit jamais l'ecraser. Utilisee independamment par recordAccountDetected
 // et recordListings pour que les deux fonctionnent quel que soit l'ordre
 // d'arrivee des deux messages envoyes par le content script.
-// touchListingsSyncedAt (2026-07-27, bug reel confirme) : cette fonction est
-// appelee a la fois par recordAccountDetected (quasi instantanee, avant meme
-// le debut de la recuperation paginee du wardrobe) et par recordListings
-// (apres l'ecriture reelle des annonces, potentiellement plusieurs secondes
-// plus tard). Les deux ecrivaient jusqu'ici la MEME colonne last_synced_at,
-// rendant impossible pour l'UI de distinguer "compte detecte" de "annonces
-// synchronisees" -- StockPage.tsx::handleSync s'arretait au premier
-// changement detecte (presque toujours celui d'ACCOUNT_DETECTED) et
-// rechargeait la liste avant que les annonces soient reellement ecrites.
-// listings_synced_at n'est desormais ecrite QUE par recordListings (flag
-// explicite, jamais par defaut) -- signal non ambigu.
+// listings_synced_at (2026-07-27, bug reel confirme, PUIS mission
+// "FIABILISATION SYNCHRO VINTED, lot 1" 2026-08-16) : cette fonction ne
+// touche plus JAMAIS listings_synced_at -- historiquement, un flag
+// `touchListingsSyncedAt` la faisait ecrire ICI, quasi au tout debut de
+// recordListings() (avant meme les inserts/updates/reconciliation reels),
+// ce qui rendait le signal "synchro reussie" faux des qu'une erreur
+// survenait APRES ce point : le bouton "Synchroniser maintenant" (qui
+// attend un changement de listings_synced_at) affichait alors un succes
+// alors que la synchro avait reellement echoue en cours de route. Seule
+// recordListings() ecrit desormais ce timestamp, explicitement, tout a la
+// fin, et UNIQUEMENT si l'integralite du travail (inserts/updates/
+// snapshots/reconciliation) a reussi ET que le scan Vinted etait complet
+// (voir son commentaire d'en-tete). last_synced_at, lui, continue d'etre
+// ecrit ici a chaque appel (par recordAccountDetected ET recordListings) --
+// il signifie seulement "ce compte a ete detecte actif", pas "les annonces
+// sont a jour", distinction volontairement conservee.
 async function resolveOrCreateVintedAccount(
   client: ReturnType<typeof supabaseWithToken>,
   userId: string,
   vintedUserId: string,
-  vintedUsername: string,
-  touchListingsSyncedAt = false
+  vintedUsername: string
 ): Promise<string> {
   const { data: existing, error: selectError } = await client
     .from("vinted_accounts")
@@ -79,7 +83,6 @@ async function resolveOrCreateVintedAccount(
         vinted_username: vintedUsername,
         last_synced_at: now,
         last_error: null,
-        ...(touchListingsSyncedAt ? { listings_synced_at: now } : {}),
       })
       .eq("id", existing.id);
     if (updateError) {
@@ -103,7 +106,6 @@ async function resolveOrCreateVintedAccount(
       vinted_username: vintedUsername,
       connected: true,
       last_synced_at: now,
-      ...(touchListingsSyncedAt ? { listings_synced_at: now } : {}),
       is_default: (count ?? 0) === 0,
     })
     .select("id")
@@ -118,17 +120,29 @@ async function resolveOrCreateVintedAccount(
   return created.id;
 }
 
-export async function recordAccountDetected(vintedUserId: string, vintedUsername: string): Promise<void> {
+// Mission "FIABILISATION SYNCHRO VINTED, lot 1" (2026-08-16), point 4 :
+// l'ancien "extension non appairee -> logger.warn puis return" etait
+// silencieux au sens strict du terme -- aucun appelant (background/index.ts)
+// ne recevait la moindre information exploitable, seulement une resolution
+// void identique a un succes. Retourne desormais un resultat structure.
+export type RecordAccountDetectedReason = "success" | "not_paired";
+export interface RecordAccountDetectedResult {
+  ok: boolean;
+  reason: RecordAccountDetectedReason;
+}
+
+export async function recordAccountDetected(vintedUserId: string, vintedUsername: string): Promise<RecordAccountDetectedResult> {
   const valid = await getValidAccessToken();
   if (!valid) {
     logger.warn("Compte Vinted detecte mais extension non appairee, ignore");
-    return;
+    return { ok: false, reason: "not_paired" };
   }
 
   const client = supabaseWithToken(valid.accessToken);
   await withRetry(() => resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername));
 
   logger.info("Compte Vinted detecte", { vintedUsername });
+  return { ok: true, reason: "success" };
 }
 
 interface ExistingLinkedListing {
@@ -155,23 +169,51 @@ interface ExistingLinkedListing {
 // l'ensemble recu ici EST l'etat complet et actuel du compte Vinted, tous
 // statuts confondus - toute ligne liee absente du scan est marquee
 // vinted_status='deleted' (jamais de DELETE physique, garde l'historique).
+//
+// Mission "FIABILISATION SYNCHRO VINTED, lot 1" (2026-08-16) -- CAUSE REELLE
+// prouvee par audit : un scan dont la pagination Vinted s'est arretee en
+// cours de route (wardrobeApi.ts, page >= 2 en echec) etait jusqu'ici traite
+// EXACTEMENT comme un scan complet -- toute annonce reelle situee sur une
+// page jamais lue se faisait donc marquer a tort `vinted_status='deleted'`.
+// `complete` (nouveau parametre, transmis tel quel depuis
+// wardrobeApi.ts::WardrobeFetchResult via vinted-profile.ts) doit desormais
+// etre EXPLICITEMENT true pour que cette fonction execute la moindre logique
+// de suppression. Un scan partiel (complete:false) reste malgre tout utile :
+// les annonces reellement lues sont inserees/mises a jour normalement (cette
+// donnee est reelle et sure a ecrire) -- seule la conclusion "ce qui est
+// absent a ete supprime" est bloquee, et vinted_accounts.listings_synced_at
+// n'est JAMAIS avance dans ce cas (voir la fin de cette fonction).
+export type RecordListingsReason = "success" | "not_paired" | "partial_scan";
+export interface RecordListingsResult {
+  ok: boolean;
+  complete: boolean;
+  created: number;
+  updated: number;
+  deletedMarked: number;
+  reason: RecordListingsReason;
+}
+
 export async function recordListings(
   vintedUserId: string,
   vintedUsername: string,
-  listings: ListingPayload[]
-): Promise<void> {
+  listings: ListingPayload[],
+  complete: boolean
+): Promise<RecordListingsResult> {
   const valid = await getValidAccessToken();
   if (!valid) {
     logger.warn("Annonces detectees mais extension non appairee, ignore");
-    return;
+    return { ok: false, complete: false, created: 0, updated: 0, deletedMarked: 0, reason: "not_paired" };
   }
 
   const client = supabaseWithToken(valid.accessToken);
   const vintedAccountId = await withRetry(() =>
-    resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername, true)
+    resolveOrCreateVintedAccount(client, valid.userId, vintedUserId, vintedUsername)
   );
 
   const currentItemIds = listings.map((l) => l.vintedItemId);
+  let created = 0;
+  let updated = 0;
+  let deletedMarked = 0;
 
   if (currentItemIds.length > 0) {
     const existingRows = await withRetry(async () => {
@@ -324,6 +366,7 @@ export async function recordListings(
       for (const row of inserted) {
         if (row.vinted_item_id) listingIdByItemId.set(row.vinted_item_id, row.id);
       }
+      created = inserted.length;
     }
 
     if (toUpdate.length > 0) {
@@ -361,6 +404,7 @@ export async function recordListings(
           throw failed.error;
         }
       });
+      updated = toUpdate.length;
     }
 
     // Historique (Phase 2, moteur d'intelligence metier) : un instantane par
@@ -393,29 +437,262 @@ export async function recordListings(
     }
   }
 
-  await withRetry(async () => {
-    let query = client
-      .from("listings")
-      .update({ vinted_status: "deleted" })
-      .eq("vinted_account_id", vintedAccountId)
-      .not("vinted_item_id", "is", null)
-      .neq("vinted_status", "deleted");
-    if (currentItemIds.length > 0) {
-      query = query.not("vinted_item_id", "in", `(${currentItemIds.join(",")})`);
-    }
-    const { error } = await query;
-    if (error) {
-      logger.error("Marquage des annonces disparues a echoue", error.message);
-      throw error;
-    }
-  });
+  // Mission "FIABILISATION SYNCHRO VINTED, lot 1" (2026-08-16), point 3 --
+  // REGLE DE SECURITE : cette logique ne s'execute desormais QUE si le scan
+  // recu est complet. Un scan partiel (pagination Vinted interrompue,
+  // wardrobeApi.ts) ne prouve RIEN sur les annonces situees sur les pages
+  // jamais lues -- les traiter comme supprimees degraderait des donnees
+  // fiables deja en base a partir d'une simple panne reseau transitoire.
+  if (complete) {
+    deletedMarked = await withRetry(async () => {
+      let query = client
+        .from("listings")
+        .update({ vinted_status: "deleted" })
+        .eq("vinted_account_id", vintedAccountId)
+        .not("vinted_item_id", "is", null)
+        .neq("vinted_status", "deleted");
+      if (currentItemIds.length > 0) {
+        query = query.not("vinted_item_id", "in", `(${currentItemIds.join(",")})`);
+      }
+      const { data, error } = await query.select("id");
+      if (error) {
+        logger.error("Marquage des annonces disparues a echoue", error.message);
+        throw error;
+      }
+      return (data ?? []).length;
+    });
+  } else {
+    logger.warn("Scan Vinted partiel -- aucune annonce absente marquee 'deleted' (protection anti faux-positifs)", {
+      vintedUserId,
+      itemsRead: listings.length,
+    });
+  }
 
   // Auto-reparation SKU (2026-07-27, chantier separe -- voir la conversation) :
   // best-effort strict, jamais bloquant, jamais de rollback de la synchro qui
   // vient de reussir.
   await reportSkuRepair(client, valid.userId, "post-synchro");
 
-  logger.info("Annonces synchronisees", { count: listings.length });
+  // Mission "FIABILISATION SYNCHRO VINTED, lot 1" (2026-08-16), point 2 --
+  // SEUL endroit ou vinted_accounts.listings_synced_at est ecrit, tout a la
+  // fin, UNIQUEMENT si tout ce qui precede (lecture, inserts, updates,
+  // snapshots, reconciliation) a reussi sans exception ET que le scan etait
+  // complet. Si une erreur avait ete levee plus haut, ce point de code n'est
+  // jamais atteint -- le timestamp reste intact, jamais avance sur une
+  // synchro partielle ou echouee. Ce champ signifie desormais reellement "la
+  // synchronisation complete des annonces a termine avec succes", plus
+  // jamais "une tentative a commence".
+  if (complete) {
+    await withRetry(async () => {
+      const { error } = await client
+        .from("vinted_accounts")
+        .update({ listings_synced_at: new Date().toISOString() })
+        .eq("id", vintedAccountId);
+      if (error) {
+        logger.error("Mise a jour de listings_synced_at a echoue", error.message);
+        throw error;
+      }
+    });
+  } else {
+    logger.warn("listings_synced_at non avance -- scan partiel", { vintedUserId, vintedAccountId });
+  }
+
+  logger.info("Annonces synchronisees", { count: listings.length, complete, created, updated, deletedMarked });
+  return { ok: true, complete, created, updated, deletedMarked, reason: complete ? "success" : "partial_scan" };
+}
+
+// Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON DETECTE"
+// (2026-08-17) : apres un clic humain reussi sur "Ajouter", Vinted peut
+// rediriger le tab de publication vers /member/{userId} plutot que vers
+// /items/{nouvel_id} (preuve live directe) -- handlePublishListing.ts
+// (background) a besoin de savoir QUELS vinted_item_id etaient DEJA connus
+// AVANT la publication, pour pouvoir ensuite identifier par difference (apres
+// - avant) LA nouvelle annonce reellement creee, une fois une vraie
+// relecture wardrobe effectuee (reutilise recordListings ci-dessus, jamais
+// une deuxieme logique de synchro). Lecture seule, jamais d'ecriture.
+export async function listKnownVintedItemIds(vintedAccountId: string): Promise<Set<string>> {
+  const valid = await getValidAccessToken();
+  if (!valid) {
+    logger.warn("listKnownVintedItemIds : extension non appairee, ensemble vide retourne");
+    return new Set();
+  }
+  const client = supabaseWithToken(valid.accessToken);
+  const { data, error } = await client
+    .from("listings")
+    .select("vinted_item_id")
+    .eq("vinted_account_id", vintedAccountId)
+    .not("vinted_item_id", "is", null);
+  if (error) {
+    logger.error("listKnownVintedItemIds a echoue", error.message);
+    return new Set();
+  }
+  const ids = (data ?? [])
+    .map((row) => (row as { vinted_item_id: string | null }).vinted_item_id)
+    .filter((id): id is string => !!id);
+  return new Set(ids);
+}
+
+// Details minimaux necessaires pour (a) confirmer resultPayload.vintedUrl et
+// (b) desambiguiser par titre/prix si plusieurs nouveaux vinted_item_id sont
+// apparus simultanement (voir la mission -- jamais un choix au hasard).
+export interface ListingCandidate {
+  vintedItemId: string;
+  vintedUrl: string;
+  title: string;
+  price: number | null;
+}
+
+export async function findListingsByVintedItemIds(vintedAccountId: string, vintedItemIds: string[]): Promise<ListingCandidate[]> {
+  if (vintedItemIds.length === 0) return [];
+  const valid = await getValidAccessToken();
+  if (!valid) {
+    logger.warn("findListingsByVintedItemIds : extension non appairee, liste vide retournee");
+    return [];
+  }
+  const client = supabaseWithToken(valid.accessToken);
+  const { data, error } = await client
+    .from("listings")
+    .select("vinted_item_id, vinted_url, title, price")
+    .eq("vinted_account_id", vintedAccountId)
+    .in("vinted_item_id", vintedItemIds);
+  if (error) {
+    logger.error("findListingsByVintedItemIds a echoue", error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => {
+    const r = row as { vinted_item_id: string; vinted_url: string | null; title: string | null; price: number | null };
+    return {
+      vintedItemId: r.vinted_item_id,
+      vintedUrl: r.vinted_url ?? `https://www.vinted.fr/items/${r.vinted_item_id}`,
+      title: r.title ?? "",
+      price: r.price,
+    };
+  });
+}
+
+// Mission "REPUBLICATION : CORRIGER LES DOUBLONS" (2026-08-17) : une
+// republication n'est pas une creation independante -- c'est un
+// REMPLACEMENT. Cette fonction rattache la ligne ResellOS ORIGINALE
+// (identifiee par son id ResellOS, jamais par vinted_item_id -- c'est
+// justement ce qui change) au nouvel item Vinted confirme, sur la MEME
+// ligne. Jamais d'INSERT ici : republishTransaction.ts (orchestrateur)
+// s'appuie sur cette fonction pour eviter qu'une deuxieme ligne logique
+// n'apparaisse pour ce qui reste, du point de vue utilisateur, le MEME
+// article. Meme regle de garde que applyPublishListingResult/
+// applyRepublishListingResult (useActionEngine.ts, cote app) : jamais
+// ecraser une ligne deja marquee vendue (sold_price non nul) -- lue
+// explicitement ici plutot que de deviner via le nombre de lignes affectees
+// par l'UPDATE (Supabase ne remonte pas d'erreur sur 0 ligne affectee, un
+// filtre supplementaire sur l'UPDATE laisserait ce cas silencieux).
+export interface RebindListingResult {
+  ok: boolean;
+  found: boolean;
+  alreadySold: boolean;
+  previousVintedItemId: string | null;
+}
+
+export async function rebindListingToVintedItem(
+  listingId: string,
+  vintedAccountId: string,
+  newVintedItemId: string,
+  newVintedUrl: string
+): Promise<RebindListingResult> {
+  const valid = await getValidAccessToken();
+  if (!valid) {
+    logger.warn("rebindListingToVintedItem : extension non appairee");
+    return { ok: false, found: false, alreadySold: false, previousVintedItemId: null };
+  }
+  const client = supabaseWithToken(valid.accessToken);
+
+  const { data: existing, error: selectError } = await client
+    .from("listings")
+    .select("id, vinted_item_id, sold_price")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (selectError || !existing) {
+    logger.error("rebindListingToVintedItem : ligne ResellOS introuvable", { listingId, error: selectError?.message });
+    return { ok: false, found: false, alreadySold: false, previousVintedItemId: null };
+  }
+
+  const row = existing as { id: string; vinted_item_id: string | null; sold_price: number | null };
+  const previousVintedItemId = row.vinted_item_id;
+
+  if (row.sold_price !== null) {
+    logger.warn("rebindListingToVintedItem : ligne deja vendue, rattachement ignore", { listingId });
+    return { ok: false, found: true, alreadySold: true, previousVintedItemId };
+  }
+
+  const { error: updateError } = await client
+    .from("listings")
+    .update({
+      vinted_account_id: vintedAccountId,
+      vinted_item_id: newVintedItemId,
+      vinted_url: newVintedUrl,
+      vinted_status: "online",
+      synced_at: new Date().toISOString(),
+      status: "en_stock",
+    })
+    .eq("id", listingId);
+  if (updateError) {
+    logger.error("rebindListingToVintedItem : mise a jour echouee", { listingId, error: updateError.message });
+    return { ok: false, found: true, alreadySold: false, previousVintedItemId };
+  }
+
+  return { ok: true, found: true, alreadySold: false, previousVintedItemId };
+}
+
+// Une synchro wardrobe declenchee pendant/juste apres une republication (ex.
+// la reconciliation post-submit du CAS B, voir handlePublishListing.ts) peut
+// decouvrir le nouvel item Vinted AVANT que rebindListingToVintedItem()
+// ci-dessus n'ait rattache la ligne ORIGINALE -- recordListings() ne trouve
+// alors aucune ligne existante portant ce vinted_item_id et en INSERE une
+// nouvelle. Cette fonction retrouve un tel doublon APRES le rebind (donc
+// strictement sur vinted_item_id, jamais sur titre/prix -- deux annonces
+// differentes peuvent legitimement partager les deux, voir la mission).
+export async function findDuplicateListingId(
+  vintedAccountId: string,
+  vintedItemId: string,
+  excludeListingId: string
+): Promise<string | null> {
+  const valid = await getValidAccessToken();
+  if (!valid) return null;
+  const client = supabaseWithToken(valid.accessToken);
+  const { data, error } = await client
+    .from("listings")
+    .select("id")
+    .eq("vinted_account_id", vintedAccountId)
+    .eq("vinted_item_id", vintedItemId)
+    .neq("id", excludeListingId)
+    .maybeSingle();
+  if (error) {
+    // Inclut le cas ou PostgREST rejette .maybeSingle() parce que PLUS d'une
+    // ligne correspond -- volontairement PAS de .limit(1) pour masquer ce
+    // cas : mieux vaut echouer bruyamment (aucune fusion tentee) que de
+    // choisir arbitrairement laquelle fusionner (voir la mission -- jamais
+    // un choix au hasard).
+    logger.error("findDuplicateListingId a echoue", error.message);
+    return null;
+  }
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+// Suppression definitive d'une ligne `listings` -- utilisee UNIQUEMENT pour
+// fusionner un doublon fraichement cree par une synchro concurrente (voir
+// findDuplicateListingId ci-dessus), jamais pour une annonce reelle
+// distincte. listing_metric_snapshots/listing_recommendation_log portent
+// `on delete cascade` (verifie dans les migrations), action_log porte
+// `on delete set null` (l'historique d'actions n'est jamais perdu) --
+// suppression sure du point de vue de l'integrite referentielle.
+export async function deleteListingRow(listingId: string): Promise<boolean> {
+  const valid = await getValidAccessToken();
+  if (!valid) return false;
+  const client = supabaseWithToken(valid.accessToken);
+  const { error } = await client.from("listings").delete().eq("id", listingId);
+  if (error) {
+    logger.error("deleteListingRow a echoue", { listingId, error: error.message });
+    return false;
+  }
+  return true;
 }
 
 // Import intelligent (Partie 2, sprint extension V1) : contrairement a
@@ -556,6 +833,21 @@ async function recordImportSnapshot(
   }
 }
 
+// Mission "PHOTOS PERDUES APRES REPUBLICATION" (2026-08-17) : regle de
+// fusion PURE (testable en isolation) -- invariant produit demande
+// explicitement : "les photos historiques locales doivent etre conservees
+// tant qu'une nouvelle source complete et explicitement valide ne les
+// remplace pas". "Complete" est traduit ici par la comparaison la plus
+// simple et la plus sure disponible sans inspecter le CONTENU des URLs
+// (ResellOS n'a aucun moyen de savoir si une URL individuelle est valide) :
+// un nombre de photos AU MOINS EGAL a l'existant. Une extraction qui en
+// remonte MOINS ne remplace jamais -- l'existant est conserve tel quel,
+// jamais complete/reconstruit artificiellement (demande explicite : "ne
+// reconstruis pas artificiellement 5 photos a partir d'une seule").
+export function mergeImageUrls(existingUrls: string[], incomingUrls: string[]): string[] {
+  return incomingUrls.length >= existingUrls.length ? incomingUrls : existingUrls;
+}
+
 export async function recordSingleItemImport(
   vintedUsername: string,
   item: SingleItemPayload
@@ -589,7 +881,7 @@ export async function recordSingleItemImport(
 
   const { data: existing, error: selectError } = await client
     .from("listings")
-    .select("id, vinted_sync_status, views, favourites, vinted_status")
+    .select("id, vinted_sync_status, views, favourites, vinted_status, image_urls")
     .eq("vinted_account_id", vintedAccountId)
     .eq("vinted_item_id", item.vintedItemId)
     .maybeSingle();
@@ -609,6 +901,24 @@ export async function recordSingleItemImport(
   // ancien numero manuel.
   const { title: cleanTitle } = extractSkuFromTitle(item.title);
 
+  // Mission "PHOTOS PERDUES APRES REPUBLICATION" (2026-08-17) -- CAUSE REELLE
+  // confirmee par audit direct : recordSingleItemImport() ecrivait jusqu'ici
+  // item.imageUrls SANS CONDITION, y compris quand cette fonction est
+  // appelee automatiquement par enrichListingIfNeeded() (enrichListing.ts)
+  // pendant une republication -- ce chemin visite la page Vinted de
+  // l'ANCIENNE annonce, qui peut etre devenue masquee/supprimee/introuvable
+  // (exactement le cas qui declenche le bandeau "n'est plus en ligne sur
+  // Vinted" dans PublishConfirmationModal.tsx). Sur une telle page,
+  // extractPhotoUrls() (itemSelectors.ts, purement DOM) ne trouve plus les
+  // vignettes reelles et ne remonte qu'un extrait degrade (souvent 1 photo
+  // residuelle, parfois 0) -- ecrit tel quel, ce degrade EFFACAIT
+  // silencieusement un historique de 5 photos reelles capture bien avant.
+  // mergeImageUrls() (export pour test) applique desormais l'invariant
+  // produit demande explicitement : ne jamais degrader `image_urls` -- une
+  // nouvelle extraction ne remplace l'existant que si elle en contient AU
+  // MOINS AUTANT (source complete ou genuinement plus riche), jamais moins.
+  const image_urls = mergeImageUrls(existing?.image_urls ?? [], item.imageUrls);
+
   const vintedFields = {
     title: cleanTitle,
     description: item.description ?? "",
@@ -619,7 +929,7 @@ export async function recordSingleItemImport(
     material: item.material ?? "",
     condition: item.condition ?? "",
     price: item.price ?? 0,
-    image_urls: item.imageUrls,
+    image_urls,
     vinted_url: item.vintedUrl,
     synced_at: syncedAt,
     // Reconciliation explicite (bug reel demontre le 2026-07-16) : ce

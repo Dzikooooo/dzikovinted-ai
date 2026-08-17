@@ -69,6 +69,48 @@ export function waitForElement<T extends Element = Element>(
   });
 }
 
+// Variante de waitForElement pour un element qu'aucun selecteur CSS ne peut
+// cibler de facon fiable (ex. un bouton identifie par son texte visible
+// exact, aucun data-testid/selecteur confirme en direct -- voir
+// deleteFlowSelectors.ts). `finder` est reevalue a chaque mutation du
+// sous-arbre, jamais un sleep fixe, meme discipline que waitForElement.
+export function waitForElementMatching<T extends Element>(
+  finder: () => T | null,
+  options: WaitOptions & { description?: string } = {}
+): Promise<T> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, root = document, description } = options;
+
+  return new Promise((resolve, reject) => {
+    const existing = finder();
+    if (existing) {
+      resolve(existing);
+      return;
+    }
+
+    const observeTarget = root instanceof Document ? root.body : root;
+    const observer = new MutationObserver(() => {
+      const found = finder();
+      if (found) {
+        cleanup();
+        resolve(found);
+      }
+    });
+
+    const timer = setTimeout(() => {
+      cleanup();
+      const suffix = description ? ` pour "${description}"` : "";
+      reject(new WaitTimeoutError(`waitForElementMatching: délai dépassé (${timeoutMs}ms)${suffix}`));
+    }, timeoutMs);
+
+    function cleanup() {
+      observer.disconnect();
+      clearTimeout(timer);
+    }
+
+    observer.observe(observeTarget, { childList: true, subtree: true, attributes: true });
+  });
+}
+
 // Attend qu'un predicat arbitraire devienne vrai (ex. "le bouton n'est plus
 // disabled", "il y a N vignettes dans la grille") - re-evalue a chaque
 // mutation du sous-arbre plutot qu'a intervalle fixe.

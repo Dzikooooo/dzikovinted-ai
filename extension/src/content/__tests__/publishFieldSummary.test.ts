@@ -42,15 +42,25 @@ describe("computeManualFields", () => {
     expect(manual.some((f) => f.startsWith("Taille du colis"))).toBe(true);
   });
 
-  it("reports 'donnée manquante' for every attribute ResellOS genuinely has no value for", () => {
+  it("reports 'donnée manquante' for genuinely mandatory attributes ResellOS has no value for", () => {
     const manual = computeManualFields(makePayload({ size: null, brand: null, color: null, material: null }));
     expect(manual).toContain("Marque : donnée manquante (à choisir sur Vinted)");
     expect(manual).toContain("Taille : donnée manquante (à choisir sur Vinted)");
-    expect(manual).toContain("Couleur : donnée manquante (à choisir sur Vinted)");
-    expect(manual).toContain("Matière : donnée manquante (à choisir sur Vinted)");
     // Catégorie/État restent renseignés dans ce payload -- jamais "manquant" a tort.
     expect(manual).toContain("Catégorie : Pulls (à sélectionner sur Vinted)");
     expect(manual).toContain("État : Très bon état (à sélectionner sur Vinted)");
+  });
+
+  // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : Couleur/Matière
+  // sont optionnels sur Vinted (voir publishSelectors.ts) -- jamais rapportes
+  // comme "donnée manquante" (qui se lit comme un blocage) quand ResellOS n'a
+  // simplement pas de valeur a proposer.
+  it("reports Couleur/Matière as facultatif (never 'donnée manquante') when ResellOS has no value -- both are optional on Vinted", () => {
+    const manual = computeManualFields(makePayload({ color: null, material: null }));
+    expect(manual).toContain("Couleur : facultatif sur Vinted, non renseigné par ResellOS (aucune action requise)");
+    expect(manual).toContain("Matière : facultatif sur Vinted, non renseigné par ResellOS (aucune action requise)");
+    expect(manual.some((f) => f.startsWith("Couleur : donnée manquante"))).toBe(false);
+    expect(manual.some((f) => f.startsWith("Matière : donnée manquante"))).toBe(false);
   });
 
   it("surfaces the real known value for every attribute ResellOS actually has -- 'Catégorie à sélectionner : Hommes Polos'", () => {
@@ -68,7 +78,7 @@ describe("computeManualFields", () => {
       "Taille : M (à sélectionner sur Vinted)",
       "Couleur : Noir (à sélectionner sur Vinted)",
       "Matière : Coton (à sélectionner sur Vinted)",
-      "Taille du colis : Moyen (à sélectionner sur Vinted)",
+      "Taille du colis : Moyen demandé -- ResellOS ne sélectionne jamais ce champ, Vinted affiche son propre choix (vérifie/corrige-le toi-même avant de publier)",
     ]);
   });
 
@@ -86,8 +96,26 @@ describe("computeManualFields", () => {
   });
 
   it("labels package size with its real French name (small/medium/large)", () => {
-    expect(computeManualFields(makePayload({ packageSize: "small" }))).toContain("Taille du colis : Petit (à sélectionner sur Vinted)");
-    expect(computeManualFields(makePayload({ packageSize: "large" }))).toContain("Taille du colis : Grand (à sélectionner sur Vinted)");
+    expect(computeManualFields(makePayload({ packageSize: "small" })).some((f) => f.startsWith("Taille du colis : Petit demandé"))).toBe(
+      true
+    );
+    expect(computeManualFields(makePayload({ packageSize: "large" })).some((f) => f.startsWith("Taille du colis : Grand demandé"))).toBe(
+      true
+    );
+  });
+
+  // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : preuve live --
+  // Vinted affichait "Petit" (son propre defaut) alors que le payload
+  // demandait "Moyen" -- le libelle ne doit jamais laisser croire que
+  // ResellOS a applique/confirme la valeur demandee, ce champ n'etant jamais
+  // automatise (aucun code de ce fichier n'ecrit sur les cellules de taille
+  // de colis).
+  it("never implies ResellOS applied or confirmed the requested package size -- always states it never touches this field", () => {
+    const line = computeManualFields(makePayload({ packageSize: "medium" })).find((f) => f.startsWith("Taille du colis"));
+    expect(line).toBe(
+      "Taille du colis : Moyen demandé -- ResellOS ne sélectionne jamais ce champ, Vinted affiche son propre choix (vérifie/corrige-le toi-même avant de publier)"
+    );
+    expect(line).not.toContain("à sélectionner sur Vinted");
   });
 });
 

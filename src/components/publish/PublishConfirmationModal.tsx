@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Package, AlertTriangle } from 'lucide-react';
+import { X, Package, AlertTriangle, Info } from 'lucide-react';
 import AccountAvatar from '../ui/AccountAvatar';
 import { Modal } from '../ui/Modal';
 import type { Listing, VintedAccount } from '../../lib/types';
@@ -21,9 +21,9 @@ const PACKAGE_SIZE_OPTIONS: { value: PackageSize; label: string; hint: string }[
 // Accepte null (Listing.category peut reellement l'etre, voir types.ts) --
 // bug confirme le 2026-07-23 : category.toLowerCase() plantait sans garde
 // pour toute annonce importee/synchronisee sans categorie jamais capturee.
-// checkListingHasRequiredVintedFields (checks.ts) bloque desormais
-// publish_listing en amont dans ce cas, mais cette fonction reste
-// defensive independamment de cette garde.
+// Aucun check ne bloque plus publish_listing/republish_listing sur une
+// categorie manquante (retire le 2026-08-11, voir publishListing.ts) --
+// cette fonction reste defensive independamment de cette garde.
 function defaultPackageSize(category: string | null): PackageSize {
   const normalized = (category ?? '').toLowerCase();
   if (/(chaussure|sac|accessoire|bijou|montre)/.test(normalized)) return 'small';
@@ -36,9 +36,9 @@ interface PublishConfirmationModalProps {
   account: VintedAccount;
   onCancel: () => void;
   onConfirm: (packageSize: PackageSize) => void;
-  // true quand l'annonce a deja un vinted_item_id (etait publiee, ne l'est
-  // plus reellement -- voir checks.ts::checkListingNeedsRepublish). Le
-  // formulaire de confirmation reste identique (memes champs a valider),
+  // true quand l'annonce a deja un vinted_item_id (deja publiee, en ligne ou
+  // non -- voir checks.ts::checkListingRepublishEligible). Le formulaire de
+  // confirmation reste identique (memes champs a valider),
   // seul le libelle change pour ne jamais laisser croire a une
   // "reactivation" de l'ancienne fiche Vinted -- il s'agit toujours d'une
   // creation.
@@ -67,6 +67,19 @@ export default function PublishConfirmationModal({
       </div>
 
       <div className="space-y-4">
+        {/* Republication assistee (2026-08-11) : jamais de coche ici -- ce
+            n'est qu'une annonce de ce que ResellOS VA TENTER, pas encore une
+            confirmation (voir PublishProgressModal pour l'etat des lieux reel,
+            rapporte apres coup). Purement informatif, identique pour publier
+            et republier. */}
+        <div className="flex items-start gap-3 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3">
+          <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-gray-400 leading-relaxed">
+            ResellOS ouvre Vinted et préremplit titre, description, prix et photos. La catégorie, l'état et les
+            autres attributs restent à choisir toi-même sur Vinted (obligatoire côté Vinted), et c'est toi qui
+            cliques sur le bouton final -- ResellOS ne publie jamais automatiquement à ta place.
+          </p>
+        </div>
         {isRepublish && (
           <div className="flex items-start gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3">
             <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />

@@ -87,6 +87,14 @@ export const SIZE_GRID_TRIGGER_SELECTOR = '[data-testid="category-size-single-gr
 export const CONDITION_LIST_TRIGGER_SELECTOR = '[data-testid="category-condition-single-list-input"]';
 export const COLOR_DROPDOWN_TRIGGER_SELECTOR = '[data-testid="color-select-dropdown-input"]'; // optionnel, max 2
 export const MATERIAL_LIST_TRIGGER_SELECTOR = '[data-testid="category-material-multi-list-input"]'; // optionnel ("recommande")
+// Mission "MATIERE : MULTI-SELECT" (2026-08-16) : preuve live directe fournie
+// par l'utilisateur (diagnostic dedie sur /items/new) -- <input readonly
+// id="material">, meme architecture que le trigger Marque. Conteneur REEL une
+// fois ouvert : "category-material-multi-list-content", DIFFERENT du
+// conteneur Categorie (CATEGORY_DROPDOWN_CONTENT_SELECTOR ci-dessus) que
+// l'ancien code reutilisait a tort pour ce champ -- jamais valide
+// independamment jusqu'a cette preuve, cause probable des echecs observes.
+export const MATERIAL_LIST_CONTENT_SELECTOR = '[data-testid="category-material-multi-list-content"]';
 
 // --- Prix ---
 export const PRICE_INPUT_SELECTOR = '[data-testid="price-input--input"]';
