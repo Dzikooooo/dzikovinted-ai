@@ -21,10 +21,15 @@ function markVisible(el: HTMLElement): void {
 
 // containerText concatene sans separateur, EXACTEMENT comme observe en live
 // -- aucune supposition sur un separateur qui n'existe pas dans le DOM reel.
-function makeConditionOption(id: number, containerText: string): HTMLElement {
+// role par defaut "radio" : mission "ROUND CONDITION / ETAT -- correctif
+// role" (2026-08-19), valeur REELLEMENT observee en live aujourd'hui (le
+// role="button" de la mission du 2026-08-13 ne l'est plus) -- garde
+// parametrable pour les tests qui verifient explicitement le repli de
+// compatibilite "button" et le rejet d'un role non supporte.
+function makeConditionOption(id: number, containerText: string, role: string = "radio"): HTMLElement {
   const container = document.createElement("div");
   container.setAttribute("data-testid", `condition-${id}`);
-  container.setAttribute("role", "button");
+  container.setAttribute("role", role);
   markVisible(container);
 
   // Preuve live : ces sous-elements existent (voir ATTRIBUTE_DROPDOWN_DOM_DIFF,
@@ -105,12 +110,56 @@ describe("readConditionOptionCandidates", () => {
     expect(testIds).not.toContain("condition-radio-1--text");
   });
 
-  it("ignores a condition-{id} element without role=button (not a real leaf container)", () => {
-    const notAButton = document.createElement("div");
-    notAButton.setAttribute("data-testid", "condition-9");
-    document.body.appendChild(notAButton);
+  it("ignores a condition-{id} element without any role attribute (not a real leaf container)", () => {
+    const noRole = document.createElement("div");
+    noRole.setAttribute("data-testid", "condition-9");
+    document.body.appendChild(noRole);
 
     expect(readConditionOptionCandidates()).toEqual([]);
+  });
+
+  // Mission "ROUND CONDITION / ETAT -- correctif role" (2026-08-19) : cause
+  // racine confirmee en live -- Vinted a change role="button" (preuve du
+  // 2026-08-13) en role="radio" pour ces conteneurs. Les 5 tests suivants
+  // couvrent exactement les cas demandes pour cette regression.
+  it("recognizes condition-{id} with role=radio, visible -- the role actually used by Vinted today", () => {
+    const container = makeConditionOption(2, "Très bon étatTrès peu porté", "radio");
+    expect(readConditionOptionCandidates().map((c) => c.containerTestId)).toEqual(["condition-2"]);
+    expect(container.getAttribute("role")).toBe("radio");
+  });
+
+  it("still recognizes condition-{id} with role=button, visible -- compatibility fallback for the older DOM variant", () => {
+    makeConditionOption(2, "Très bon étatTrès peu porté", "button");
+    expect(readConditionOptionCandidates().map((c) => c.containerTestId)).toEqual(["condition-2"]);
+  });
+
+  it("ignores condition-{id} with an unsupported role (neither radio nor button)", () => {
+    makeConditionOption(2, "Très bon étatTrès peu porté", "option");
+    expect(readConditionOptionCandidates()).toEqual([]);
+  });
+
+  it("ignores condition-{id} with role=radio when invisible (offsetParent null, no client rects)", () => {
+    const container = document.createElement("div");
+    container.setAttribute("data-testid", "condition-2");
+    container.setAttribute("role", "radio");
+    container.appendChild(document.createTextNode("Très bon étatTrès peu porté"));
+    document.body.appendChild(container);
+    // Aucun markVisible() ici -- jsdom laisse offsetParent/getClientRects()
+    // dans leur etat "invisible" par defaut, exactement le cas a couvrir.
+
+    expect(readConditionOptionCandidates()).toEqual([]);
+  });
+
+  it("matches 'Très bon état' to condition-2 end-to-end with role=radio (the real live DOM shape)", () => {
+    makeConditionOption(6, "Neuf avec étiquetteJamais porté, avec étiquette d'origine", "radio");
+    makeConditionOption(1, "Neuf sans étiquetteArticle neuf, jamais porté", "radio");
+    makeConditionOption(2, "Très bon étatTrès peu porté, peut présenter quelques légères traces d'usure", "radio");
+    makeConditionOption(3, "Bon étatPorté mais en bon état general", "radio");
+    makeConditionOption(4, "SatisfaisantArticle use, avec des signes d'usure visibles", "radio");
+
+    const result = matchConditionOption("Très bon état", readConditionOptionCandidates());
+    expect(result.reason).toBe("unique_match");
+    expect(result.matched?.containerTestId).toBe("condition-2");
   });
 
   it("reads the container's own concatenated text even when -title/-content/-suffix children have no readable text (proven live: title/content are unreadable for every real candidate)", () => {

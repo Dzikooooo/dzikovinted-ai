@@ -49,10 +49,26 @@ export interface ConditionOptionCandidate {
   containerText: string;
 }
 
-// Verifie par lecture live sur condition-1/2/3/4/6 : role="button", isVisible:true.
+// Mission "ROUND CONDITION / ETAT -- correctif role" (2026-08-19) : CAUSE
+// RACINE confirmee en live -- les 5 conteneurs condition-{id} portent
+// desormais role="radio" (pas "button"), regression du DOM Vinted survenue
+// depuis la preuve live du 2026-08-13 (qui avait confirme role="button" a
+// l'epoque). "radio" est donc la valeur ATTENDUE aujourd'hui ; "button" est
+// conserve en repli de compatibilite pour ne jamais regresser si Vinted
+// revient a l'ancienne variante (ou fait cohabiter les deux selon le
+// contexte) -- CONDITION_OPTION_CONTAINER_VALID_ROLES n'est JAMAIS elargi
+// au-dela de ces deux valeurs deja prouvees en live, jamais un role devine.
+const CONDITION_OPTION_CONTAINER_VALID_ROLES = new Set(["radio", "button"]);
+
 function isConditionOptionContainer(el: HTMLElement): boolean {
   const testId = el.getAttribute("data-testid") ?? "";
-  return CONDITION_OPTION_CONTAINER_REGEX.test(testId) && el.getAttribute("role") === "button" && isVisible(el);
+  const role = el.getAttribute("role");
+  return (
+    CONDITION_OPTION_CONTAINER_REGEX.test(testId) &&
+    role !== null &&
+    CONDITION_OPTION_CONTAINER_VALID_ROLES.has(role) &&
+    isVisible(el)
+  );
 }
 
 // Source CONFIRMEE LIVE (2026-08-13) : el.textContent est la seule lecture
