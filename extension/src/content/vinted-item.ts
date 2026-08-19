@@ -211,33 +211,52 @@ function waitForLdJsonSettled(timeoutMs = 10000): Promise<boolean> {
   });
 }
 
-// Attend un evenement "click" REEL (isTrusted:true) sur `el`, jusqu'a
-// `timeoutMs`. isTrusted est une propriete native du navigateur, jamais
-// falsifiable par du JavaScript (synthetique ou non) -- seul signal fiable
-// pour distinguer un vrai clic utilisateur d'un effet de bord quelconque
-// (navigation, re-render, disparition DOM) qui n'a rien a voir avec une
-// action de l'utilisateur. capture:true : intercepte l'evenement au plus
-// tot dans sa phase de descente, avant qu'un eventuel stopPropagation() du
-// gestionnaire propre de Vinted ne puisse l'empecher d'atteindre ce
-// listener (les deux ecoutent le MEME element, capture et target restent
-// toujours executes avant que stopPropagation n'affecte quoi que ce soit
-// d'autre sur ce meme noeud).
+// Attend un evenement "click" REEL (isTrusted:true) sur l'element resolu par
+// `resolveElement`, jusqu'a `timeoutMs`. isTrusted est une propriete native
+// du navigateur, jamais falsifiable par du JavaScript (synthetique ou non)
+// -- seul signal fiable pour distinguer un vrai clic utilisateur d'un effet
+// de bord quelconque (navigation, re-render, disparition DOM) qui n'a rien a
+// voir avec une action de l'utilisateur.
+//
+// BUG REEL confirme en test live (mission "ROUND DELETE CONFIRM -- reference
+// figee", 2026-08-19) : le clic humain reel a bien ete traite par Vinted
+// (navigation vers /member/{userId} observee), mais jamais detecte ici --
+// confirm_click_timeout apres 90s. Cause racine : le listener etait attache
+// DIRECTEMENT sur la reference DOM `confirmButton` capturee une seule fois
+// avant l'attente (potentiellement longue, jusqu'a 90s). Si Vinted
+// re-rend/remplace ce bouton entre-temps (React), le clic humain reel
+// atterrit sur un NOUVEAU noeud DOM totalement invisible pour un listener
+// attache a l'ancien -- exactement la meme classe de bug deja identifiee et
+// corrigee ailleurs (voir matchesHumanClick() dans
+// attributeDropdownDiagnostics.ts). Corrige ici en reprenant la meme
+// philosophie : ecoute deleguee au niveau `document`, en phase capture
+// (intercepte l'evenement au plus tot dans sa descente, avant qu'un eventuel
+// stopPropagation() du gestionnaire propre de Vinted ne puisse l'empecher
+// d'atteindre ce listener), et `resolveElement()` est appele A CHAQUE clic --
+// jamais une reference figee -- pour toujours cibler le bouton reellement
+// present dans le DOM au moment du clic.
 // Exportee pour testabilite -- jsdom ne peut jamais produire un evenement
 // avec isTrusted:true (aucun script, y compris un test, ne peut le
-// falsifier -- c'est precisement la garantie recherchee ici), donc cette
-// fonction est testee directement avec un element factice dont on controle
-// isTrusted a la main, plutot que via un vrai dispatchEvent().
-export function waitForTrustedClick(el: HTMLElement, timeoutMs: number): Promise<boolean> {
+// falsifier -- c'est precisement la garantie recherchee ici), et refuse
+// meme Object.defineProperty() pour le reecrire sur une vraie instance de
+// MouseEvent ("Cannot redefine property"). Les tests espionnent donc
+// document.addEventListener("click", ...) pour recuperer directement le
+// callback enregistre par cette fonction, puis l'invoquent avec un objet
+// minimal {isTrusted, target} -- jamais un vrai dispatchEvent().
+export function waitForTrustedClick(resolveElement: () => HTMLElement | null, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
     function onClick(e: MouseEvent): void {
       if (!e.isTrusted || settled) return;
+      const current = resolveElement();
+      const target = e.target as Node | null;
+      if (!current || !target || !current.contains(target)) return;
       settled = true;
       cleanup();
       resolve(true);
     }
     function cleanup(): void {
-      el.removeEventListener("click", onClick, true);
+      document.removeEventListener("click", onClick, true);
       clearTimeout(timer);
     }
     const timer = setTimeout(() => {
@@ -246,7 +265,7 @@ export function waitForTrustedClick(el: HTMLElement, timeoutMs: number): Promise
       cleanup();
       resolve(false);
     }, timeoutMs);
-    el.addEventListener("click", onClick, true);
+    document.addEventListener("click", onClick, true);
   });
 }
 
@@ -314,9 +333,8 @@ export async function handleDeleteListing(payload: DeleteListingPayload): Promis
   }
   reportDeleteProgress("modal_confirmed");
 
-  let confirmButton: HTMLButtonElement;
   try {
-    confirmButton = await waitForElementMatching(() => findDeleteConfirmButton(document), {
+    await waitForElementMatching(() => findDeleteConfirmButton(document), {
       timeoutMs: 8000,
       description: `bouton "${DELETE_CONFIRM_TEXT}"`,
     });
@@ -353,7 +371,7 @@ export async function handleDeleteListing(payload: DeleteListingPayload): Promis
   // partir d'effets de bord (navigation, disparition DOM) qui peuvent
   // survenir pour des raisons totalement etrangeres a un clic utilisateur.
   reportDeleteProgress("waiting_for_manual_confirm_click");
-  const humanClicked = await waitForTrustedClick(confirmButton, 90000);
+  const humanClicked = await waitForTrustedClick(() => findDeleteConfirmButton(document), 90000);
   if (!humanClicked) {
     reportDeleteResult({
       ok: false,

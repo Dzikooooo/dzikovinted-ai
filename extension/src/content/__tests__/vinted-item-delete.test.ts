@@ -388,55 +388,138 @@ describe("garde locale d'execution -- DELETE_LISTING reçu plusieurs fois dans l
 });
 
 describe("waitForTrustedClick", () => {
-  // jsdom (comme tout navigateur reel) ne peut jamais produire isTrusted:true
-  // sur un evenement dispatche par du script -- c'est precisement la
-  // garantie recherchee par cette fonction. Teste donc directement avec un
-  // element factice minimal (addEventListener/removeEventListener) dont on
-  // pilote isTrusted a la main, plutot qu'un vrai element DOM + dispatchEvent.
-  function makeClickTarget() {
-    const listeners: Array<(e: { isTrusted: boolean }) => void> = [];
-    const el = {
-      addEventListener: (_type: string, cb: (e: { isTrusted: boolean }) => void) => {
-        listeners.push(cb);
-      },
-      removeEventListener: (_type: string, cb: (e: { isTrusted: boolean }) => void) => {
-        const i = listeners.indexOf(cb);
-        if (i >= 0) listeners.splice(i, 1);
-      },
-    } as unknown as HTMLElement;
-    return {
-      el,
-      fireClick: (isTrusted: boolean) => {
-        for (const cb of [...listeners] as unknown as Array<(e: { isTrusted: boolean }) => void>) cb({ isTrusted });
-      },
-    };
+  // Mission "ROUND DELETE CONFIRM -- reference figee" (2026-08-19) :
+  // waitForTrustedClick() ecoute desormais `document` en phase capture et
+  // re-resout l'element cible A CHAQUE clic (voir commentaire d'en-tete dans
+  // vinted-item.ts). jsdom (comme tout navigateur reel) ne peut jamais
+  // produire isTrusted:true sur un evenement disptache par du script, ET
+  // (confirme en test) n'autorise meme pas Object.defineProperty() a
+  // reecrire isTrusted sur une VRAIE instance de MouseEvent ("Cannot
+  // redefine property"). Meme discipline que l'ancien makeClickTarget() :
+  // on espionne document.addEventListener("click", ...) pour recuperer
+  // directement le callback reellement enregistre par waitForTrustedClick,
+  // puis on l'invoque nous-memes avec un objet minimal {isTrusted, target}
+  // -- jamais un vrai dispatchEvent(). Un vrai DOM jsdom (document.body +
+  // vrais elements) reste utilise pour resolveElement()/`.contains()`, seul
+  // l'evenement lui-meme est simule.
+  function spyOnClickRegistration() {
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+    return { addSpy, removeSpy };
   }
+
+  type EventListenerSpy = ReturnType<typeof spyOnClickRegistration>["addSpy"];
+
+  function registeredClickListener(addSpy: EventListenerSpy): (e: MouseEvent) => void {
+    const call = addSpy.mock.calls.find((c) => c[0] === "click");
+    if (!call) throw new Error("aucun listener 'click' enregistre sur document");
+    return call[1] as (e: MouseEvent) => void;
+  }
+
+  function fireClick(addSpy: EventListenerSpy, isTrusted: boolean, target: Node | null): void {
+    const listener = registeredClickListener(addSpy);
+    listener({ isTrusted, target } as unknown as MouseEvent);
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
   });
 
-  it("résout true dès qu'un clic isTrusted:true est reçu", async () => {
-    const { el, fireClick } = makeClickTarget();
-    const promise = waitForTrustedClick(el, 90000);
-    fireClick(true);
+  it("résout true dès qu'un clic isTrusted:true atteint le bouton résolu", async () => {
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const { addSpy } = spyOnClickRegistration();
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 90000);
+    fireClick(addSpy, true, resolveButton());
     await expect(promise).resolves.toBe(true);
   });
 
-  it("ignore un clic isTrusted:false (synthétique) et continue d'attendre", async () => {
+  it("détecte le clic humain sur un NOUVEAU bouton qui a remplacé l'ancien (re-render Vinted) -- coeur du correctif", async () => {
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const { addSpy } = spyOnClickRegistration();
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 90000);
+
+    // Simule un re-render React qui remplace le noeud (l'ancienne reference
+    // capturee devient stale) : le bouton initial est retire du DOM, un
+    // NOUVEAU bouton identique (meme id, meme texte) le remplace.
+    const oldButton = document.getElementById("confirm") as HTMLButtonElement;
+    oldButton.remove();
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const newButton = document.getElementById("confirm") as HTMLButtonElement;
+    expect(newButton).not.toBe(oldButton);
+
+    // Le clic humain "cible" le nouveau noeud -- resolveElement() (rappele
+    // A CHAQUE clic par waitForTrustedClick) retourne bien newButton.
+    fireClick(addSpy, true, newButton);
+    await expect(promise).resolves.toBe(true);
+  });
+
+  it("ignore un clic isTrusted:true sur un AUTRE élément que celui résolu et continue d'attendre", async () => {
     vi.useFakeTimers();
-    const { el, fireClick } = makeClickTarget();
-    const promise = waitForTrustedClick(el, 5000);
-    fireClick(false);
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button><button id="other">Annuler</button>';
+    const { addSpy } = spyOnClickRegistration();
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 5000);
+    fireClick(addSpy, true, document.getElementById("other"));
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(promise).resolves.toBe(false);
+  });
+
+  it("ignore un clic isTrusted:false (synthétique) sur le bouton résolu et continue d'attendre", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const { addSpy } = spyOnClickRegistration();
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 5000);
+    fireClick(addSpy, false, resolveButton());
     await vi.advanceTimersByTimeAsync(5000);
     await expect(promise).resolves.toBe(false);
   });
 
   it("résout false après le délai si aucun clic n'est jamais reçu", async () => {
     vi.useFakeTimers();
-    const { el } = makeClickTarget();
-    const promise = waitForTrustedClick(el, 5000);
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 5000);
     await vi.advanceTimersByTimeAsync(5000);
     await expect(promise).resolves.toBe(false);
+  });
+
+  it("retire proprement le listener 'click' de document après un succès (pas de fuite)", async () => {
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const { addSpy, removeSpy } = spyOnClickRegistration();
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 90000);
+    fireClick(addSpy, true, resolveButton());
+    await promise;
+
+    const clickAdds = addSpy.mock.calls.filter((c) => c[0] === "click");
+    const clickRemoves = removeSpy.mock.calls.filter((c) => c[0] === "click");
+    expect(clickAdds).toHaveLength(1);
+    expect(clickRemoves).toHaveLength(1);
+    expect(clickRemoves[0][1]).toBe(clickAdds[0][1]);
+  });
+
+  it("retire proprement le listener 'click' de document après un timeout (pas de fuite)", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
+    const { addSpy, removeSpy } = spyOnClickRegistration();
+    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
+    const promise = waitForTrustedClick(resolveButton, 5000);
+    await vi.advanceTimersByTimeAsync(5000);
+    await promise;
+
+    const clickAdds = addSpy.mock.calls.filter((c) => c[0] === "click");
+    const clickRemoves = removeSpy.mock.calls.filter((c) => c[0] === "click");
+    expect(clickAdds).toHaveLength(1);
+    expect(clickRemoves).toHaveLength(1);
+    expect(clickRemoves[0][1]).toBe(clickAdds[0][1]);
   });
 });
