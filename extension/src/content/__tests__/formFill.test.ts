@@ -124,7 +124,10 @@ describe("typeIntoBrandSearchInput", () => {
 describe("typeIntoPriceField -- sequence complete (mission ROUND PRIX, 2026-08-17)", () => {
   function captureAllEvents(input: HTMLInputElement): Array<{ type: string; isTrusted: boolean; key: string | null; code: string | null; inputType: string | null; data: string | null }> {
     const captured: Array<{ type: string; isTrusted: boolean; key: string | null; code: string | null; inputType: string | null; data: string | null }> = [];
-    for (const type of ["focus", "keydown", "keypress", "beforeinput", "input", "keyup", "change", "blur"]) {
+    // "focusout" ajoute (mission "ROUND PRIX -- focusout apres blur",
+    // 2026-08-19) -- doit etre observable pour prouver qu'il est bien
+    // dispatche, dans l'ordre, apres "blur".
+    for (const type of ["focus", "keydown", "keypress", "beforeinput", "input", "keyup", "change", "blur", "focusout"]) {
       input.addEventListener(type, (e) => {
         captured.push({
           type: e.type,
@@ -149,8 +152,10 @@ describe("typeIntoPriceField -- sequence complete (mission ROUND PRIX, 2026-08-1
 
     // focus (el.focus(), deja existant avant cette mission) puis les 4
     // evenements d'effacement pour une valeur cible vide (aucun caractere
-    // insere ensuite) -- ordre exact.
-    expect(captured.map((c) => c.type)).toEqual(["focus", "keydown", "beforeinput", "input", "keyup", "change", "blur"]);
+    // insere ensuite) -- ordre exact. "focusout" ajoute en dernier (mission
+    // "ROUND PRIX -- focusout apres blur", 2026-08-19) -- tout le reste de
+    // la sequence, jusqu'a "blur" inclus, reste rigoureusement identique.
+    expect(captured.map((c) => c.type)).toEqual(["focus", "keydown", "beforeinput", "input", "keyup", "change", "blur", "focusout"]);
     expect(captured.some((c) => c.type === "keypress")).toBe(false);
     const [, keydown, beforeinput, inputEvt, keyup] = captured;
     expect(keydown.key).toBe("Backspace");
@@ -166,7 +171,10 @@ describe("typeIntoPriceField -- sequence complete (mission ROUND PRIX, 2026-08-1
 
     await typeIntoPriceField(input, "24");
 
-    // focus + effacement (4) + 2 caracteres x 5 evenements + change + blur.
+    // focus + effacement (4) + 2 caracteres x 5 evenements + change + blur +
+    // focusout (ajoute mission "ROUND PRIX -- focusout apres blur",
+    // 2026-08-19) -- seul le dernier element differe de la sequence
+    // d'origine.
     expect(captured.map((c) => c.type)).toEqual([
       "focus",
       "keydown",
@@ -185,6 +193,7 @@ describe("typeIntoPriceField -- sequence complete (mission ROUND PRIX, 2026-08-1
       "keyup",
       "change",
       "blur",
+      "focusout",
     ]);
 
     const firstCharSequence = captured.slice(5, 10);
@@ -216,15 +225,65 @@ describe("typeIntoPriceField -- sequence complete (mission ROUND PRIX, 2026-08-1
     expect(constructedEvents.every((c) => c.isTrusted === false)).toBe(true);
   });
 
-  it("still emits change and blur at the very end, after all character sequences", async () => {
+  it("still emits change then blur after all character sequences, exactly as before this mission", async () => {
     const input = document.createElement("input");
     document.body.appendChild(input);
     const captured = captureAllEvents(input);
 
     await typeIntoPriceField(input, "7");
 
-    expect(captured.at(-2)?.type).toBe("change");
-    expect(captured.at(-1)?.type).toBe("blur");
+    expect(captured.at(-3)?.type).toBe("change");
+    expect(captured.at(-2)?.type).toBe("blur");
+  });
+
+  // Mission "ROUND PRIX -- focusout apres blur" (2026-08-19) : "blur" est un
+  // evenement natif NON-bubbling -- React delegue son ecoute d'evenements a
+  // la racine et n'ecoute donc jamais "blur" directement, seulement son
+  // equivalent bubbling "focusout", pour synthetiser en interne le onBlur
+  // React. Preuve live : le prix s'affichait correctement ("24,00 €") mais
+  // le POST reel /api/v2/item_upload/items partait avec price:null --
+  // symptome coherent avec un handler onBlur React jamais declenche faute de
+  // "focusout". Ces 3 tests couvrent exactement les points demandes : (1)
+  // focusout dispatche apres blur, (2) il bubble, (3) le reste de la
+  // sequence actuelle reste strictement inchange (couvert par les 2 tests
+  // d'ordre exact ci-dessus, deja mis a jour pour n'ajouter que "focusout"
+  // en toute derniere position).
+  it("dispatches focusout immediately after blur, as the very last event of the whole sequence", async () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const captured = captureAllEvents(input);
+
+    await typeIntoPriceField(input, "24");
+
+    expect(captured.at(-1)?.type).toBe("focusout");
+    expect(captured.at(-2)?.type).toBe("blur");
+  });
+
+  it("dispatches focusout as a bubbling event", async () => {
+    const parent = document.createElement("div");
+    const input = document.createElement("input");
+    parent.appendChild(input);
+    document.body.appendChild(parent);
+
+    let bubbledFocusoutSeen = false;
+    parent.addEventListener("focusout", (e) => {
+      bubbledFocusoutSeen = e.bubbles === true;
+    });
+
+    await typeIntoPriceField(input, "24");
+
+    expect(bubbledFocusoutSeen).toBe(true);
+  });
+
+  it("dispatches focusout with isTrusted:false, consistent with every other synthetic event in this sequence", async () => {
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const captured = captureAllEvents(input);
+
+    await typeIntoPriceField(input, "24");
+
+    const focusout = captured.find((c) => c.type === "focusout");
+    expect(focusout?.isTrusted).toBe(false);
   });
 
   it("derives a plausible KeyboardEvent.code for digits and the decimal separator", async () => {

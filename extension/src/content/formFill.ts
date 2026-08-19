@@ -239,6 +239,22 @@ export async function typeIntoPriceField(el: HTMLInputElement, value: string): P
   console.log(`[ResellOS][STEP] CHANGE_EVENT`, { field: fieldLabel, domValueAfter: el.value });
   el.dispatchEvent(new Event("blur", { bubbles: true }));
   console.log(`[ResellOS][STEP] BLUR_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+
+  // Mission "ROUND PRIX -- focusout apres blur" (2026-08-19) : "blur" est un
+  // evenement natif NON-bubbling -- un addEventListener("blur", ...) pose
+  // directement sur l'element le recevrait, mais React delegue son ecoute
+  // d'evenements a la racine (jamais element par element) et n'ecoute donc
+  // jamais "blur" nativement : il ecoute son equivalent BUBBLING, "focusout",
+  // pour synthetiser en interne le onBlur React. Preuve live : le prix
+  // s'affiche correctement ("24,00 €", masque de devise recalcule -- souvent
+  // une ecoute locale directe sur l'element, donc reçoit bien "blur") mais le
+  // POST reel /api/v2/item_upload/items part avec price:null (l'etat React
+  // commite au submit ne recoit jamais la valeur) -- symptome coherent avec
+  // un handler onBlur React jamais declenche faute de "focusout". N'AJOUTE
+  // rien d'autre : meme sequence clavier, meme setter, meme selecteur,
+  // uniquement ce dispatch supplementaire juste apres "blur".
+  el.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+  console.log(`[ResellOS][STEP] FOCUSOUT_EVENT`, { field: fieldLabel, domValueAfter: el.value });
 }
 
 // Mission "BRAND SEARCH INPUT LOCATOR" (2026-08-16) : les 3 tentatives
