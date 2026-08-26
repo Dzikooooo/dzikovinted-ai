@@ -7,6 +7,14 @@
 // complet reste uniquement consultable dans le panneau Diagnostic (journal).
 
 const KNOWN_PATTERNS: { pattern: RegExp; message: string }[] = [
+  // EN PREMIER, volontairement : /session/ juste en dessous matcherait aussi
+  // et dirait "reessaie dans un instant" -- or ici aucune nouvelle tentative
+  // ne peut aboutir, le refresh token est mort. Le seul geste utile est de se
+  // reconnecter depuis l'application.
+  {
+    pattern: /session_revoked/i,
+    message: "Ta session a expiré. Reconnecte-toi sur resellosapp.com puis relance l'appairage.",
+  },
   { pattern: /network|fetch/i, message: "Connexion réseau instable. Nouvelle tentative automatique." },
   { pattern: /refresh|expired|session/i, message: "Ta session a besoin d'être rafraîchie. Réessaie dans un instant." },
   { pattern: /rate limit|too many/i, message: "Trop de tentatives récentes. Réessaie dans quelques minutes." },

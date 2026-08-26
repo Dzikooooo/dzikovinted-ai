@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { logger } from "./logger";
+import { classifyRefreshFailure } from "./authErrors";
 
 // Gestion de session explicite et self-managed plutot que de compter sur
 // supabase.auth.setSession()/getSession() (gestion "ambiante" de
@@ -36,6 +37,40 @@ export async function writeStoredSession(session: StoredSession): Promise<void> 
 
 export async function clearStoredSession(): Promise<void> {
   await chrome.storage.local.remove(SESSION_KEY);
+}
+
+// Drapeau de session revoquee (2026-08-26). Il ne suffit pas d'effacer la
+// session : le popup afficherait alors "non appaire", indistinguable d'une
+// extension jamais appairee. Ce drapeau lui permet de dire la VRAIE cause --
+// "ta session a expire, reconnecte-toi" -- au lieu de laisser deviner.
+//
+// Stocke plutot que diffuse par message : le popup est le plus souvent FERME
+// au moment ou le rafraichissement echoue (le service worker travaille en
+// arriere-plan). Un chrome.runtime.sendMessage n'aurait aucun destinataire et
+// serait perdu ; un drapeau en storage attend la prochaine ouverture.
+const SESSION_REVOKED_KEY = "resellos_session_revoked";
+
+export async function markSessionRevoked(): Promise<void> {
+  await chrome.storage.local.set({ [SESSION_REVOKED_KEY]: true });
+  // Best-effort : si un popup est ouvert a cet instant, il se met a jour
+  // immediatement au lieu d'attendre son prochain sondage. L'absence de
+  // destinataire est le cas NORMAL, jamais une erreur a journaliser.
+  try {
+    await chrome.runtime.sendMessage({ type: "SESSION_REVOKED" });
+  } catch {
+    /* aucun popup ouvert -- le drapeau en storage prend le relais */
+  }
+}
+
+export async function isSessionRevoked(): Promise<boolean> {
+  const result = await chrome.storage.local.get(SESSION_REVOKED_KEY);
+  return result[SESSION_REVOKED_KEY] === true;
+}
+
+// Appele des qu'un appairage REUSSIT : sans cela le drapeau survivrait a la
+// reconnexion et le popup continuerait d'annoncer une session revoquee.
+export async function clearSessionRevoked(): Promise<void> {
+  await chrome.storage.local.remove(SESSION_REVOKED_KEY);
 }
 
 export function decodeJwtExpiry(token: string): number | null {
@@ -95,12 +130,27 @@ export async function getValidAccessToken(): Promise<{ accessToken: string; user
       logger.debug("getValidAccessToken: appel refreshSession()", { userId: stored.user_id });
       const { data, error } = await supabase.auth.refreshSession({ refresh_token: stored.refresh_token });
       if (error || !data.session) {
-        logger.warn("getValidAccessToken: refreshSession() a echoue, session effacee - re-appairage necessaire", {
+        // Deux issues tres differentes -- voir authErrors.ts. Effacer la
+        // session sur un simple incident reseau faisait perdre l'appairage
+        // pour une cause qui aurait disparu d'elle-meme.
+        const kind = classifyRefreshFailure({ message: error?.message ?? null, status: error?.status ?? null });
+
+        if (kind === "transient") {
+          logger.warn("getValidAccessToken: refreshSession() a echoue de facon TRANSITOIRE, session CONSERVEE", {
+            userId: stored.user_id,
+            errorMessage: error?.message ?? null,
+            errorStatus: error?.status ?? null,
+          });
+          return null;
+        }
+
+        logger.warn("getValidAccessToken: refresh token DEFINITIVEMENT invalide, session effacee - reconnexion necessaire", {
           userId: stored.user_id,
           errorMessage: error?.message ?? null,
           errorStatus: error?.status ?? null,
         });
         await clearStoredSession();
+        await markSessionRevoked();
         return null;
       }
 

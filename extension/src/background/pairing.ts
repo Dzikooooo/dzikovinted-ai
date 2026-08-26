@@ -1,6 +1,7 @@
 import { supabase, supabaseWithToken } from "./supabaseClient";
 import { logger } from "./logger";
-import { getValidAccessToken, writeStoredSession, clearStoredSession, decodeJwtExpiry } from "./session";
+import { SESSION_REVOKED_ERROR } from "./authErrors";
+import { getValidAccessToken, writeStoredSession, clearStoredSession, decodeJwtExpiry, isSessionRevoked, clearSessionRevoked } from "./session";
 import type { StatusResponse } from "../lib/messages";
 
 // Recoit la session Supabase deja ouverte dans l'app web (voir EXTENSION.md §3) -
@@ -42,6 +43,9 @@ export async function pair(accessToken: string, refreshToken: string): Promise<v
   // identite Vinted reelle ne puisse exister.
   const expiresAt = decodeJwtExpiry(accessToken) ?? Math.floor(Date.now() / 1000) + 3600;
   await writeStoredSession({ access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, user_id: userId });
+  // Le drapeau de revocation survivrait a la reconnexion sans cela, et le
+  // popup continuerait d'annoncer une session expiree alors qu'elle est neuve.
+  await clearSessionRevoked();
 
   logger.info("Session ecrite dans chrome.storage.local", { userId, expiresAt });
   logger.info("Appairage reussi");
@@ -59,7 +63,19 @@ export async function unpair(): Promise<void> {
 export async function getStatus(): Promise<StatusResponse> {
   const valid = await getValidAccessToken();
   if (!valid) {
-    return { paired: false, pairedUserId: null, vintedConnected: false, lastSyncedAt: null, lastError: null };
+    // Sans ce drapeau, une session REVOQUEE (refresh token mort) etait
+    // indistinguable d'une extension jamais appairee : meme ecran "non
+    // appaire", et l'utilisateur ne comprenait pas pourquoi son appairage
+    // avait disparu. On remonte donc une cause explicite -- traduite par
+    // popupErrorMessages.ts, jamais affichee brute.
+    const revoked = await isSessionRevoked();
+    return {
+      paired: false,
+      pairedUserId: null,
+      vintedConnected: false,
+      lastSyncedAt: null,
+      lastError: revoked ? SESSION_REVOKED_ERROR : null,
+    };
   }
 
   // Phase A : un seul compte visible dans le popup (le compte par defaut,

@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 // FONCTIONNE PAS ici (Chromium sans dictionnaire de cesure francais, verifie
 // en direct) ; le trait d'union conditionnel, lui, ne depend d'aucun
 // dictionnaire et donne "Multi- / plateforme.".
-const WORDS = ['Vinted', 'Débutant ou Pro', 'Multi­plateforme'];
+const WORDS = ['Vinted', 'Débutant ou Pro', 'Bientôt multi­plateforme'];
 
 // Mot le plus long, rendu en fantome invisible pour RESERVER la hauteur (voir
 // le commentaire du composant). Comparaison faite SANS les traits d'union
