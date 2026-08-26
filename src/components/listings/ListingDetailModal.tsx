@@ -66,12 +66,12 @@ function CurrentRecommendationSection({
   if (!recommendationState) return null;
 
   if (recommendationState.status === 'attendre') {
-    return <p className="text-xs text-gray-600">{recommendationState.message}</p>;
+    return <p className="text-xs text-gray-500">{recommendationState.message}</p>;
   }
 
   if (recommendationState.status === 'donnees_insuffisantes') {
     return (
-      <div className="flex items-start gap-2 text-gray-400">
+      <div className="flex items-start gap-2 text-gray-500">
         <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <p className="text-xs">{recommendationState.reason}</p>
       </div>
@@ -93,7 +93,7 @@ function CurrentRecommendationSection({
       <div className="flex items-start gap-2">
         <Lightbulb className="w-4 h-4 text-neon-500 flex-shrink-0 mt-0.5" />
         <div className="flex-1">
-          <p className="text-sm font-semibold text-gray-100">
+          <p className="text-sm font-semibold text-gray-900">
             {recommendationState.message}
             {recommendationState.confidence === 'standard' && (
               <span className="ml-1.5 text-xs font-normal text-neon-500/70">· à confirmer</span>
@@ -122,7 +122,7 @@ function CurrentRecommendationSection({
             type="button"
             onClick={handleIgnore}
             disabled={ignoring}
-            className="text-[11px] text-gray-600 hover:text-gray-400 disabled:opacity-50"
+            className="text-[11px] text-gray-500 hover:text-gray-500 disabled:opacity-50"
           >
             {ignoring ? 'Ignoré…' : 'Ignorer cette suggestion'}
           </button>
@@ -141,23 +141,23 @@ export function ListingDetailModal({ listing, score, recommendationState, onClos
     <Modal onClose={onClose} size="lg">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="w-14 h-14 rounded-xl bg-dark-400 border border-white/10 overflow-hidden flex-shrink-0">
+          <div className="w-14 h-14 rounded-xl bg-dark-400 border border-gray-200 overflow-hidden flex-shrink-0">
             {listing.image_urls?.[0] && <img src={listing.image_urls[0]} alt="" className="w-full h-full object-cover" />}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-gray-100 truncate">{listing.title}</p>
+            <p className="font-semibold text-gray-900 truncate">{listing.title}</p>
             <p className="text-xs text-gray-500">
               {listing.sku !== null && <span className="font-mono">#{listing.sku} · </span>}
               {[listing.brand, listing.category, listing.size].filter(Boolean).join(' · ') || '—'}
             </p>
           </div>
         </div>
-        <button onClick={onClose} aria-label="Fermer" className="text-gray-500 hover:text-gray-300 flex-shrink-0">
+        <button onClick={onClose} aria-label="Fermer" className="text-gray-500 hover:text-gray-700 flex-shrink-0">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400 mb-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 mb-3">
         <span className="flex items-center gap-1">
           <Clock className="w-3 h-3" /> En ligne depuis {Math.max(0, age)}j
         </span>
@@ -169,12 +169,12 @@ export function ListingDetailModal({ listing, score, recommendationState, onClos
         <span className="flex items-center gap-1">
           <Heart className="w-3 h-3" /> {listing.favourites ?? '—'}
         </span>
-        <span className="font-semibold text-gray-200">{formatEUR(listing.price)}</span>
+        <span className="font-semibold text-gray-800">{formatEUR(listing.price)}</span>
       </div>
 
       {score !== null && <OneScoreBar score={score} className="mb-4" />}
 
-      <div className="bg-surface-alt border border-white/5 rounded-xl p-4 mb-4">
+      <div className="bg-surface-alt border border-gray-200 rounded-xl p-4 mb-4">
         <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Recommandation actuelle</p>
         <CurrentRecommendationSection
           recommendationState={recommendationState}
@@ -188,7 +188,7 @@ export function ListingDetailModal({ listing, score, recommendationState, onClos
       <button
         type="button"
         onClick={() => setShowTimeline((v) => !v)}
-        className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 hover:text-gray-200"
+        className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-800"
       >
         {showTimeline ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         Historique de l'annonce

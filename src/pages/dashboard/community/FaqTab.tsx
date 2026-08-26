@@ -44,7 +44,7 @@ export function FaqTab() {
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
-        <p className="text-sm text-gray-400">Les réponses aux questions les plus fréquentes.</p>
+        <p className="text-sm text-gray-500">Les réponses aux questions les plus fréquentes.</p>
         {isAdmin && (
           <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
             Publier une question
@@ -67,7 +67,7 @@ export function FaqTab() {
           {groups.map(({ category, items: groupItems }) => (
             <div key={category}>
               <SectionLabel>{category}</SectionLabel>
-              <div className="bg-surface border border-white/5 rounded-2xl divide-y divide-white/5 overflow-hidden">
+              <div className="bg-surface border border-gray-200 rounded-2xl divide-y divide-gray-200 overflow-hidden">
                 {groupItems.map((item) => {
                   const expanded = expandedIds.has(item.id);
                   return (
@@ -75,38 +75,44 @@ export function FaqTab() {
                       <div className="flex items-center gap-2 group">
                         <button
                           onClick={() => toggleExpanded(item.id)}
-                          className="flex-1 flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-white/5 transition-colors"
+                          className="flex-1 flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-100 transition-colors"
                         >
                           <span className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-200">{item.title}</span>
+                            <span className="text-sm font-medium text-gray-800">{item.title}</span>
                             {item.status === 'draft' && <Badge label="Brouillon" tone="warning" />}
                           </span>
-                          <ChevronDown className={`w-4 h-4 text-gray-600 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          <ChevronDown className={`w-4 h-4 text-gray-500 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                         </button>
                         {isAdmin && (
                           <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                             <button
                               onClick={() => openEdit(item)}
                               aria-label="Modifier"
-                              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-600 hover:text-gray-300 transition-all"
+                              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => deleteItem(item.id)}
                               aria-label="Supprimer"
-                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-all"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         )}
                       </div>
-                      {expanded && (
-                        <div className="px-4 pb-4">
-                          <p className="text-sm text-gray-400 leading-relaxed whitespace-pre-line">{item.body}</p>
+                      {/* Motion (2026-08-25) : meme defaut que la FAQ de la
+                          landing -- montage/demontage instantane au clic.
+                          Reutilise le MEME systeme .faq-panel (index.css),
+                          jamais une seconde mecanique d'accordeon. */}
+                      <div className={`faq-panel ${expanded ? 'faq-panel-open' : ''}`}>
+                        <div>
+                          <div className="faq-panel-content px-4 pb-4">
+                            <p className="text-sm text-gray-500 leading-relaxed whitespace-pre-line">{item.body}</p>
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}

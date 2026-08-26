@@ -17,13 +17,13 @@ interface SegmentedControlProps<T extends string> {
 // nouvel usage.
 export function SegmentedControl<T extends string>({ options, value, onChange, fullWidth = false, className = '' }: SegmentedControlProps<T>) {
   return (
-    <div className={`flex bg-surface-alt border border-white/10 rounded-xl overflow-hidden ${className}`}>
+    <div className={`flex bg-surface-alt border border-gray-200 rounded-xl overflow-hidden ${className}`}>
       {options.map((option) => (
         <button
           key={option.value}
           onClick={() => onChange(option.value)}
           className={`px-4 py-2.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-400 ${fullWidth ? 'flex-1' : ''} ${
-            value === option.value ? 'bg-neon-600 text-white' : 'text-gray-400 hover:text-white'
+            value === option.value ? 'bg-neon-600 text-white' : 'text-gray-500 hover:text-gray-900'
           }`}
         >
           {option.label}

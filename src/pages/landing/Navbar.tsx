@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
-import { Logo } from '../../components/ui/Logo';
+import { Wordmark } from '../../components/ui/Wordmark';
 
 export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage) => void; currentPage?: AppPage }) {
   const [open, setOpen] = useState(false);
   const linkClass = (page: AppPage) =>
-    `transition duration-300 ${currentPage === page ? 'text-neon-500 font-semibold' : 'text-gray-400 hover:text-white'}`;
+    `transition duration-300 ${currentPage === page ? 'text-[#007782] font-semibold' : 'text-gray-600 hover:text-gray-900'}`;
 
   // Fonctionnalites/Tarifs sont des ancres vers des sections qui n'existent
   // que sur la page d'accueil (Features.tsx/Pricing.tsx) -- depuis une autre
@@ -24,7 +24,7 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
 
   return (
     <nav className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-7xl">
-      <div className="bg-black/95 backdrop-blur-3xl border border-[#2B2B2B] rounded-2xl shadow-[0_15px_50px_rgba(0,0,0,.45)]">
+      <div className="bg-white/95 backdrop-blur-3xl border border-gray-200 rounded-2xl shadow-[0_15px_50px_rgba(0,0,0,.08)]">
 
         <div className="h-16 px-6 flex items-center justify-between">
 
@@ -34,17 +34,7 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
             onClick={() => onNavigate('landing')}
             className="flex items-center gap-1"
           >
-            <Logo variant="transparent" size={40} className="transition-transform duration-300 hover:scale-[1.02]" />
-
-            <div className="flex items-end">
-              <span className="text-[1.65rem] font-black tracking-tight text-white leading-none">
-                ESELL
-              </span>
-
-              <span className="ml-1 text-neon-500 text-[1.25rem] font-black leading-none mb-[2px]">
-                OS
-              </span>
-            </div>
+            <Wordmark size="xl" logoClassName="transition-transform duration-300 hover:scale-[1.02]" />
           </button>
 
           {/* Desktop */}
@@ -60,14 +50,14 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
 
             <button
               onClick={() => goToSection('features')}
-              className="text-gray-400 hover:text-white transition duration-300"
+              className="text-gray-600 hover:text-gray-900 transition duration-300"
             >
               Fonctionnalités
             </button>
 
             <button
               onClick={() => goToSection('pricing')}
-              className="text-gray-400 hover:text-white transition duration-300"
+              className="text-gray-600 hover:text-gray-900 transition duration-300"
             >
               Tarifs
             </button>
@@ -91,7 +81,7 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
                 sessionStorage.setItem('resellos:authMode', 'register');
                 onNavigate("auth");
               }}
-              className="bg-neon-600 text-white font-bold px-7 py-3.5 rounded-2xl hover:bg-neon-700 hover:shadow-[0_0_35px_rgba(124,92,255,.35)] transition-all duration-300 hover:scale-[1.02]"
+              className="text-gray-600 hover:text-gray-900 font-semibold transition duration-300"
             >
               Commencer
             </button>
@@ -115,7 +105,7 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
         </div>
 
         {open && (
-          <div className="lg:hidden border-t border-[#2B2B2B] px-6 py-5 space-y-5">
+          <div className="lg:hidden border-t border-gray-200 px-6 py-5 space-y-5">
 
             <button
               onClick={() => onNavigate("blog")}
@@ -126,14 +116,14 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
 
             <button
               onClick={() => goToSection('features')}
-              className="block text-gray-400"
+              className="block text-gray-600"
             >
               Fonctionnalités
             </button>
 
             <button
               onClick={() => goToSection('pricing')}
-              className="block text-gray-400"
+              className="block text-gray-600"
             >
               Tarifs
             </button>
@@ -157,7 +147,7 @@ export function Navbar({ onNavigate, currentPage }: { onNavigate: (page: AppPage
                 sessionStorage.setItem('resellos:authMode', 'register');
                 onNavigate("auth");
               }}
-              className="w-full bg-neon-600 text-white font-bold py-3 rounded-2xl"
+              className="block text-gray-600 hover:text-gray-900 font-semibold"
             >
               Commencer
             </button>

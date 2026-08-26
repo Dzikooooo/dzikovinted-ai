@@ -49,7 +49,7 @@ export function GroupedContentTab({ type, icon: Icon, introText, createLabel, em
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
-        <p className="text-sm text-gray-400">{introText}</p>
+        <p className="text-sm text-gray-500">{introText}</p>
         {isAdmin && (
           <Button icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
             {createLabel}
@@ -76,11 +76,11 @@ export function GroupedContentTab({ type, icon: Icon, introText, createLabel, em
                 {groupItems.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative bg-surface border border-white/5 rounded-2xl p-4 text-left transition-all hover:border-white/10 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)]"
+                    className="group relative bg-surface border border-gray-200 rounded-2xl p-4 text-left transition-all hover:border-gray-200 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)]"
                   >
                     <button onClick={() => setViewingItem(item)} className="w-full text-left">
                       <div className="flex items-center gap-2 flex-wrap pr-14">
-                        <h3 className="font-bold text-sm text-gray-100">{item.title}</h3>
+                        <h3 className="font-bold text-sm text-gray-900">{item.title}</h3>
                         {item.status === 'draft' && <Badge label="Brouillon" tone="warning" />}
                       </div>
                       {item.excerpt && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.excerpt}</p>}
@@ -90,14 +90,14 @@ export function GroupedContentTab({ type, icon: Icon, introText, createLabel, em
                         <button
                           onClick={() => openEdit(item)}
                           aria-label="Modifier"
-                          className="p-1.5 rounded-lg hover:bg-white/5 text-gray-600 hover:text-gray-300 transition-all"
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => deleteItem(item.id)}
                           aria-label="Supprimer"
-                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-all"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

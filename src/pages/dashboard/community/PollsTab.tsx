@@ -18,7 +18,7 @@ export function PollsTab() {
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
-        <p className="text-sm text-gray-400">Donne ton avis, en direct.</p>
+        <p className="text-sm text-gray-500">Donne ton avis, en direct.</p>
         {isAdmin && (
           <Button icon={<Plus className="w-4 h-4" />} onClick={() => setShowForm(true)}>
             Nouveau sondage
@@ -42,9 +42,9 @@ export function PollsTab() {
             const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes_count, 0);
             const showResults = poll.status === 'closed' || poll.myOptionId !== null;
             return (
-              <div key={poll.id} className="group relative bg-surface border border-white/5 rounded-2xl p-5">
+              <div key={poll.id} className="group relative bg-surface border border-gray-200 rounded-2xl p-5">
                 <div className="flex items-start justify-between gap-4 mb-1">
-                  <h3 className="font-bold text-gray-100 pr-16">{poll.question}</h3>
+                  <h3 className="font-bold text-gray-900 pr-16">{poll.question}</h3>
                   <Badge label={poll.status === 'open' ? 'Ouvert' : 'Clos'} tone={poll.status === 'open' ? 'brand' : 'neutral'} />
                 </div>
                 {poll.description && <p className="text-sm text-gray-500 mb-4">{poll.description}</p>}
@@ -54,14 +54,14 @@ export function PollsTab() {
                     <button
                       onClick={() => setPollStatus(poll.id, poll.status === 'open' ? 'closed' : 'open')}
                       aria-label={poll.status === 'open' ? 'Clôturer' : 'Rouvrir'}
-                      className="p-1.5 rounded-lg hover:bg-white/5 text-gray-600 hover:text-gray-300 transition-all"
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
                     >
                       {poll.status === 'open' ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
                     </button>
                     <button
                       onClick={() => deletePoll(poll.id)}
                       aria-label="Supprimer"
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-all"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -83,11 +83,11 @@ export function PollsTab() {
                         </div>
                       </div>
                     ))}
-                    <p className="text-[10px] font-mono text-gray-600 mt-3">
+                    <p className="text-[10px] font-mono text-gray-500 mt-3">
                       {totalVotes} vote{totalVotes !== 1 ? 's' : ''}
                     </p>
                     {poll.status === 'open' && poll.myOptionId && (
-                      <button onClick={() => retractVote(poll.id)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors mt-1">
+                      <button onClick={() => retractVote(poll.id)} className="text-xs text-gray-500 hover:text-gray-700 transition-colors mt-1">
                         Retirer mon vote
                       </button>
                     )}
@@ -98,7 +98,7 @@ export function PollsTab() {
                       <button
                         key={opt.id}
                         onClick={() => vote(poll.id, opt.id)}
-                        className="text-left px-4 py-2.5 rounded-xl text-sm font-medium bg-dark-400 border border-white/10 text-gray-300 hover:border-neon-500/40 hover:text-white transition-all"
+                        className="text-left px-4 py-2.5 rounded-xl text-sm font-medium bg-dark-400 border border-gray-200 text-gray-700 hover:border-neon-500/40 hover:text-gray-900 transition-all"
                       >
                         {opt.label}
                       </button>

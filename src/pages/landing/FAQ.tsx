@@ -33,36 +33,57 @@ export function FAQ() {
     <section className="py-16 sm:py-24">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-14">
-          <h2 className="text-4xl sm:text-5xl font-black mb-4">Questions fréquentes</h2>
-          <p className="text-gray-400 text-lg">Tout ce qu'il faut savoir avant de commencer.</p>
+          <h2 className="text-4xl sm:text-5xl font-black mb-4 text-gray-900">Questions fréquentes</h2>
+          <p className="text-gray-600 text-lg">Tout ce qu'il faut savoir avant de commencer.</p>
         </div>
+        {/* Motion (2026-08-25) : le contenu etait monte/demonte par un simple
+            `{open === i && ...}` -- apparition et disparition INSTANTANEES,
+            d'ou la sensation seche au clic. Le systeme .faq-panel (index.css)
+            anime une hauteur "auto" via grid-template-rows 0fr/1fr, sans
+            mesurer scrollHeight en JS et sans saut au premier rendu. Le
+            contenu reste TOUJOURS monte : l'accessibilite ne depend plus de
+            l'etat d'animation, et aria-expanded/aria-controls decrivent
+            l'etat reel. */}
         <div className="space-y-3">
-          {FAQS.map(({ q, a }, i) => (
-            <div key={q} className="bg-surface border border-white/5 rounded-2xl overflow-hidden">
-              <button
-                onClick={() => setOpen(open === i ? null : i)}
-                className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left"
-              >
-                <span className="font-semibold text-base">{q}</span>
-                <ChevronDown className={`w-5 h-5 text-gray-500 flex-shrink-0 transition-transform duration-200 ${open === i ? 'rotate-180' : ''}`} />
-              </button>
-              {open === i && (
-                <p className="px-6 pb-5 text-gray-400 text-sm leading-relaxed">{a}</p>
-              )}
-            </div>
-          ))}
+          {FAQS.map(({ q, a }, i) => {
+            const isOpen = open === i;
+            const panelId = `faq-panel-${i}`;
+            const buttonId = `faq-button-${i}`;
+            return (
+              <div key={q} className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden">
+                <button
+                  id={buttonId}
+                  aria-expanded={isOpen}
+                  aria-controls={panelId}
+                  onClick={() => setOpen(isOpen ? null : i)}
+                  className="w-full flex items-center justify-between gap-4 px-6 py-5 text-left"
+                >
+                  <span className="font-semibold text-base text-gray-900">{q}</span>
+                  <ChevronDown
+                    className={`w-5 h-5 text-gray-500 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                    style={{ transitionDuration: 'var(--motion-ui)', transitionTimingFunction: 'var(--ease-out)' }}
+                  />
+                </button>
+                <div id={panelId} aria-labelledby={buttonId} className={`faq-panel ${isOpen ? 'faq-panel-open' : ''}`}>
+                  <div>
+                    <p className="faq-panel-content px-6 pb-5 text-gray-600 text-sm leading-relaxed">{a}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Pas de blanc apres la derniere question -- un vrai CTA plutot
             qu'un espace vide (audit personnel utilisateur, 2026-08-04). */}
         <button
           onClick={() => setContactOpen(true)}
-          className="flex items-center justify-center gap-3 w-full mt-6 bg-surface border border-white/5 hover:border-neon-500/30 rounded-xl px-5 py-4 transition-all"
+          className="flex items-center justify-center gap-3 w-full mt-6 bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-xl px-5 py-4 transition-all"
         >
-          <Mail className="w-4 h-4 text-neon-500 flex-shrink-0" />
-          <p className="text-sm text-gray-400">
+          <Mail className="w-4 h-4 flex-shrink-0 text-neon-500" />
+          <p className="text-sm text-gray-600">
             Ta question n'est pas dans la liste ?{' '}
-            <span className="text-neon-500 font-medium">Pose-la-nous</span>
+            <span className="font-medium text-neon-500">Pose-la-nous</span>
           </p>
         </button>
       </div>

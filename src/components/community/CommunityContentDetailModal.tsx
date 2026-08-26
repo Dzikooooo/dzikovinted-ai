@@ -21,18 +21,18 @@ export function CommunityContentDetailModal({ item, onClose }: CommunityContentD
           )}
           <h2 className="text-xl font-black mt-1">{item.title}</h2>
         </div>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5 flex-shrink-0">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
 
       {item.cover_image_url && (
-        <img src={item.cover_image_url} alt="" className="w-full rounded-xl border border-white/10 mb-5 object-cover" />
+        <img src={item.cover_image_url} alt="" className="w-full rounded-xl border border-gray-200 mb-5 object-cover" />
       )}
 
-      {item.excerpt && <p className="text-sm text-gray-400 mb-4">{item.excerpt}</p>}
+      {item.excerpt && <p className="text-sm text-gray-500 mb-4">{item.excerpt}</p>}
 
-      <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-line">{item.body}</p>
+      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{item.body}</p>
     </Modal>
   );
 }

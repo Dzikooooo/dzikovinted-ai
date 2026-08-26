@@ -9,6 +9,27 @@ const RISK_OPTIONS: { value: OpportunityRiskLevel; label: string }[] = [
 
 const VERDICT_OPTIONS: Verdict[] = ["excellent", "recommande", "a_surveiller", "trop_risque"];
 
+// Exporte : la page affiche ce compte sur le bouton "Filtres avancés" pour
+// qu'un filtre actif reste visible MEME panneau replie. Sans cela, replier
+// masquerait silencieusement pourquoi la grille est vide -- le repliement
+// gagnerait de la place au prix d'un mensonge par omission.
+//
+// `category` et la recherche n'en font PAS partie : ils ont leurs propres
+// controles, toujours visibles au-dessus.
+export function countAdvancedFilters(filters: OpportunityFilters): number {
+  return (
+    (filters.minScore !== null ? 1 : 0) +
+    (filters.minConfidence !== null ? 1 : 0) +
+    (filters.minRoi !== null ? 1 : 0) +
+    (filters.minProfit !== null ? 1 : 0) +
+    (filters.maxBudget !== null ? 1 : 0) +
+    (filters.maxResaleDays !== null ? 1 : 0) +
+    filters.brands.length +
+    filters.riskLevels.length +
+    filters.verdicts.length
+  );
+}
+
 interface OpportunityFilterPanelProps {
   filters: OpportunityFilters;
   onChange: (filters: OpportunityFilters) => void;
@@ -29,15 +50,15 @@ function NumberField({
   return (
     <label className="flex flex-col gap-1 text-xs">
       <span className="text-gray-500 font-semibold">{label}</span>
-      <div className="flex items-center gap-1 bg-dark-400 border border-white/10 rounded-lg px-2.5 py-2 transition-all focus-within:border-neon-500/40 focus-within:ring-2 focus-within:ring-neon-500/20">
+      <div className="flex items-center gap-1 bg-dark-400 border border-gray-200 rounded-lg px-2.5 py-2 transition-all focus-within:border-neon-500/40 focus-within:ring-2 focus-within:ring-neon-500/20">
         <input
           type="number"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
           placeholder="—"
-          className="w-full bg-transparent text-sm text-white outline-none min-w-0"
+          className="w-full bg-transparent text-sm text-gray-900 outline-none min-w-0"
         />
-        {suffix && <span className="text-gray-600 text-xs">{suffix}</span>}
+        {suffix && <span className="text-gray-500 text-xs">{suffix}</span>}
       </div>
     </label>
   );
@@ -65,19 +86,10 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
     onChange({ ...filters, verdicts });
   }
 
-  const hasActiveFilters =
-    filters.minScore !== null ||
-    filters.minConfidence !== null ||
-    filters.minRoi !== null ||
-    filters.minProfit !== null ||
-    filters.maxBudget !== null ||
-    filters.maxResaleDays !== null ||
-    filters.brands.length > 0 ||
-    filters.riskLevels.length > 0 ||
-    filters.verdicts.length > 0;
+  const activeCount = countAdvancedFilters(filters);
 
   return (
-    <div className="bg-surface-alt border border-white/10 rounded-2xl p-4 mb-6">
+    <div className="bg-surface-alt border border-gray-200 rounded-2xl p-4">
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
         <NumberField label="Score min" suffix="/100" value={filters.minScore} onChange={(v) => onChange({ ...filters, minScore: v })} />
         <NumberField label="Confiance min" suffix="%" value={filters.minConfidence} onChange={(v) => onChange({ ...filters, minConfidence: v })} />
@@ -97,7 +109,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                 filters.verdicts.includes(verdict)
                   ? "bg-neon-600 text-white border-neon-500"
-                  : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
+                  : "bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900"
               }`}
             >
               {VERDICT_BADGES[verdict].label}
@@ -114,7 +126,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                 filters.riskLevels.includes(opt.value)
                   ? "bg-neon-600 text-white border-neon-500"
-                  : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
+                  : "bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900"
               }`}
             >
               {opt.label}
@@ -132,7 +144,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
                   filters.brands.includes(brand)
                     ? "bg-neon-600 text-white border-neon-500"
-                    : "bg-dark-400 text-gray-400 border-white/10 hover:text-white"
+                    : "bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900"
                 }`}
               >
                 {brand}
@@ -141,7 +153,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
           </div>
         )}
 
-        {hasActiveFilters && (
+        {activeCount > 0 && (
           <button
             onClick={() =>
               onChange({
@@ -157,7 +169,7 @@ export default function OpportunityFilterPanel({ filters, onChange, availableBra
                 verdicts: [],
               })
             }
-            className="text-xs text-gray-500 hover:text-white font-semibold ml-auto"
+            className="text-xs text-gray-500 hover:text-gray-900 font-semibold ml-auto"
           >
             Réinitialiser les filtres
           </button>

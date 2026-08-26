@@ -50,7 +50,7 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
-      <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-400 hover:text-neon-500 transition-colors mb-6">
+      <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-500 hover:text-neon-500 transition-colors mb-6">
         <ArrowLeft className="w-4 h-4" /> Retour au résultat
       </button>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -65,20 +65,20 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
         </div>
       </div>
 
-      <div className="bg-surface border border-white/5 rounded-2xl p-5 sm:p-7 space-y-5">
+      <div className="bg-surface border border-gray-200 rounded-2xl p-5 sm:p-7 space-y-5">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Titre SEO</label>
-          <input type="text" className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={editForm.title} onChange={(e) => updateField('title', e.target.value)} />
+          <input type="text" className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={editForm.title} onChange={(e) => updateField('title', e.target.value)} />
         </div>
         <div>
           <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Description</label>
-          <textarea className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[120px] resize-y" value={editForm.description} onChange={(e) => updateField('description', e.target.value)} />
+          <textarea className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[120px] resize-y" value={editForm.description} onChange={(e) => updateField('description', e.target.value)} />
         </div>
         <div className="grid grid-cols-3 gap-4">
           {PRICE_FIELDS.map(({ k, label }) => (
             <div key={k}>
               <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
-              <input type="number" className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={(editForm as unknown as Record<string, number>)[k]} onChange={(e) => updateField(k, parseFloat(e.target.value) || 0)} />
+              <input type="number" className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={(editForm as unknown as Record<string, number>)[k]} onChange={(e) => updateField(k, parseFloat(e.target.value) || 0)} />
             </div>
           ))}
         </div>
@@ -86,12 +86,12 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
           {TEXT_FIELDS.map(({ k, label }) => (
             <div key={k}>
               <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
-              <input type="text" className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={(editForm as unknown as Record<string, string>)[k]} onChange={(e) => updateField(k, e.target.value)} />
+              <input type="text" className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={(editForm as unknown as Record<string, string>)[k]} onChange={(e) => updateField(k, e.target.value)} />
             </div>
           ))}
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">État</label>
-            <select className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={editForm.condition} onChange={(e) => updateField('condition', e.target.value)}>
+            <select className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={editForm.condition} onChange={(e) => updateField('condition', e.target.value)}>
               <option>Neuf avec étiquette</option>
               <option>Neuf sans étiquette</option>
               <option>Très bon état</option>
@@ -106,13 +106,13 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
             {editForm.keywords.map((kw, i) => (
               <span key={i} className="flex items-center gap-1.5 px-3 py-1 text-xs font-mono bg-neon-500/10 text-neon-500 rounded-full border border-neon-500/20">
                 #{kw.replace(/\s+/g, '')}
-                <button onClick={() => updateField('keywords', editForm.keywords.filter((_, j) => j !== i))} aria-label={`Supprimer le mot-clé ${kw}`} className="text-neon-500/40 hover:text-red-400 transition-colors ml-1">
+                <button onClick={() => updateField('keywords', editForm.keywords.filter((_, j) => j !== i))} aria-label={`Supprimer le mot-clé ${kw}`} className="text-neon-500/40 hover:text-red-700 transition-colors ml-1">
                   <X className="w-3 h-3" />
                 </button>
               </span>
             ))}
           </div>
-          <input type="text" placeholder="Ajouter un mot-clé (Entrée)" className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+          <input type="text" placeholder="Ajouter un mot-clé (Entrée)" className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             onKeyDown={(e) => { if (e.key === 'Enter') { const v = (e.target as HTMLInputElement).value.trim(); if (v && !editForm.keywords.includes(v)) { updateField('keywords', [...editForm.keywords, v]); (e.target as HTMLInputElement).value = ''; } } }} />
         </div>
       </div>

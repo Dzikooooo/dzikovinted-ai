@@ -15,8 +15,8 @@ const TONE_CLASSES: Record<BadgeTone, string> = {
   // produit (DashboardHome.tsx, StockPage.tsx), preservee ici plutot que
   // fusionnee dans 'attention'.
   warning: 'text-amber-400 bg-amber-400/10',
-  negative: 'text-red-400 bg-red-500/10',
-  neutral: 'text-gray-400 bg-white/10',
+  negative: 'text-red-700 bg-red-500/10',
+  neutral: 'text-gray-500 bg-gray-100',
 };
 
 interface BadgeProps {

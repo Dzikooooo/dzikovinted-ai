@@ -3,6 +3,8 @@ import {
   PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED_ATTR,
   PUBLISH_CREATE_RESPONSE_EVENT_NAME,
   installPublishCreateResponseCapture,
+  describeRequestBody,
+  extractContentTypeFromHeadersInit,
 } from "../publishCreateResponseCapture";
 
 // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17) : dernier
@@ -73,6 +75,43 @@ describe("installPublishCreateResponseCapture -- transport fetch", () => {
       transport: "fetch",
     });
     expect(JSON.parse(received[0].detail.bodyText)).toEqual({ id: 123, temp_uuid: "abc" });
+  });
+
+  // Mission "DIAGNOSTIC REQUEST BODY COULEUR" (2026-08-19).
+  it("capture AUSSI le corps de requete exact, le Content-Type et la methode -- jamais un autre header", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeJsonResponse(400, { code: 1 })));
+    const received: CustomEvent[] = [];
+    document.addEventListener(PUBLISH_CREATE_RESPONSE_EVENT_NAME, (e) => received.push(e as CustomEvent));
+
+    installPublishCreateResponseCapture();
+    await window.fetch("https://www.vinted.fr/api/v2/item_upload/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer secret-should-never-be-captured" },
+      body: JSON.stringify({ item: { title: "Pull", color_ids: [9] } }),
+    });
+    await flushMicrotasks();
+
+    expect(received[0].detail).toMatchObject({
+      requestMethod: "POST",
+      requestContentType: "application/json",
+      requestBodyType: "string",
+    });
+    expect(JSON.parse(received[0].detail.requestBodyText)).toEqual({ item: { title: "Pull", color_ids: [9] } });
+    // Authorization ne doit JAMAIS apparaitre nulle part dans le detail capture.
+    expect(JSON.stringify(received[0].detail)).not.toContain("secret-should-never-be-captured");
+  });
+
+  it("rapporte honnêtement un body Request non lu (jamais un stream consomme/devine)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(makeJsonResponse(200, { id: 1 })));
+    const received: CustomEvent[] = [];
+    document.addEventListener(PUBLISH_CREATE_RESPONSE_EVENT_NAME, (e) => received.push(e as CustomEvent));
+
+    installPublishCreateResponseCapture();
+    const request = new Request("https://www.vinted.fr/api/v2/item_upload/items", { method: "POST" });
+    await window.fetch(request);
+    await flushMicrotasks();
+
+    expect(received[0].detail).toMatchObject({ requestBodyText: null, requestBodyType: "Request_object_not_read" });
   });
 
   it("ne capture jamais une lecture GET, meme sur le meme endpoint", async () => {
@@ -179,6 +218,65 @@ describe("installPublishCreateResponseCapture -- transport XMLHttpRequest", () =
     expect(JSON.parse(received[0].detail.bodyText)).toEqual({ id: 999 });
   });
 
+  // Mission "DIAGNOSTIC REQUEST BODY COULEUR" (2026-08-19) : run live reel --
+  // c'est CE transport (xhr) qui a recu le 400 non diagnostique jusqu'ici.
+  it("capture AUSSI le corps de requete XHR exact, le Content-Type (via setRequestHeader) et la methode", async () => {
+    class StubXhrWithHeaders extends EventTarget {
+      method = "";
+      url = "";
+      status = 0;
+      responseType = "" as XMLHttpRequestResponseType;
+      responseText = "";
+      response: unknown = "";
+      headers: Record<string, string> = {};
+      open(method: string, url: string) {
+        this.method = method;
+        this.url = url;
+      }
+      setRequestHeader(name: string, value: string) {
+        this.headers[name] = value;
+      }
+      send(body?: unknown) {
+        void body; // le body reel est lu par le patch AVANT d'appeler ce stub -- rien a faire ici
+        setTimeout(() => {
+          this.status = 400;
+          this.responseText = JSON.stringify({ code: 1, errors: { color: ["doit être renseigné"] } });
+          this.response = this.responseText;
+          this.dispatchEvent(new Event("load"));
+        }, 0);
+      }
+    }
+
+    vi.stubGlobal("XMLHttpRequest", StubXhrWithHeaders as unknown as typeof XMLHttpRequest);
+    installPublishCreateResponseCapture();
+
+    const received: CustomEvent[] = [];
+    document.addEventListener(PUBLISH_CREATE_RESPONSE_EVENT_NAME, (e) => received.push(e as CustomEvent));
+
+    const xhr = new (window.XMLHttpRequest as unknown as typeof StubXhrWithHeaders)();
+    xhr.open("POST", "https://www.vinted.fr/api/v2/item_upload/items");
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.setRequestHeader("Cookie", "session=should-never-be-captured");
+    xhr.send(JSON.stringify({ item: { title: "Pull", attributes: [{ attribute_id: 12, value_id: null }] } }));
+
+    await new Promise<void>((resolve) => xhr.addEventListener("load", () => resolve()));
+    await flushMicrotasks();
+
+    expect(received).toHaveLength(1);
+    expect(received[0].detail).toMatchObject({
+      statusCode: 400,
+      ok: false,
+      transport: "xhr",
+      requestMethod: "POST",
+      requestContentType: "application/json",
+      requestBodyType: "string",
+    });
+    expect(JSON.parse(received[0].detail.requestBodyText)).toEqual({
+      item: { title: "Pull", attributes: [{ attribute_id: 12, value_id: null }] },
+    });
+    expect(JSON.stringify(received[0].detail)).not.toContain("should-never-be-captured");
+  });
+
   it("ne capture jamais un XHR GET ni un XHR vers un autre endpoint", async () => {
     class StubXhr extends EventTarget {
       method = "";
@@ -233,5 +331,68 @@ describe("installPublishCreateResponseCapture -- marqueur d'installation et idem
     installPublishCreateResponseCapture();
 
     expect(window.fetch).toBe(patchedOnce);
+  });
+});
+
+// Mission "DIAGNOSTIC REQUEST BODY COULEUR" (2026-08-19) : fonctions PURES,
+// aucun effet de bord -- testables directement sans patcher fetch/XHR.
+describe("describeRequestBody", () => {
+  it("retourne none pour un body absent (null/undefined)", () => {
+    expect(describeRequestBody(null)).toEqual({ requestBodyText: null, requestBodyType: "none" });
+    expect(describeRequestBody(undefined)).toEqual({ requestBodyText: null, requestBodyType: "none" });
+  });
+
+  it("restitue une string telle quelle", () => {
+    expect(describeRequestBody('{"a":1}')).toEqual({ requestBodyText: '{"a":1}', requestBodyType: "string" });
+  });
+
+  it("restitue un URLSearchParams via .toString()", () => {
+    const params = new URLSearchParams({ a: "1", b: "2" });
+    expect(describeRequestBody(params)).toEqual({ requestBodyText: "a=1&b=2", requestBodyType: "URLSearchParams" });
+  });
+
+  it("restitue un FormData en paires cle=valeur, jamais un binaire lu", () => {
+    const fd = new FormData();
+    fd.append("title", "Pull");
+    fd.append("photo", new Blob(["x"]), "photo.jpg");
+    const result = describeRequestBody(fd);
+    expect(result.requestBodyType).toBe("FormData");
+    expect(result.requestBodyText).toContain("title=Pull");
+    expect(result.requestBodyText).toContain("photo=[binary]");
+  });
+
+  it("rapporte honnêtement un type inconnu (ex. Blob) sans jamais deviner son contenu", () => {
+    const blob = new Blob(["binary content"]);
+    const result = describeRequestBody(blob);
+    expect(result.requestBodyText).toBeNull();
+    expect(result.requestBodyType).toBe("Blob");
+  });
+});
+
+describe("extractContentTypeFromHeadersInit", () => {
+  it("retourne null quand aucun header n'est fourni", () => {
+    expect(extractContentTypeFromHeadersInit(undefined)).toBeNull();
+  });
+
+  it("lit content-type depuis un objet Headers", () => {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    expect(extractContentTypeFromHeadersInit(headers)).toBe("application/json");
+  });
+
+  it("lit content-type depuis un tableau de paires, insensible a la casse", () => {
+    expect(extractContentTypeFromHeadersInit([["Content-Type", "application/json"]])).toBe("application/json");
+  });
+
+  it("lit content-type depuis un objet plain, insensible a la casse", () => {
+    expect(extractContentTypeFromHeadersInit({ "content-type": "application/json" })).toBe("application/json");
+  });
+
+  it("ne capture JAMAIS un autre header (ex. Authorization), meme present dans le meme objet", () => {
+    const headers = { "Content-Type": "application/json", Authorization: "Bearer secret" };
+    expect(extractContentTypeFromHeadersInit(headers)).toBe("application/json");
+  });
+
+  it("retourne null quand content-type est absent des headers fournis", () => {
+    expect(extractContentTypeFromHeadersInit({ Authorization: "Bearer secret" })).toBeNull();
   });
 });

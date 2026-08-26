@@ -19,12 +19,21 @@ export function ClosableSection({ label, labelOpen, defaultOpen = false, childre
 
   return (
     <div className={className}>
+      {/* Vrai en-tete d'accordeon (2026-08-26) : c'etait un lien mono en
+          majuscules 12px gris clair, indistinguable d'une legende -- des
+          sections entieres de contenu reel passaient inapercues. Bordure,
+          fond et padding en font une commande qu'on voit et qu'on vise.
+
+          Seul l'EN-TETE est encadre, pas le contenu : les trois appelants y
+          placent deja leurs propres cartes (Reglages, Mes annonces,
+          Comptabilite) -- un cadre de plus produirait des bordures imbriquees. */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors mb-4"
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-3 px-5 py-4 mb-4 bg-surface border border-gray-200 rounded-2xl text-sm font-semibold text-gray-800 hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50"
       >
-        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-        {open ? (labelOpen ?? `Masquer ${label.toLowerCase()}`) : label}
+        <span className="text-left">{open ? (labelOpen ?? `Masquer ${label.toLowerCase()}`) : label}</span>
+        <ChevronDown className={`w-4 h-4 text-gray-600 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && children}
     </div>

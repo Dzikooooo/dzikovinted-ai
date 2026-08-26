@@ -46,7 +46,7 @@ export function RoadmapItemModal({ item, onClose, onCreate, onUpdate }: RoadmapI
     <Modal onClose={onClose} size="md">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-black">{isEdit ? 'Modifier' : 'Nouvel élément'}</h2>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -60,7 +60,7 @@ export function RoadmapItemModal({ item, onClose, onCreate, onUpdate }: RoadmapI
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
           />
         </div>
 
@@ -69,7 +69,7 @@ export function RoadmapItemModal({ item, onClose, onCreate, onUpdate }: RoadmapI
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
           />
         </div>
 
@@ -82,7 +82,7 @@ export function RoadmapItemModal({ item, onClose, onCreate, onUpdate }: RoadmapI
                 type="button"
                 onClick={() => setStatus(opt.value)}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                  status === opt.value ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                  status === opt.value ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900'
                 }`}
               >
                 {opt.label}

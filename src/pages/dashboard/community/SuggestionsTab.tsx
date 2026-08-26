@@ -31,7 +31,7 @@ export function SuggestionsTab() {
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
-        <p className="text-sm text-gray-400">Propose une idée, vote pour celles des autres.</p>
+        <p className="text-sm text-gray-500">Propose une idée, vote pour celles des autres.</p>
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
           Nouvelle suggestion
         </Button>
@@ -57,13 +57,13 @@ export function SuggestionsTab() {
           {suggestions.map((s) => {
             const style = STATUS_STYLES[s.status];
             return (
-              <div key={s.id} className="group relative flex gap-4 bg-surface border border-white/5 rounded-2xl p-4">
+              <div key={s.id} className="group relative flex gap-4 bg-surface border border-gray-200 rounded-2xl p-4">
                 <button
                   onClick={() => toggleVote(s.id, s.votedByMe)}
                   className={`flex flex-col items-center justify-center gap-0.5 w-14 h-16 rounded-xl border flex-shrink-0 transition-all ${
                     s.votedByMe
                       ? 'bg-neon-500/10 border-neon-500/40 text-neon-500'
-                      : 'bg-dark-400 border-white/10 text-gray-400 hover:border-white/20 hover:text-white'
+                      : 'bg-dark-400 border-gray-200 text-gray-500 hover:border-gray-200 hover:text-gray-900'
                   }`}
                   aria-pressed={s.votedByMe}
                   aria-label={s.votedByMe ? 'Retirer mon vote' : 'Voter pour cette suggestion'}
@@ -74,7 +74,7 @@ export function SuggestionsTab() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-sm text-gray-100">{s.title}</h3>
+                    <h3 className="font-bold text-sm text-gray-900">{s.title}</h3>
                     <Badge label={style.label} tone={style.tone} />
                   </div>
                   {s.description && <p className="text-sm text-gray-500 mt-1">{s.description}</p>}
@@ -85,7 +85,7 @@ export function SuggestionsTab() {
                         <BadgeCheck className="w-3.5 h-3.5 text-neon-500" />
                         <span className="text-[10px] font-bold uppercase tracking-wider text-neon-500">Réponse de l'équipe</span>
                       </div>
-                      <p className="text-sm text-gray-300 whitespace-pre-line">{s.admin_reply}</p>
+                      <p className="text-sm text-gray-700 whitespace-pre-line">{s.admin_reply}</p>
                     </div>
                   )}
                 </div>
@@ -95,14 +95,14 @@ export function SuggestionsTab() {
                     <button
                       onClick={() => setReplyTarget(s)}
                       aria-label="Répondre"
-                      className="p-1.5 rounded-lg hover:bg-white/5 text-gray-600 hover:text-gray-300 transition-all"
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
                     >
                       <MessageSquareReply className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => deleteSuggestion(s.id)}
                       aria-label="Supprimer"
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-all"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

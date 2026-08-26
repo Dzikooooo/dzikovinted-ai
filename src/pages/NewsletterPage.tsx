@@ -33,7 +33,7 @@ export default function NewsletterPage({ onNavigate }: NewsletterPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-dark-400 text-white flex flex-col">
+    <div className="min-h-screen bg-dark-400 text-gray-900 flex flex-col">
       <Navbar onNavigate={onNavigate} currentPage="newsletter" />
       <main className="flex-1 pt-32 pb-24 px-4 sm:px-6">
         <div className="max-w-md mx-auto text-center">
@@ -74,7 +74,7 @@ export default function NewsletterPage({ onNavigate }: NewsletterPageProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
                 placeholder="ton@email.com"
-                className="flex-1 bg-surface border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-gray-600 focus:outline-none focus:border-neon-500/50 disabled:opacity-60"
+                className="flex-1 bg-surface border border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-neon-500/50 disabled:opacity-60"
               />
               <button
                 type="submit"
@@ -85,7 +85,7 @@ export default function NewsletterPage({ onNavigate }: NewsletterPageProps) {
               </button>
             </form>
           )}
-          {error && <p className="text-sm text-red-400 mt-4">{error}</p>}
+          {error && <p className="text-sm text-red-700 mt-4">{error}</p>}
         </div>
       </main>
       <Footer onNavigate={onNavigate} />

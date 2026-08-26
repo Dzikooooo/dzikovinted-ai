@@ -16,19 +16,15 @@ export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' 
 // Meme mecanisme que SettingsTab (deep-link via initialTab porte par
 // DashboardLayout) -- voir CommunityPage.tsx. 'discord' est une tuile
 // statique (lien externe), pas une vue avec donnees.
-export type CommunityTab =
-  | 'news'
-  | 'tutorials'
-  | 'guides'
-  | 'resources'
-  | 'roadmap'
-  | 'polls'
-  | 'suggestions'
-  | 'faq'
-  | 'support'
-  | 'discord'
-  | 'reviews'
-  | 'newsletter';
+// Refonte 2026-08-26 : la Communaute passe de 11 onglets a 4 PILIERS. L'ancien
+// decoupage exposait la structure interne du contenu (un onglet par
+// CommunityContentType) plutot que ce que le membre vient y chercher, et
+// obligeait a deux barres de navigation superposees.
+//
+// Regroupements : 'news' reunit changelog + roadmap + suggestions (tout ce qui
+// concerne l'evolution du produit) ; 'guides' reunit guides + FAQ (tout ce qui
+// aide a se debrouiller).
+export type CommunityTab = 'discord' | 'news' | 'guides' | 'support';
 export type AuthMode = 'login' | 'register' | 'forgot';
 
 // Type des lignes community_content (supabase/migrations/20260727100000_add_community_content.sql).
@@ -188,6 +184,13 @@ export interface Profile {
   // Absent/vide = comportement de generation actuel inchange a l'identique.
   title_style: string | null;
   description_style: string | null;
+  // Liaison Discord (2026-08-26, voir 20260826100000_add_discord_account_link).
+  // Ecrites UNIQUEMENT par sync_discord_identity()/unlink_discord_account()
+  // cote base -- jamais par le client, la valeur venant de l'identite OAuth
+  // verifiee. Les trois sont nulles tant qu'aucun compte n'est relie.
+  discord_user_id: string | null;
+  discord_username: string | null;
+  discord_synced_at: string | null;
 }
 
 export type NotificationType = 'sale' | 'community' | 'admin_broadcast';
@@ -483,6 +486,28 @@ export const PLAN_LIMITS: Record<Plan, number | null> = {
 // par annonce") mais jamais reellement applique nulle part avant ce
 // correctif (le Generateur/la modale d'edition bridaient tout le monde a
 // 4, quel que soit le plan).
+// Recherches Watchlist actives simultanees, par plan (differenciation
+// Pro/Team du 2026-08-26).
+//
+// ATTENTION -- CES LIMITES NE SONT PAS ENCORE APPLIQUEES. Elles sont
+// affichees sur la grille tarifaire et servent de source unique, mais aucun
+// garde-fou ne les fait respecter, ni dans WatchlistPage ni cote serveur.
+// Les brancher demande une decision qui n'est pas technique : les comptes
+// existants ont aujourd'hui un nombre illimite de recherches, et couper a 5
+// un utilisateur qui en a 12 est une regression, pas une montee en gamme.
+// Il faut trancher le sort de l'existant (grand-perisation ?) avant.
+//
+// `free: null` DECRIT L'ETAT REEL D'AUJOURD'HUI (aucune limite appliquee a
+// personne), ce n'est pas une promesse d'illimite : pour que "5 recherches"
+// soit un argument Pro, Free devra etre plafonne EN DESSOUS de 5. Free ne
+// figure plus dans la grille d'achat, donc rien n'est promis publiquement
+// entre-temps.
+export const PLAN_WATCHLIST_LIMITS: Record<Plan, number | null> = {
+  free: null,
+  pro: 5,
+  team: 25,
+};
+
 export const PLAN_PHOTO_LIMITS: Record<Plan, number> = {
   free: 1,
   pro: 10,

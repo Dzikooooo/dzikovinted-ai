@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { FavouritesFollowUp } from './communication/FavouritesFollowUp';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,6 +33,9 @@ interface ListingOption {
   size: string | null;
   price: number;
   vinted_url: string | null;
+  // Ajoute pour la section Relance favoris (2026-08-26) -- deja synchronise
+  // par l'extension, aucune nouvelle collecte cote ResellOS.
+  favourites: number | null;
 }
 
 function useListingOptions() {
@@ -46,7 +50,7 @@ function useListingOptions() {
       setLoading(true);
       const { data } = await supabase
         .from('listings')
-        .select('id, title, brand, category, size, price, vinted_url')
+        .select('id, title, brand, category, size, price, vinted_url, favourites')
         .eq('user_id', user.id)
         .not('vinted_item_id', 'is', null)
         .or('vinted_status.neq.deleted,vinted_status.is.null')
@@ -116,7 +120,7 @@ function TemplateFormModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Ex. Baisse de prix"
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
           />
         </div>
         <div>
@@ -126,7 +130,7 @@ function TemplateFormModal({
             onChange={(e) => setBody(e.target.value)}
             rows={5}
             placeholder="Bonjour, {titre} est maintenant à {prix} !"
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-none"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-none"
           />
           <div className="flex flex-wrap gap-1.5 mt-2">
             {MESSAGE_TEMPLATE_VARIABLES.map((v) => (
@@ -135,7 +139,7 @@ function TemplateFormModal({
                 type="button"
                 onClick={() => setBody((b) => `${b}${v.token}`)}
                 title={v.description}
-                className="text-[11px] font-mono px-2 py-1 rounded-md bg-white/5 text-gray-400 hover:text-neon-400 hover:bg-neon-500/10 transition-colors"
+                className="text-[11px] font-mono px-2 py-1 rounded-md bg-gray-100 text-gray-500 hover:text-neon-600 hover:bg-neon-500/10 transition-colors"
               >
                 {v.token}
               </button>
@@ -189,7 +193,7 @@ export default function CommunicationPage() {
         title="Communication"
         description="Prépare un message à partir d'un modèle et d'une annonce réelle — l'envoi reste toujours manuel, sur Vinted."
         action={
-          <Button size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { setFormPrefill(null); setFormTemplate('new'); }}>
+          <Button variant="outline" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { setFormPrefill(null); setFormTemplate('new'); }}>
             Nouveau modèle
           </Button>
         }
@@ -197,8 +201,12 @@ export default function CommunicationPage() {
 
       {error && <ErrorBanner message={error} className="mb-6" />}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-surface border border-white/5 rounded-2xl p-5">
+      {/* `items-start` : sans lui, les deux colonnes s'etirent a la hauteur de
+          la plus haute. Le panneau de droite n'a rien a montrer tant qu'aucune
+          annonce ni modele ne sont choisis, et se retrouvait etire sur ~200 px
+          de blanc. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 items-start">
+        <div className="bg-surface border border-gray-200 rounded-2xl p-5">
           <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Tes modèles</p>
           {templatesLoading ? (
             <div className="space-y-2">
@@ -211,6 +219,7 @@ export default function CommunicationPage() {
               title="Aucun modèle pour l'instant"
               description="Crée un premier modèle pour préparer tes messages plus vite."
               action={{ label: 'Créer un modèle', onClick: () => { setFormPrefill(null); setFormTemplate('new'); } }}
+              bare
             />
           ) : (
             <div className="space-y-2">
@@ -218,11 +227,11 @@ export default function CommunicationPage() {
                 <div
                   key={t.id}
                   className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
-                    selectedTemplateId === t.id ? 'border-neon-500/50 bg-neon-500/5' : 'border-white/5 hover:border-white/10'
+                    selectedTemplateId === t.id ? 'border-neon-500/50 bg-neon-500/5' : 'border-gray-200 hover:border-gray-200'
                   }`}
                 >
                   <button type="button" onClick={() => setSelectedTemplateId(t.id)} className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-semibold text-gray-200 truncate">{t.name}</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate">{t.name}</p>
                     <p className="text-xs text-gray-500 truncate mt-0.5">{t.body}</p>
                   </button>
                   <div className="flex items-center gap-1 flex-shrink-0">
@@ -230,7 +239,7 @@ export default function CommunicationPage() {
                       type="button"
                       onClick={() => { setFormPrefill(null); setFormTemplate(t); }}
                       aria-label="Modifier"
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/5"
+                      className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -238,7 +247,7 @@ export default function CommunicationPage() {
                       type="button"
                       onClick={() => setConfirmDeleteId(t.id)}
                       aria-label="Supprimer"
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10"
+                      className="p-1.5 rounded-lg text-gray-500 hover:text-red-700 hover:bg-red-500/10"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -248,7 +257,7 @@ export default function CommunicationPage() {
             </div>
           )}
 
-          <div className="mt-4 pt-4 border-t border-white/5">
+          <div className="mt-4 pt-4 border-t border-gray-200">
             <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Idées de modèles</p>
             <div className="flex flex-wrap gap-2">
               {STARTER_TEMPLATES.map((s) => (
@@ -256,7 +265,7 @@ export default function CommunicationPage() {
                   key={s.name}
                   type="button"
                   onClick={() => { setFormPrefill(s); setFormTemplate('new'); }}
-                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:text-neon-400 hover:border-neon-500/30 transition-colors"
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-neon-600 hover:border-neon-500/30 transition-colors"
                 >
                   + {s.name}
                 </button>
@@ -265,18 +274,18 @@ export default function CommunicationPage() {
           </div>
         </div>
 
-        <div className="bg-surface border border-white/5 rounded-2xl p-5">
+        <div className="bg-surface border border-gray-200 rounded-2xl p-5">
           <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-4">Préparer un message</p>
 
           {listingsLoading ? (
             <Skeleton shape="block" className="h-11 mb-3" />
           ) : listings.length === 0 ? (
-            <p className="text-xs text-gray-600">Aucune annonce publiée sur Vinted pour l'instant.</p>
+            <p className="text-xs text-gray-500">Aucune annonce publiée sur Vinted pour l'instant.</p>
           ) : (
             <select
               value={selectedListingId}
               onChange={(e) => setSelectedListingId(e.target.value)}
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3"
             >
               <option value="">Choisir une annonce...</option>
               {listings.map((l) => (
@@ -291,7 +300,7 @@ export default function CommunicationPage() {
             value={selectedTemplateId}
             onChange={(e) => setSelectedTemplateId(e.target.value)}
             disabled={templates.length === 0}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3 disabled:opacity-50"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3 disabled:opacity-50"
           >
             <option value="">Choisir un modèle...</option>
             {templates.map((t) => (
@@ -310,7 +319,7 @@ export default function CommunicationPage() {
                   setCopied(false);
                 }}
                 rows={5}
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-none mb-3"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-none mb-3"
               />
               <div className="flex items-center gap-2">
                 <Button
@@ -339,17 +348,35 @@ export default function CommunicationPage() {
               </div>
             </>
           ) : (
-            <p className="text-xs text-gray-600">Choisis une annonce et un modèle pour préparer ton message.</p>
+            <p className="text-xs text-gray-500">Choisis une annonce et un modèle pour préparer ton message.</p>
           )}
         </div>
       </div>
 
-      <div className="flex items-start gap-3 bg-white/[0.03] border border-white/5 rounded-2xl px-5 py-4">
+      {/* RELANCE FAVORIS ASSISTEE (2026-08-26).
+          Pleine largeur, sous les deux panneaux : c'est une liste de travail,
+          pas un reglage. Elle depend du modele choisi dans le panneau de
+          droite, d'ou sa position juste en dessous. */}
+      <div className="bg-surface border border-gray-200 rounded-2xl p-5 mb-6">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500">Relance favoris</p>
+          <p className="text-[11px] text-gray-500">Préparé ici · envoyé par toi sur Vinted</p>
+        </div>
+        <FavouritesFollowUp
+          listings={listings}
+          loading={listingsLoading}
+          templateBody={selectedTemplate?.body ?? null}
+          templateName={selectedTemplate?.name ?? null}
+        />
+      </div>
+
+      <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4">
         <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-gray-500 leading-relaxed">
-          <span className="text-gray-300 font-medium">Toujours manuel.</span> ResellOS ne connaît jamais l'identité
+          <span className="text-gray-700 font-medium">Toujours manuel.</span> ResellOS ne connaît jamais l'identité
           des acheteurs intéressés (Vinted ne fournit qu'un nombre de favoris, pas de liste) et n'envoie rien à ta
-          place — tu copies le texte préparé et tu l'envoies toi-même une fois sur Vinted.
+          place — la relance favoris te dit quelles annonces méritent un message et le prépare, mais c'est toi qui le
+          copies et l'envoies sur Vinted.
         </p>
       </div>
 
@@ -365,7 +392,7 @@ export default function CommunicationPage() {
       {confirmDeleteId && (
         <Modal onClose={() => setConfirmDeleteId(null)} size="sm">
           <h2 className="text-lg font-black mb-2">Supprimer ce modèle ?</h2>
-          <p className="text-sm text-gray-400 mb-5">Cette action est irréversible.</p>
+          <p className="text-sm text-gray-500 mb-5">Cette action est irréversible.</p>
           <div className="flex items-center gap-3">
             <Button variant="secondary" fullWidth onClick={() => setConfirmDeleteId(null)}>
               Annuler

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { translateAuthError } from '../lib/errorMessages';
 import type { AppPage } from '../lib/types';
-import { Logo } from '../components/ui/Logo';
+import { Wordmark } from '../components/ui/Wordmark';
 import { Button } from '../components/ui/Button';
 
 interface ResetPasswordPageProps {
@@ -55,24 +55,21 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
   };
 
   return (
-    <div className="min-h-screen bg-dark-400 flex flex-col items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(124,92,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,255,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-neon-500/4 rounded-full blur-[160px]" />
+    <div className="min-h-screen bg-dark-200 flex flex-col items-center justify-center px-4">
 
       <div className="relative z-10 w-full max-w-md">
-        <div className="flex items-center gap-1.5 mb-8">
-          <Logo variant="transparent" size={40} />
-          <span className="text-xl font-black">esell<span className="text-neon-500">OS</span></span>
+        <div className="mb-8">
+          <Wordmark size="lg" />
         </div>
 
-        <div className="bg-surface border border-white/8 rounded-2xl p-8">
+        <div className="bg-surface border border-gray-200 rounded-2xl p-8">
           <h1 className="text-2xl font-black mb-1">Nouveau mot de passe</h1>
           <p className="text-sm text-gray-500 mb-8">Choisis un nouveau mot de passe pour ton compte.</p>
 
           {error && (
             <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-400">{error}</p>
+              <AlertCircle className="w-4 h-4 text-red-700 flex-shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
 
@@ -80,7 +77,7 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
             <div>
               <label htmlFor="reset-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
                   id="reset-password"
                   type={showPassword ? 'text' : 'password'}
@@ -90,9 +87,9 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                  className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-500">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
@@ -101,7 +98,7 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
             <div>
               <label htmlFor="reset-confirm-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Confirmer le mot de passe</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
                   id="reset-confirm-password"
                   type={showPassword ? 'text' : 'password'}
@@ -110,14 +107,14 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className={`w-full bg-dark-400 border rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
+                  className={`w-full bg-dark-400 border rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:ring-2 transition-all ${
                     passwordsMismatch
                       ? 'border-red-500/40 focus:border-red-500/60 focus:ring-red-500/20'
-                      : 'border-white/10 focus:border-neon-500/40 focus:ring-neon-500/20'
+                      : 'border-gray-200 focus:border-neon-500/40 focus:ring-neon-500/20'
                   }`}
                 />
               </div>
-              {passwordsMismatch && <p className="text-xs text-red-400 mt-1.5">Les mots de passe ne correspondent pas.</p>}
+              {passwordsMismatch && <p className="text-xs text-red-700 mt-1.5">Les mots de passe ne correspondent pas.</p>}
             </div>
 
             <Button type="submit" fullWidth loading={loading} disabled={passwordsMismatch} className="mt-2">
@@ -125,7 +122,7 @@ export default function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps
             </Button>
           </form>
 
-          <div className="border-t border-white/5 mt-6 pt-6 text-center">
+          <div className="border-t border-gray-200 mt-6 pt-6 text-center">
             <p className="text-sm text-gray-500">
               Le lien a expiré ou ne fonctionne pas ?{' '}
               <button

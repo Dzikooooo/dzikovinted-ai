@@ -16,10 +16,30 @@ interface DispatchResponse {
 // direct le 2026-07-11 (voir supabase/functions/scan-market/index.ts).
 // Le scan reel tourne via le workflow GitHub Actions existant
 // (scripts/vinted-scan.ts, deja eprouve en production), demarre
-// immediatement au lieu d'attendre le cron de 4h. Demarrage de runner +
-// installation de Playwright + scan reel : quelques minutes, marge large
-// prise ici.
-const TERMINAL_WAIT_TIMEOUT_MS = 6 * 60 * 1000;
+// immediatement au lieu d'attendre le cron de 4h.
+//
+// CE DELAI COUVRE TOUTE LA CHAINE, pas seulement le scan : mise en file et
+// demarrage du runner, `npm ci`, `npx playwright install --with-deps
+// chromium` (l'etape la plus lourde du workflow, refaite a chaque run), PUIS
+// le scan lui-meme.
+//
+// 6 minutes ne suffisaient plus (2026-08-26) : sur une watchlist de 24
+// recherches, le scan seul depassait ce delai et la modale annoncait un
+// echec pendant que le job finissait normalement -- exactement le symptome
+// remonte par l'utilisateur. Les optimisations du meme jour (attente
+// adaptative des cartes, galeries plafonnees au top 30 et parallelisees a 2,
+// reutilisation des galeries connues) ramenent le scan a ~4 min ESTIMEES,
+// auxquelles s'ajoutent ~2 a 3 min de mise en route CI.
+//
+// A RE-CALIBRER sur du mesure : ce 10 minutes vient d'un budget reconstitue
+// depuis le code, pas d'un run chronometre. La ligne "[timing] RECAPITULATIF"
+// des logs GitHub Actions donne desormais le vrai temps de cycle -- ajuster
+// des qu'on en a deux ou trois.
+//
+// Un delai trop LONG ne coute presque rien : le sondage de secours detecte la
+// fin des qu'elle arrive, le timeout ne se declenche que si le job est
+// reellement bloque. Un delai trop COURT, lui, fait mentir l'interface.
+const TERMINAL_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 
 // Message ecrit tel quel dans action_log.error_message au timeout client -
 // useActionEngine.ts::prepareAction() s'appuie sur ce texte exact pour
@@ -52,8 +72,8 @@ async function extractErrorMessage(error: unknown): Promise<string> {
 
 // Frequence du sondage de secours ci-dessous -- assez rapide pour rester
 // invisible pour l'utilisateur, assez espace pour ne jamais peser sur la
-// base sur toute la duree d'un scan (jusqu'a 6 minutes, donc <= ~24 requetes
-// par scan).
+// base sur toute la duree d'un scan (jusqu'a 10 minutes, donc <= ~40
+// requetes par scan).
 const FALLBACK_POLL_INTERVAL_MS = 15000;
 
 // Le declenchement (execute() ci-dessous) rend la main des que le workflow

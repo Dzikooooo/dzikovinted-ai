@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { resolvePriceId, type BillablePlan } from "../_shared/plans.ts";
+import { resolvePriceId, type BillablePlan, type BillingInterval } from "../_shared/plans.ts";
 
 // Interface etroite (3 methodes reellement appelees) plutot que le type
 // Stripe complet -- garde les fakes de test triviaux a ecrire, evite de
@@ -139,11 +139,15 @@ export async function createCheckoutSessionForPlan(
   deps: CreateCheckoutSessionDeps,
   userId: string,
   userEmail: string | null,
-  plan: BillablePlan
+  plan: BillablePlan,
+  // Defaut "month" : un appelant qui n'a pas encore ete mis a jour obtient le
+  // comportement d'avant l'ajout de l'annuel, jamais un engagement de douze
+  // mois par omission.
+  interval: BillingInterval = "month"
 ): Promise<CreateCheckoutSessionResult> {
   let priceId: string;
   try {
-    priceId = resolvePriceId(plan);
+    priceId = resolvePriceId(plan, interval);
   } catch (e) {
     // Jamais le nom du secret manquant ni sa valeur dans la reponse client.
     console.error("[create-checkout-session] configuration Stripe incomplete", e);

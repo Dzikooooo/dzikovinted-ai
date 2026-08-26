@@ -8,7 +8,7 @@ interface FieldCardProps {
 
 export function FieldCard({ label, value, icon: Icon }: FieldCardProps) {
   return (
-    <div className="bg-dark-400 border border-white/5 rounded-xl p-4 hover:border-neon-500/20 transition-colors">
+    <div className="bg-dark-400 border border-gray-200 rounded-xl p-4 hover:border-neon-500/20 transition-colors">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Icon className="w-3.5 h-3.5 text-neon-500/60" />
@@ -16,7 +16,7 @@ export function FieldCard({ label, value, icon: Icon }: FieldCardProps) {
         </div>
         <CopyBtn text={value} small />
       </div>
-      <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-line">{value}</p>
+      <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{value}</p>
     </div>
   );
 }

@@ -40,12 +40,12 @@ export function SuggestionReplyModal({ suggestion, onClose, onReply }: Suggestio
     <Modal onClose={onClose} size="md">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-black">Répondre</h2>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
 
-      <p className="text-sm text-gray-400 mb-5">{suggestion.title}</p>
+      <p className="text-sm text-gray-500 mb-5">{suggestion.title}</p>
 
       {error && <ErrorBanner message={error} className="mb-5" />}
 
@@ -59,7 +59,7 @@ export function SuggestionReplyModal({ suggestion, onClose, onReply }: Suggestio
                 type="button"
                 onClick={() => setStatus(opt.value)}
                 className={`px-3 py-2 rounded-lg text-xs font-bold border transition ${
-                  status === opt.value ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                  status === opt.value ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900'
                 }`}
               >
                 {opt.label}
@@ -73,7 +73,7 @@ export function SuggestionReplyModal({ suggestion, onClose, onReply }: Suggestio
           <textarea
             value={reply}
             onChange={(e) => setReply(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
           />
         </div>
 

@@ -33,10 +33,13 @@ export const VERDICT_BADGES: Record<Verdict, { label: string; className: string 
   },
   a_surveiller: {
     label: 'À surveiller',
-    className: 'bg-amber-400/15 text-amber-400 border border-amber-400/30',
+    // amber-700 et non amber-400 : sur son propre fond a 15 % (#fef7dc), le
+    // amber-400 herite du theme sombre ne mesure que 1.43:1 -- illisible.
+    // amber-700 y mesure 4.68:1. Le fond, purement decoratif, ne change pas.
+    className: 'bg-amber-400/15 text-amber-700 border border-amber-400/30',
   },
   trop_risque: {
     label: 'Trop risqué',
-    className: 'bg-red-400/15 text-red-400 border border-red-400/30',
+    className: 'bg-red-400/15 text-red-700 border border-red-400/30',
   },
 };

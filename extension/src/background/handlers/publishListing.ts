@@ -186,6 +186,51 @@ function validatePublishCreateResponse(
   return { valid: true, vintedItemId: String(itemId) };
 }
 
+// Mission "DIAGNOSTIC REQUEST BODY COULEUR" (2026-08-19) : run live confirme
+// -- Couleur "Bleu" reellement selectionnee/confirmee en DOM (aria-checked=
+// true), tous les autres champs visibles remplis, auto-submit declenche,
+// mais Vinted repond 400 sur ce POST precis. Extraction PURE, aucune
+// decision metier -- scanne recursivement le corps de REQUETE (si JSON
+// valide) et retourne tout couple cle/valeur dont la cle contient "color" OU
+// "attribute" (insensible a la casse, a n'importe quelle profondeur) -- la
+// representation reelle de Couleur dans le payload Vinted n'est pas encore
+// connue avec certitude (c'est exactement ce que cette instrumentation vise
+// a etablir), donc AUCUNE cle precise n'est supposee/codee en dur au-dela de
+// ce filtre volontairement large. `null` si le corps n'est pas un JSON valide
+// (ex. multipart/form-data) -- jamais un parsing partiel/devine ; `{}` si le
+// corps est un JSON valide sans aucun champ correspondant.
+export function summarizeColorRelatedFields(requestBodyText: string | null): Record<string, unknown> | null {
+  if (!requestBodyText) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(requestBodyText);
+  } catch {
+    return null;
+  }
+
+  const COLOR_OR_ATTRIBUTE_KEY_PATTERN = /color|attribute/i;
+  const found: Record<string, unknown> = {};
+
+  function walk(value: unknown, path: string): void {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => walk(item, `${path}[${index}]`));
+      return;
+    }
+    if (typeof value !== "object") return;
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (COLOR_OR_ATTRIBUTE_KEY_PATTERN.test(key)) {
+        found[nextPath] = val;
+      }
+      walk(val, nextPath);
+    }
+  }
+
+  walk(parsed, "");
+  return found;
+}
+
 // Meme convention d'URL que extractPublishedItemId ci-dessous (pas de slug
 // SEO -- Vinted resout normalement une URL /items/{id} sans slug, la seule
 // donnee qui compte pour l'identification/le rattachement est l'id
@@ -409,11 +454,22 @@ export async function handlePublishListing(
     errors: photos.filter((p) => p.arrayBuffer === null).map((p) => ({ url: p.url, error: p.error })),
   });
 
+  // Mission "MODE BACKGROUND -- REPUBLICATION" (2026-08-19) : republish_listing
+  // UNIQUEMENT (auto-submit + suppression auto deja valides en live pour ce
+  // kind, voir publishAutoSubmit.ts/deleteOldListing.ts) -- publish_listing
+  // (premiere publication) n'a pas d'auto-submit et reste 100% comportement
+  // actuel, onglet visible des l'ouverture, voir plus bas.
+  const isRepublish = request.kind === "republish_listing";
+
   let tab: chrome.tabs.Tab;
   try {
-    // active:true (voir commentaire d'en-tete) : l'utilisateur doit voir
-    // l'onglet pour terminer la publication lui-meme.
-    tab = await chrome.tabs.create({ url: VINTED_NEW_LISTING_URL, active: true });
+    // active:!isRepublish -- republish_listing tourne desormais en arriere-plan
+    // (l'utilisateur reste sur ResellOS) tant que rien n'exige reellement son
+    // intervention ; publish_listing garde active:true (l'utilisateur doit
+    // voir l'onglet pour terminer la publication lui-meme, aucun auto-submit
+    // pour ce kind). Le filet de secours (onglet ramene au premier plan) est
+    // implemente dans settle() plus bas, jamais ici.
+    tab = await chrome.tabs.create({ url: VINTED_NEW_LISTING_URL, active: !isRepublish });
   } catch (err) {
     logger.error("HANDLE_PUBLISH_TAB_CREATE_FAILED", errorDetails(err));
     return { status: "error", errorMessage: `Impossible d'ouvrir un onglet Vinted : ${errorMessage(err)}` };
@@ -561,6 +617,24 @@ export async function handlePublishListing(
         onPrefillSummary(message.confirmed, message.pending);
       } else if (message.type === "PUBLISH_READY_TO_SUBMIT") {
         logger.info("HANDLE_PUBLISH_READY_TO_SUBMIT", { tabId });
+        // Mission "ROUND READY UX" (2026-08-19), restreinte a publish_listing
+        // par la mission "MODE BACKGROUND -- REPUBLICATION" (2026-08-19) :
+        // ramene l'onglet Vinted au premier plan au moment ou le formulaire
+        // devient reellement pret -- l'utilisateur a pu passer sur l'onglet
+        // ResellOS entretemps (choisir une categorie/des attributs prend du
+        // temps). Best-effort : un onglet deja actif ou ferme entre-temps ne
+        // doit jamais faire echouer le reste du flow. Ne declenche et ne
+        // remplace AUCUN clic -- seul le focus change, l'utilisateur clique
+        // toujours lui-meme "Ajouter" (vrai UNIQUEMENT pour publish_listing :
+        // republish_listing a desormais un auto-submit, voir
+        // publishAutoSubmit.ts -- PUBLISH_READY_TO_SUBMIT y est une etape
+        // normale du succes, jamais un signal d'echec, donc ne doit JAMAIS
+        // voler le focus pour ce kind).
+        if (!isRepublish) {
+          chrome.tabs.update(tabId, { active: true }).catch((err) => {
+            logger.error("HANDLE_PUBLISH_READY_TO_SUBMIT_ACTIVATE_TAB_FAILED", { tabId, error: errorMessage(err) });
+          });
+        }
         onReadyToSubmit();
       } else if (message.type === "PUBLISH_RESULT") {
         // N'arrive plus qu'en cas d'echec du remplissage automatise (session
@@ -580,6 +654,19 @@ export async function handlePublishListing(
           ok: message.ok,
           bodyText: message.bodyText,
           transport: message.transport,
+          requestMethod: message.requestMethod,
+          requestContentType: message.requestContentType,
+          requestBodyType: message.requestBodyType,
+          requestBodyText: message.requestBodyText,
+        });
+        // Mission "DIAGNOSTIC REQUEST BODY COULEUR" (2026-08-19) : resume
+        // cible, log SEPARE et facilement filtrable -- purement diagnostique,
+        // aucune decision metier n'en depend (CAS A/B/C ci-dessous restent
+        // inchanges).
+        logger.info("PUBLISH_CREATE_REQUEST_COLOR_FIELDS_SUMMARY", {
+          tabId,
+          requestBodyType: message.requestBodyType,
+          colorOrAttributeFields: summarizeColorRelatedFields(message.requestBodyText),
         });
 
         // CAS C (2026-08-17) -- preuve live obtenue : la reponse REELLE de
@@ -625,10 +712,21 @@ export async function handlePublishListing(
         // manifest.config.ts) -- plus tot que l'ancienne injection tardive
         // (chrome.scripting.executeScript au tab "complete", supprimee ici
         // car confirmee trop tardive lors du test live).
+        // Mission "DIAGNOSTIC CAPTURE_MISSING" (2026-08-24) : url/
+        // documentInstanceId/readyState journalises des deux cotes -- sans eux,
+        // le test reel du 24/08 ne permettait pas de dire sur quel document
+        // l'instrumentation MAIN manquait. Diagnostic uniquement, aucun
+        // changement de comportement.
+        const captureContext = {
+          tabId,
+          url: message.url,
+          documentInstanceId: message.documentInstanceId,
+          readyState: message.readyState,
+        };
         if (message.installed) {
-          logger.info("PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED", { tabId });
+          logger.info("PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED", captureContext);
         } else {
-          logger.warn("PUBLISH_CREATE_RESPONSE_CAPTURE_MISSING", { tabId });
+          logger.warn("PUBLISH_CREATE_RESPONSE_CAPTURE_MISSING", captureContext);
         }
       }
       return false;
@@ -934,6 +1032,22 @@ export async function handlePublishListing(
         });
         tabClosedByHandler = true;
         chrome.tabs.remove(tabId).catch(() => {});
+      } else if (isRepublish) {
+        // Mission "MODE BACKGROUND -- REPUBLICATION" (2026-08-19) : filet de
+        // secours -- keepTabOpen:true signifie DEJA, sans aucun changement de
+        // logique metier, "une intervention humaine est potentiellement
+        // necessaire" (phase manuelle atteinte + timeout global, reconciliation
+        // CAS B ambigue, ou CAS B epuisee -- les 3 seuls appelants de settle()
+        // avec keepTabOpen:true, voir plus bas). Reutilise ce signal EXISTANT
+        // tel quel, aucun nouveau signal introduit. Un onglet reellement
+        // backgrounded (republish_listing) doit alors etre ramene au premier
+        // plan pour que l'utilisateur puisse le voir/agir -- jamais sur un
+        // succes normal (ce else n'est atteint que si keepTabOpen:true, donc
+        // jamais sur "success" sans anomalie). Best-effort, comme les autres
+        // chrome.tabs.update de ce fichier.
+        chrome.tabs.update(tabId, { active: true }).catch((err) => {
+          logger.error("HANDLE_PUBLISH_FALLBACK_ACTIVATE_TAB_FAILED", { tabId, error: errorMessage(err) });
+        });
       }
       resolve(outcome);
     }

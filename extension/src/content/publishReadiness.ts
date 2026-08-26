@@ -46,3 +46,47 @@ export function isFormReallyReadyToSubmit(
 ): boolean {
   return isSaveButtonReady(buttonState) && priceState.valid && photosImported === true;
 }
+
+// Mission "ROUND READY UX" (2026-08-19) : isFormReallyReadyToSubmit() ci-dessus
+// reste INCHANGEE (aucune condition metier ajoutee/retiree) -- ce qui suit est
+// une couche de STABILITE temporelle purement ajoutee par-dessus, pour la
+// meme raison qui a motive watchForCategorySelectionAndPrefillAttributes/
+// waitForCondition ailleurs dans ce fichier : une lecture DOM instantanee
+// peut capturer un etat transitoire qui ne survit pas au prochain cycle de
+// rendu React. Jusqu'ici, seul le temps de reaction humain (l'utilisateur
+// doit remarquer l'ecran puis cliquer) absorbait implicitement ce risque ;
+// ce filet disparait des qu'on veut rendre le signal plus proactif (highlight
+// visuel). evaluateReadinessStability() exige donc que isFormReallyReadyToSubmit()
+// reste continuellement vrai pendant READINESS_STABILITY_WINDOW_MS avant de
+// declarer le formulaire "stable" -- toute reevaluation fausse remet la
+// fenetre a zero (pas de moyenne, pas de tolerance).
+export const READINESS_STABILITY_WINDOW_MS = 750;
+
+export interface ReadinessStabilityState {
+  // Horodatage (Date.now()) du debut de la sequence continue actuelle de
+  // "vrai" -- null tant que la derniere evaluation connue etait fausse (ou
+  // avant la toute premiere evaluation).
+  stableSinceMs: number | null;
+}
+
+export const INITIAL_READINESS_STABILITY_STATE: ReadinessStabilityState = { stableSinceMs: null };
+
+export interface ReadinessStabilityEvaluation {
+  nextState: ReadinessStabilityState;
+  // true uniquement lorsque isReadyNow est vrai ET que la fenetre continue
+  // depuis stableSinceMs a atteint/depasse READINESS_STABILITY_WINDOW_MS.
+  isStable: boolean;
+}
+
+export function evaluateReadinessStability(
+  isReadyNow: boolean,
+  nowMs: number,
+  prevState: ReadinessStabilityState
+): ReadinessStabilityEvaluation {
+  if (!isReadyNow) {
+    return { nextState: { stableSinceMs: null }, isStable: false };
+  }
+  const stableSinceMs = prevState.stableSinceMs ?? nowMs;
+  const isStable = nowMs - stableSinceMs >= READINESS_STABILITY_WINDOW_MS;
+  return { nextState: { stableSinceMs }, isStable };
+}

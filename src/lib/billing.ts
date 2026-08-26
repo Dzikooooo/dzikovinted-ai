@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { Plan } from './types';
+import type { BillingInterval } from './billingInterval';
 
 // Client Stripe (Lot 5, freeze beta 2026-08-08) -- appelle uniquement les
 // Edge Functions deja livrees et testees en Deno (Lots 2/4) : aucune cle
@@ -48,9 +49,16 @@ async function extractErrorMessage(error: unknown, fallback: string): Promise<st
   return fallback;
 }
 
-export async function startCheckout(plan: BillablePlan): Promise<BillingResult> {
+// `interval` par defaut "month" : un appelant non mis a jour garde
+// exactement le comportement d'avant l'ajout de l'annuel. Le serveur applique
+// la meme regle (validation.ts) -- un engagement de douze mois ne doit jamais
+// resulter d'une omission, des deux cotes.
+export async function startCheckout(
+  plan: BillablePlan,
+  interval: BillingInterval = 'month'
+): Promise<BillingResult> {
   const { data, error } = await supabase.functions.invoke<CheckoutResponse>('create-checkout-session', {
-    body: { plan },
+    body: { plan, interval },
   });
 
   if (error) {

@@ -45,10 +45,10 @@ export function LoadingStep({ loadingStep }: LoadingStepProps) {
             const isActive = i === loadingStep;
             const isDone = i < loadingStep;
             return (
-              <div key={text} className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all duration-500 ${isActive ? 'bg-neon-500/10 border-neon-500/30 shadow-[0_0_20px_rgba(124,92,255,0.1)]' : isDone ? 'bg-neon-500/5 border-neon-500/10' : 'bg-surface border-white/5'}`}>
+              <div key={text} className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all duration-200 ${isActive ? 'bg-neon-500/10 border-neon-500/30 shadow-[0_0_20px_rgba(124,92,255,0.1)]' : isDone ? 'bg-neon-500/5 border-neon-500/10' : 'bg-surface border-gray-200'}`}>
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${isActive ? 'bg-neon-500 animate-pulse' : isDone ? 'bg-neon-500/60' : 'bg-gray-700'}`} />
                 <div className="flex-1 text-left">
-                  <span className={`text-sm block ${isActive ? 'text-neon-500 font-medium' : isDone ? 'text-gray-400' : 'text-gray-600'}`}>{text}</span>
+                  <span className={`text-sm block ${isActive ? 'text-neon-500 font-medium' : isDone ? 'text-gray-500' : 'text-gray-500'}`}>{text}</span>
                   {isActive && <span className="text-[10px] text-neon-500/50 block mt-0.5">{sub}</span>}
                 </div>
                 {isDone && <Check className="w-4 h-4 text-neon-500/70 ml-auto" />}

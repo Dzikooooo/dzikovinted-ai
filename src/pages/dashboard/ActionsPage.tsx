@@ -219,12 +219,12 @@ function ActionRow({
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-surface border border-white/5 rounded-2xl p-4 hover:border-white/10 transition-all"
+      className="w-full text-left bg-surface border border-gray-200 rounded-2xl p-4 hover:border-gray-200 transition-all"
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           {row.listingImageUrl ? (
-            <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-white/10">
+            <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 border border-gray-200">
               <img src={row.listingImageUrl} alt="" className="w-full h-full object-cover" />
             </div>
           ) : (
@@ -234,7 +234,7 @@ function ActionRow({
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold text-sm text-gray-100 truncate">{ACTION_KIND_LABELS[row.kind]}</p>
+              <p className="font-semibold text-sm text-gray-900 truncate">{ACTION_KIND_LABELS[row.kind]}</p>
               <ActionStatusBadge status={row.status} />
             </div>
             {row.listingTitle && <p className="text-xs text-gray-500 mt-1 truncate">{row.listingTitle}</p>}
@@ -250,7 +250,7 @@ function ActionRow({
                 {formatRelativeTime(row.startedAt)}
               </span>
               {row.status === 'error' && row.errorMessage && (
-                <span className="flex items-center gap-1 text-[10px] text-red-400">
+                <span className="flex items-center gap-1 text-[10px] text-red-700">
                   <AlertTriangle className="w-2.5 h-2.5" />
                   {row.errorMessage}
                 </span>
@@ -261,7 +261,7 @@ function ActionRow({
 
         <div className="text-right flex-shrink-0">
           <p className="text-[10px] uppercase tracking-wider text-gray-500">Durée</p>
-          <p className="text-sm font-bold text-gray-200">{formatDuration(row.durationMs)}</p>
+          <p className="text-sm font-bold text-gray-800">{formatDuration(row.durationMs)}</p>
         </div>
       </div>
     </button>
@@ -291,7 +291,7 @@ function ActionDetailPanel({ row, onClose }: { row: ActionHistoryRow; onClose: (
             {row.listingTitle && <p className="text-xs text-gray-500 truncate">{row.listingTitle}</p>}
           </div>
         </div>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5 flex-shrink-0">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -309,14 +309,14 @@ function ActionDetailPanel({ row, onClose }: { row: ActionHistoryRow; onClose: (
 
       {row.status === 'error' && row.errorMessage && (
         <div className="mb-5 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-red-300">{row.errorMessage}</p>
+          <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{row.errorMessage}</p>
         </div>
       )}
 
       <h3 className="text-[10px] uppercase tracking-wider text-gray-500 mb-3">Journal</h3>
       {timelineRows.length === 0 ? (
-        <p className="text-sm text-gray-600">Aucune entrée pour le moment.</p>
+        <p className="text-sm text-gray-500">Aucune entrée pour le moment.</p>
       ) : (
         <ActionStepTimeline rows={timelineRows} />
       )}

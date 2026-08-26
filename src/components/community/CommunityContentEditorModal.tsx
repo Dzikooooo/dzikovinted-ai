@@ -92,7 +92,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
     <Modal onClose={onClose} size="lg">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-black">{isEdit ? 'Modifier' : 'Publier'}</h2>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -106,7 +106,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
             type="text"
             value={title}
             onChange={(e) => handleTitleChange(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
           />
         </div>
 
@@ -119,7 +119,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               setSlug(e.target.value);
               setSlugTouched(true);
             }}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
           />
         </div>
 
@@ -129,7 +129,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
             type="text"
             value={excerpt}
             onChange={(e) => setExcerpt(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
           />
         </div>
 
@@ -138,7 +138,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[160px] resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[160px] resize-y"
           />
         </div>
 
@@ -149,7 +149,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               type="text"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             />
           </div>
           <div>
@@ -158,7 +158,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               type="text"
               value={coverImageUrl}
               onChange={(e) => setCoverImageUrl(e.target.value)}
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             />
           </div>
         </div>
@@ -176,7 +176,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
                     className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
                       resourceKind === opt.value
                         ? 'bg-neon-600 text-white border-neon-500'
-                        : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                        : 'bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900'
                     }`}
                   >
                     {opt.label}
@@ -190,7 +190,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
                 type="text"
                 value={resourceUrl}
                 onChange={(e) => setResourceUrl(e.target.value)}
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
               />
             </div>
           </div>
@@ -203,7 +203,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               type="button"
               onClick={() => setStatus('draft')}
               className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                status === 'draft' ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                status === 'draft' ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900'
               }`}
             >
               Brouillon
@@ -212,7 +212,7 @@ export function CommunityContentEditorModal({ type, item, onClose, onCreate, onU
               type="button"
               onClick={() => setStatus('published')}
               className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${
-                status === 'published' ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                status === 'published' ? 'bg-neon-600 text-white border-neon-500' : 'bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900'
               }`}
             >
               Publié

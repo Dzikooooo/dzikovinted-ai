@@ -16,7 +16,7 @@ interface LegalPageProps {
 // juridique definitive.
 export default function LegalPage({ kind, onNavigate }: LegalPageProps) {
   return (
-    <div className="min-h-screen bg-dark-400 text-white flex flex-col">
+    <div className="min-h-screen bg-dark-400 text-gray-900 flex flex-col">
       <Navbar onNavigate={onNavigate} currentPage={kind} />
       <main className="flex-1 pt-32 pb-24 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto">
@@ -36,8 +36,8 @@ export default function LegalPage({ kind, onNavigate }: LegalPageProps) {
 
           {kind === 'cgu' ? <CguContent /> : <ConfidentialiteContent />}
 
-          <div className="mt-14 flex items-center gap-3 bg-surface border border-white/5 rounded-xl px-5 py-4">
-            <p className="text-sm text-gray-400">
+          <div className="mt-14 flex items-center gap-3 bg-surface border border-gray-200 rounded-xl px-5 py-4">
+            <p className="text-sm text-gray-500">
               Une question sur {kind === 'cgu' ? 'ces conditions' : 'cette politique'} ?{' '}
               <a href="mailto:resellosapp@gmail.com" className="text-neon-500 hover:underline">resellosapp@gmail.com</a>
             </p>
@@ -53,7 +53,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="text-xl font-black mb-3">{title}</h2>
-      <div className="text-gray-300 leading-relaxed space-y-3 text-[15px]">{children}</div>
+      <div className="text-gray-700 leading-relaxed space-y-3 text-[15px]">{children}</div>
     </section>
   );
 }

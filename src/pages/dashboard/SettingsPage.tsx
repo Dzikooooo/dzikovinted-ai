@@ -13,8 +13,6 @@ import { Button } from '../../components/ui/Button';
 import { Badge, type BadgeTone } from '../../components/ui/Badge';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { FilterPill } from '../../components/ui/FilterPill';
-import { ClosableSection } from '../../components/ui/ClosableSection';
-import { Logo } from '../../components/ui/Logo';
 import type { SettingsTab, VintedAccount } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { translateAuthError } from '../../lib/errorMessages';
@@ -85,7 +83,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
     { key: 'security', label: 'Sécurité', icon: Lock },
     { key: 'accounts', label: 'Comptes Vinted', icon: Users },
     { key: 'notifications', label: 'Notifications', icon: Bell },
-    { key: 'api', label: 'Cles API', icon: Key },
+    { key: 'api', label: 'Clés API', icon: Key },
     { key: 'privacy', label: 'Confidentialité', icon: Shield },
     { key: 'danger', label: 'Danger', icon: Trash2 },
   ] as const;
@@ -112,16 +110,16 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
               (audit personnel utilisateur, 2026-08-04 : "il manque un petit
               cote compte premium") -- toutes les valeurs viennent du profil
               reel, aucun chiffre invente. */}
-          <div className="bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-white/5 rounded-2xl p-6 flex items-center gap-5">
+          <div className="bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-gray-200 rounded-2xl p-6 flex items-center gap-5">
             <AccountAvatar label={profile?.full_name || profile?.email || '?'} size="lg" brand />
             <div className="flex-1 min-w-0">
-              <p className="font-black text-lg text-gray-100 truncate">{profile?.full_name || profile?.email?.split('@')[0]}</p>
+              <p className="font-black text-lg text-gray-900 truncate">{profile?.full_name || profile?.email?.split('@')[0]}</p>
               <p className="text-sm text-gray-500 truncate">{profile?.email}</p>
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <Badge label={(profile?.plan ?? 'free').toUpperCase()} tone={PLAN_BADGE_TONE[profile?.plan ?? 'free']} />
                 {isAdmin && <Badge label="Admin" tone="attention" />}
                 {profile?.created_at && (
-                  <span className="text-[10px] font-mono text-gray-600">
+                  <span className="text-[10px] font-mono text-gray-500">
                     Membre depuis {new Date(profile.created_at).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                   </span>
                 )}
@@ -138,10 +136,10 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             </div>
           </div>
 
-          <div className="bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+          <div className="bg-surface border border-gray-200 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Informations du profil</h2>
           {profileMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-700'}`}>
               {profileMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
               {profileMsg.text}
             </div>
@@ -149,22 +147,22 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
             </div>
           </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Email</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="email" value={email} disabled className="w-full bg-dark-400 border border-white/5 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-500 cursor-not-allowed" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input type="email" value={email} disabled className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-500 cursor-not-allowed" />
             </div>
           </div>
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Plan</label>
-            <div className="px-4 py-3 bg-dark-400 border border-white/5 rounded-xl text-sm text-neon-500 font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
+            <div className="px-4 py-3 bg-dark-400 border border-gray-200 rounded-xl text-sm text-neon-500 font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
           </div>
-          <div className="pt-5 border-t border-white/5 space-y-4">
+          <div className="pt-5 border-t border-gray-200 space-y-4">
             <div className="flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-neon-500" />
               <h3 className="font-bold text-sm">Style d'annonce IA (optionnel)</h3>
@@ -180,7 +178,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
                 maxLength={500}
                 rows={2}
                 placeholder="Ex : titre court, direct, sans emoji."
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
               />
             </div>
             <div>
@@ -191,7 +189,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
                 maxLength={500}
                 rows={3}
                 placeholder="Ex : toujours mentionner la coupe et le tissu, ton chaleureux."
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
               />
             </div>
           </div>
@@ -203,10 +201,10 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       )}
 
       {activeTab === 'security' && (
-        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl bg-surface border border-gray-200 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Changer le mot de passe</h2>
           {secMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${secMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${secMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-700'}`}>
               {secMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
               {secMsg.text}
             </div>
@@ -214,9 +212,9 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
-              <button type="button" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
+              <button type="button" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-500">
                 {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
@@ -236,7 +234,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       {activeTab === 'accounts' && <AccountsManager />}
 
       {activeTab === 'notifications' && (
-        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-4">
+        <div className="max-w-2xl bg-surface border border-gray-200 rounded-2xl p-6 space-y-4">
           <h2 className="font-bold text-sm mb-2">Préférences de notifications</h2>
           {/* defaultChecked retire (Design Freeze, Lot 8) : rien ne branche
               ces toggles a un vrai etat cote serveur -- les afficher coches
@@ -248,14 +246,14 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             { label: 'Nouvelles fonctionnalités', desc: 'Sois informé des mises à jour de Resell OS.' },
             { label: 'Conseils de vente', desc: 'Astuces pour vendre plus vite sur Vinted.' },
           ].map(({ label, desc }) => (
-            <div key={label} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+            <div key={label} className="flex items-center justify-between py-3 border-b border-gray-200 last:border-0">
               <div>
                 <p className="text-sm font-medium">{label}</p>
                 <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" className="sr-only peer" />
-                <div className="w-10 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-neon-500" />
+                <div className="w-10 h-5 bg-gray-100 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-neon-500" />
               </label>
             </div>
           ))}
@@ -263,7 +261,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       )}
 
       {activeTab === 'api' && (
-        <div className="max-w-2xl bg-surface border border-white/5 rounded-2xl p-6 space-y-5">
+        <div className="max-w-2xl bg-surface border border-gray-200 rounded-2xl p-6 space-y-5">
           <h2 className="font-bold text-sm">Clés API</h2>
           <div className="bg-dark-400 border border-neon-500/20 rounded-xl p-4">
             <p className="text-xs text-neon-500/70 font-mono mb-1">Clé API Gemini</p>
@@ -272,8 +270,8 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Clé API Gemini</label>
             <div className="relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="Colle ta clé ici" className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
+              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="Colle ta clé ici" className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
             </div>
           </div>
           <Button icon={<Save className="w-4 h-4" />} onClick={saveApiKey}>
@@ -289,17 +287,17 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             { icon: Server, title: 'Analyse IA', desc: "Les photos envoyées au Générateur passent par l'API Google Gemini, uniquement le temps de l'analyse. Jamais revendues ni utilisées à d'autres fins." },
             { icon: Cookie, title: 'Aucun tracking publicitaire', desc: "Le stockage local du navigateur sert uniquement à garder ta session connectée. Pas de cookie publicitaire, pas de revente à des tiers." },
           ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-surface border border-white/5 rounded-2xl p-5 flex items-start gap-4">
+            <div key={title} className="bg-surface border border-gray-200 rounded-2xl p-5 flex items-start gap-4">
               <div className="w-9 h-9 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
                 <Icon className="w-4 h-4 text-neon-500" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-200">{title}</p>
+                <p className="text-sm font-semibold text-gray-800">{title}</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">{desc}</p>
               </div>
             </div>
           ))}
-          <div className="flex items-center gap-3 bg-surface/50 border border-white/5 rounded-xl px-5 py-4">
+          <div className="flex items-center gap-3 bg-surface/50 border border-gray-200 rounded-xl px-5 py-4">
             <p className="text-xs text-gray-500">
               Suppression, export ou question sur tes données ?{' '}
               <a href="mailto:resellosapp@gmail.com" className="text-neon-500 hover:underline">resellosapp@gmail.com</a>
@@ -310,7 +308,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
 
       {activeTab === 'danger' && (
         <div className="max-w-2xl bg-surface border border-red-500/20 rounded-2xl p-6 space-y-5">
-          <h2 className="font-bold text-sm text-red-400">Zone de danger</h2>
+          <h2 className="font-bold text-sm text-red-700">Zone de danger</h2>
           <div className="border border-red-500/10 rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Supprimer mon compte</p>
             <p className="text-xs text-gray-500 mb-4">Cette action est irréversible. Toutes tes données seront supprimées définitivement.</p>
@@ -321,19 +319,6 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
         </div>
       )}
 
-      {/* Logo en bas de page, dans un onglet fermable -- demande produit
-          2026-07-29 : le seul endroit du dashboard ou le logo doit
-          apparaitre en dehors de la sidebar/navbar, replie par defaut pour
-          ne pas alourdir la page. */}
-      <ClosableSection label="Resell OS" labelOpen="Masquer" className="max-w-2xl mt-8">
-        <div className="bg-surface border border-white/5 rounded-2xl p-6 flex items-center gap-3">
-          <Logo variant="transparent" size={36} />
-          <div>
-            <p className="font-black text-sm">esell<span className="text-neon-500">OS</span></p>
-            <p className="text-xs text-gray-500 mt-0.5">Le système complet du revendeur Vinted.</p>
-          </div>
-        </div>
-      </ClosableSection>
     </div>
   );
 }
@@ -414,7 +399,7 @@ function AccountsManager() {
           description="Connecte l'extension ResellOS depuis « Compte Vinted » pour qu'un compte apparaisse ici automatiquement."
         />
       ) : (
-        <div className="bg-surface border border-white/5 rounded-2xl divide-y divide-white/5">
+        <div className="bg-surface border border-gray-200 rounded-2xl divide-y divide-gray-200">
           {accounts.map((account) => (
             <div key={account.id} className="flex items-center gap-3 p-4">
               <AccountAvatar label={account.label} size="md" />
@@ -430,11 +415,11 @@ function AccountsManager() {
                       if (e.key === 'Enter') commitRename(account);
                       if (e.key === 'Escape') setEditingId(null);
                     }}
-                    className="w-full max-w-xs bg-dark-400 border border-white/10 rounded-lg px-2.5 py-1 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                    className="w-full max-w-xs bg-dark-400 border border-gray-200 rounded-lg px-2.5 py-1 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
                   />
                 ) : (
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-gray-200 truncate">{account.label}</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate">{account.label}</p>
                     {account.is_default && (
                       <span className="flex items-center gap-1 text-[10px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md flex-shrink-0">
                         <Star className="w-2.5 h-2.5 fill-neon-500" /> Défaut
@@ -458,7 +443,7 @@ function AccountsManager() {
                     onClick={() => setDefault(account)}
                     disabled={savingId === account.id}
                     title="Définir par défaut"
-                    className="p-2 rounded-lg text-gray-500 hover:text-neon-500 hover:bg-white/5 transition-colors disabled:opacity-50"
+                    className="p-2 rounded-lg text-gray-500 hover:text-neon-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
                   >
                     <Star className="w-4 h-4" />
                   </button>
@@ -466,14 +451,14 @@ function AccountsManager() {
                 <button
                   onClick={() => startEdit(account)}
                   title="Renommer"
-                  className="p-2 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/5 transition-colors"
+                  className="p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => openDeleteConfirm(account)}
                   title="Supprimer"
-                  className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/5 transition-colors"
+                  className="p-2 rounded-lg text-gray-500 hover:text-red-700 hover:bg-red-500/5 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -483,7 +468,7 @@ function AccountsManager() {
         </div>
       )}
 
-      <p className="text-xs text-gray-600 px-1">
+      <p className="text-xs text-gray-500 px-1">
         Un compte n'apparaît ici qu'après une connexion réelle via l'extension Chrome, depuis « Compte Vinted ».
       </p>
 
@@ -497,13 +482,13 @@ function AccountsManager() {
             <button
               onClick={() => setDeleteTarget(null)}
               aria-label="Fermer"
-              className="p-1.5 rounded-lg hover:bg-white/5"
+              className="p-1.5 rounded-lg hover:bg-gray-100"
             >
-              <X className="w-5 h-5 text-gray-400" />
+              <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
 
-          <p className="text-sm text-gray-400 mb-5">
+          <p className="text-sm text-gray-500 mb-5">
             {deleteListingsCount === null
               ? 'Vérification des annonces synchronisées...'
               : deleteListingsCount > 0

@@ -22,8 +22,24 @@ describe('startCheckout', () => {
   it('appelle create-checkout-session avec le plan demande et renvoie l\'URL', async () => {
     invoke.mockResolvedValueOnce({ data: { url: 'https://checkout.stripe.com/fake' }, error: null });
     const result = await startCheckout('pro');
-    expect(invoke).toHaveBeenCalledWith('create-checkout-session', { body: { plan: 'pro' } });
+    expect(invoke).toHaveBeenCalledWith('create-checkout-session', { body: { plan: 'pro', interval: 'month' } });
     expect(result).toEqual({ ok: true, url: 'https://checkout.stripe.com/fake' });
+  });
+
+  // Facturation annuelle (2026-08-26). L'enjeu de ces deux tests : un
+  // engagement de douze mois ne doit jamais resulter d'un oubli, et un
+  // engagement choisi ne doit jamais se perdre en route.
+  it('transmet un intervalle annuel explicite', async () => {
+    invoke.mockResolvedValueOnce({ data: { url: 'https://checkout.stripe.com/fake' }, error: null });
+    await startCheckout('team', 'year');
+    expect(invoke).toHaveBeenCalledWith('create-checkout-session', { body: { plan: 'team', interval: 'year' } });
+  });
+
+  it("retombe sur le mensuel quand aucun intervalle n'est precise, jamais sur l'annuel", async () => {
+    invoke.mockResolvedValueOnce({ data: { url: 'https://checkout.stripe.com/fake' }, error: null });
+    await startCheckout('pro');
+    const body = (invoke.mock.calls[0][1] as { body: { interval: string } }).body;
+    expect(body.interval).toBe('month');
   });
 
   it('remonte le message d\'erreur reel du corps JSON (ex. 409 abonnement deja actif)', async () => {

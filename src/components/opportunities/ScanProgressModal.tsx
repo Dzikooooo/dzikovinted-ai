@@ -74,8 +74,8 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
 
       {confirmedError && (
         <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-red-300">{error}</p>
+          <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{error}</p>
         </div>
       )}
 
@@ -104,7 +104,7 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
       {isTerminal && onViewAction && (
         <button
           onClick={onViewAction}
-          className="w-full mt-5 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+          className="w-full mt-5 bg-dark-400 border border-gray-200 text-gray-800 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
         >
           Voir dans Niches
         </button>

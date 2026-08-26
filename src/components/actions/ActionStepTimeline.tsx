@@ -23,16 +23,16 @@ export default function ActionStepTimeline({ rows }: { rows: ActionStepTimelineR
           ) : row.state === 'active' ? (
             <Loader2 className="w-4 h-4 text-neon-500 flex-shrink-0 animate-spin" />
           ) : (
-            <div className="w-4 h-4 rounded-full border border-white/10 flex-shrink-0" />
+            <div className="w-4 h-4 rounded-full border border-gray-200 flex-shrink-0" />
           )}
           <span
             className={`text-sm ${
-              row.state === 'active' ? 'text-gray-100 font-semibold' : row.state === 'done' ? 'text-gray-400' : 'text-gray-600'
+              row.state === 'active' ? 'text-gray-900 font-semibold' : row.state === 'done' ? 'text-gray-500' : 'text-gray-500'
             }`}
           >
             {row.label}
           </span>
-          {row.timestamp && <span className="text-[10px] text-gray-600 ml-auto flex-shrink-0">{row.timestamp}</span>}
+          {row.timestamp && <span className="text-[10px] text-gray-500 ml-auto flex-shrink-0">{row.timestamp}</span>}
         </div>
       ))}
     </div>

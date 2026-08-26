@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeManualFields, replaceManualPlaceholder } from "../publishFieldSummary";
+import { computeManualFields, PACKAGE_SIZE_LABELS, replaceManualPlaceholder } from "../publishFieldSummary";
 import type { PublishListingPayload } from "../../lib/messages";
 
 function makePayload(overrides: Partial<PublishListingPayload> = {}): PublishListingPayload {
@@ -30,16 +30,21 @@ function makePayload(overrides: Partial<PublishListingPayload> = {}): PublishLis
 // champ sans contexte (voir PublishProgressModal.tsx, qui affiche ces
 // chaines telles quelles).
 describe("computeManualFields", () => {
-  it("always lists all 7 manual fields, whatever the payload", () => {
+  // Mission "ROUND PACKAGE SIZE -- implementation production" (2026-08-18) :
+  // "Taille du colis" n'est plus dans cette liste (6 champs, pas 7) -- ce
+  // champ est desormais gere directement par vinted-publish.ts (voir
+  // packageSizeSelection.ts), qui pousse lui-meme une entree confirmed/
+  // pending selon le resultat REEL de la selection automatique.
+  it("always lists all 6 manual fields, whatever the payload", () => {
     const manual = computeManualFields(makePayload({ brand: null, size: null, color: null, material: null }));
-    expect(manual).toHaveLength(7);
+    expect(manual).toHaveLength(6);
     expect(manual.some((f) => f.startsWith("Catégorie"))).toBe(true);
     expect(manual.some((f) => f.startsWith("État"))).toBe(true);
     expect(manual.some((f) => f.startsWith("Marque"))).toBe(true);
     expect(manual.some((f) => f.startsWith("Taille"))).toBe(true);
     expect(manual.some((f) => f.startsWith("Couleur"))).toBe(true);
     expect(manual.some((f) => f.startsWith("Matière"))).toBe(true);
-    expect(manual.some((f) => f.startsWith("Taille du colis"))).toBe(true);
+    expect(manual.some((f) => f.startsWith("Taille du colis"))).toBe(false);
   });
 
   it("reports 'donnée manquante' for genuinely mandatory attributes ResellOS has no value for", () => {
@@ -78,7 +83,6 @@ describe("computeManualFields", () => {
       "Taille : M (à sélectionner sur Vinted)",
       "Couleur : Noir (à sélectionner sur Vinted)",
       "Matière : Coton (à sélectionner sur Vinted)",
-      "Taille du colis : Moyen demandé -- ResellOS ne sélectionne jamais ce champ, Vinted affiche son propre choix (vérifie/corrige-le toi-même avant de publier)",
     ]);
   });
 
@@ -95,27 +99,14 @@ describe("computeManualFields", () => {
     expect(manual).toContain("État : donnée manquante (à choisir sur Vinted)");
   });
 
-  it("labels package size with its real French name (small/medium/large)", () => {
-    expect(computeManualFields(makePayload({ packageSize: "small" })).some((f) => f.startsWith("Taille du colis : Petit demandé"))).toBe(
-      true
-    );
-    expect(computeManualFields(makePayload({ packageSize: "large" })).some((f) => f.startsWith("Taille du colis : Grand demandé"))).toBe(
-      true
-    );
-  });
-
-  // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : preuve live --
-  // Vinted affichait "Petit" (son propre defaut) alors que le payload
-  // demandait "Moyen" -- le libelle ne doit jamais laisser croire que
-  // ResellOS a applique/confirme la valeur demandee, ce champ n'etant jamais
-  // automatise (aucun code de ce fichier n'ecrit sur les cellules de taille
-  // de colis).
-  it("never implies ResellOS applied or confirmed the requested package size -- always states it never touches this field", () => {
-    const line = computeManualFields(makePayload({ packageSize: "medium" })).find((f) => f.startsWith("Taille du colis"));
-    expect(line).toBe(
-      "Taille du colis : Moyen demandé -- ResellOS ne sélectionne jamais ce champ, Vinted affiche son propre choix (vérifie/corrige-le toi-même avant de publier)"
-    );
-    expect(line).not.toContain("à sélectionner sur Vinted");
+  // Mission "ROUND PACKAGE SIZE -- implementation production" (2026-08-18) :
+  // PACKAGE_SIZE_LABELS reste exporte (utilise par vinted-publish.ts pour les
+  // messages confirmed/pending) meme si "Taille du colis" n'est plus dans la
+  // liste computeManualFields() ci-dessus.
+  it("exposes PACKAGE_SIZE_LABELS mapping small/medium/large to their French display names", () => {
+    expect(PACKAGE_SIZE_LABELS.small).toBe("Petit");
+    expect(PACKAGE_SIZE_LABELS.medium).toBe("Moyen");
+    expect(PACKAGE_SIZE_LABELS.large).toBe("Grand");
   });
 });
 

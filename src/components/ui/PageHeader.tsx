@@ -21,7 +21,7 @@ export function PageHeader({ title, description, meta, action, className = '' }:
           <h1 className="text-2xl sm:text-3xl font-black">{title}</h1>
           {meta}
         </div>
-        {description && <p className="text-gray-400 text-sm mt-1">{description}</p>}
+        {description && <p className="text-gray-500 text-sm mt-1">{description}</p>}
       </div>
       {action && <div className="flex-shrink-0">{action}</div>}
     </div>

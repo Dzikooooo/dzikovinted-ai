@@ -39,7 +39,7 @@ vi.mock("../enrichListing", () => ({
   enrichListingIfNeeded: vi.fn(),
 }));
 
-import { fetchPhoto, handlePublishListing } from "../publishListing";
+import { fetchPhoto, handlePublishListing, summarizeColorRelatedFields } from "../publishListing";
 import { enrichListingIfNeeded } from "../enrichListing";
 import { findListingsByVintedItemIds, listKnownVintedItemIds } from "../../sync";
 import { startAccountSync } from "../../syncCoordinator";
@@ -194,6 +194,9 @@ function makeMockChrome(tabId: number) {
     tabs: {
       create: vi.fn().mockResolvedValue({ id: tabId }),
       remove: vi.fn().mockResolvedValue(undefined),
+      // Mission "ROUND READY UX" (2026-08-19) : ramene l'onglet Vinted au
+      // premier plan sur PUBLISH_READY_TO_SUBMIT -- voir publishListing.ts.
+      update: vi.fn().mockResolvedValue(undefined),
       // Mission "REPUBLICATION : PUBLICATION REUSSIE MAIS SUCCES NON
       // DETECTE" (2026-08-17) : reload() du tab de publication existant --
       // le mecanisme d'"ouverture" reutilise par reconcilePostSubmitViaMemberRedirect
@@ -618,6 +621,38 @@ describe("handlePublishListing -- mission 'CLIC FINAL + CONFIRMATION POST-PUBLIC
     mock.updatedListeners[0](6001, { status: "complete" }, { id: 6001, url: "https://www.vinted.fr/items/121212121" });
     const result = await resultPromise;
     expect(result.status).toBe("success");
+  });
+
+  // Mission "ROUND READY UX" (2026-08-19) : ramene l'onglet Vinted au premier
+  // plan des que PUBLISH_READY_TO_SUBMIT est recu -- best-effort, ne
+  // remplace ni ne declenche aucun clic (voir commentaire dans publishListing.ts).
+  it("activates the Vinted tab (chrome.tabs.update) when PUBLISH_READY_TO_SUBMIT is received", async () => {
+    const mock = makeMockChrome(6003);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const request: RunActionRequest = {
+      historyId: "hist-22",
+      kind: "publish_listing",
+      vintedAccountId: "acc-1",
+      payload: makePayload({ description: "d", imageUrls: [] }) as unknown as Record<string, unknown>,
+    };
+
+    const resultPromise = handlePublishListing(request, () => {}, () => {}, () => {});
+    await vi.waitFor(() => expect(mock.runtimeMessageListeners.length).toBeGreaterThan(0));
+
+    mock.sendReady("doc-a");
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1));
+
+    expect(mock.chrome.tabs.update).not.toHaveBeenCalled();
+
+    for (const fn of mock.runtimeMessageListeners) {
+      fn({ type: "PUBLISH_READY_TO_SUBMIT" }, { tab: { id: 6003 } });
+    }
+    expect(mock.chrome.tabs.update).toHaveBeenCalledWith(6003, { active: true });
+
+    mock.updatedListeners[0](6003, { status: "complete" }, { id: 6003, url: "https://www.vinted.fr/items/141414141" });
+    await resultPromise;
   });
 
   it("ignores PUBLISH_READY_TO_SUBMIT from a different/stale tab -- never calls onReadyToSubmit for the wrong tab", async () => {
@@ -1349,5 +1384,196 @@ describe("handlePublishListing -- CAS C : identification de B via la reponse res
       });
     }
     expect(mock.chrome.tabs.remove).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Mission "DIAGNOSTIC REQUEST BODY COULEUR" (2026-08-19) : run live confirme
+// -- Couleur reellement selectionnee/confirmee en DOM, auto-submit
+// declenche, mais Vinted repond 400 sur ce POST precis. summarizeColorRelatedFields()
+// est une extraction PURE (aucune decision metier) sur le corps de REQUETE --
+// ces tests couvrent uniquement sa logique de scan, jamais un effet de bord.
+describe("summarizeColorRelatedFields", () => {
+  it("retourne null quand le corps est absent (null)", () => {
+    expect(summarizeColorRelatedFields(null)).toBeNull();
+  });
+
+  it("retourne null quand le corps n'est pas un JSON valide (ex. multipart/form-data)", () => {
+    expect(summarizeColorRelatedFields("not-json-at-all")).toBeNull();
+  });
+
+  it("retourne {} quand le corps est un JSON valide sans aucun champ color/attribute", () => {
+    expect(summarizeColorRelatedFields(JSON.stringify({ title: "Pull", price: 24 }))).toEqual({});
+  });
+
+  it("trouve un champ top-level 'color_ids'", () => {
+    const result = summarizeColorRelatedFields(JSON.stringify({ title: "Pull", color_ids: [9] }));
+    expect(result).toEqual({ color_ids: [9] });
+  });
+
+  it("trouve un champ 'color_id' imbrique, avec son chemin complet", () => {
+    const result = summarizeColorRelatedFields(JSON.stringify({ item: { color_id: 9 } }));
+    expect(result).toEqual({ "item.color_id": 9 });
+  });
+
+  it("trouve une representation generique 'attributes' (array) ET les champs colores a l'interieur", () => {
+    const body = JSON.stringify({
+      item: { attributes: [{ attribute_id: 12, value_id: 9, color_id: 9 }] },
+    });
+    const result = summarizeColorRelatedFields(body)!;
+    expect(result["item.attributes"]).toEqual([{ attribute_id: 12, value_id: 9, color_id: 9 }]);
+    expect(result["item.attributes[0].attribute_id"]).toBe(12);
+    expect(result["item.attributes[0].color_id"]).toBe(9);
+  });
+
+  it("le champ color absent/null est rapporte tel quel, jamais masque", () => {
+    const result = summarizeColorRelatedFields(JSON.stringify({ item: { color_id: null } }));
+    expect(result).toEqual({ "item.color_id": null });
+  });
+
+  it("insensible a la casse sur le nom de cle", () => {
+    const result = summarizeColorRelatedFields(JSON.stringify({ Color_Id: 9 }));
+    expect(result).toEqual({ Color_Id: 9 });
+  });
+});
+
+// Mission "MODE BACKGROUND -- REPUBLICATION" (2026-08-19) : republish_listing
+// tourne desormais en arriere-plan (l'utilisateur reste sur ResellOS) tant
+// que rien n'exige reellement son intervention -- publish_listing garde son
+// comportement actuel a l'identique (aucun auto-submit pour ce kind, humain
+// requis). Ces tests couvrent exactement les 8 items "obligatoires" de la
+// mission.
+describe("handlePublishListing -- mode background (mission 'MODE BACKGROUND -- REPUBLICATION', 2026-08-19)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  function makeRequest(overrides: Partial<RunActionRequest> = {}): RunActionRequest {
+    return {
+      historyId: "hist-bg",
+      kind: "republish_listing",
+      vintedAccountId: "acc-1",
+      payload: makePayload({ title: "Pull Zara", price: 15, description: "d", imageUrls: [] }) as unknown as Record<string, unknown>,
+      ...overrides,
+    };
+  }
+
+  // 1. republish_listing cree /items/new avec active:false.
+  it("1. republish_listing : chrome.tabs.create est appele avec active:false", async () => {
+    const mock = makeMockChrome(9100);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    expect(mock.chrome.tabs.create).toHaveBeenCalledWith({ url: expect.stringContaining("/items/new"), active: false });
+
+    mock.updatedListeners[0](9100, { status: "complete" }, { id: 9100, url: "https://www.vinted.fr/items/999100111" });
+    await resultPromise;
+  });
+
+  // 2. publish_listing garde son comportement actuel (active:true).
+  it("2. publish_listing : chrome.tabs.create reste appele avec active:true (regression, inchange)", async () => {
+    const mock = makeMockChrome(9101);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const resultPromise = handlePublishListing(makeRequest({ kind: "publish_listing" }), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    expect(mock.chrome.tabs.create).toHaveBeenCalledWith({ url: expect.stringContaining("/items/new"), active: true });
+
+    mock.updatedListeners[0](9101, { status: "complete" }, { id: 9101, url: "https://www.vinted.fr/items/999101111" });
+    await resultPromise;
+  });
+
+  // 3. readiness republish ne fait jamais active:true.
+  it("3. republish_listing : PUBLISH_READY_TO_SUBMIT ne declenche jamais chrome.tabs.update(...,{active:true})", async () => {
+    const mock = makeMockChrome(9102);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const onReadyToSubmit = vi.fn();
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {}, onReadyToSubmit);
+    await vi.waitFor(() => expect(mock.runtimeMessageListeners.length).toBeGreaterThan(0));
+
+    mock.sendReady("doc-a");
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1));
+
+    for (const fn of mock.runtimeMessageListeners) {
+      fn({ type: "PUBLISH_READY_TO_SUBMIT" }, { tab: { id: 9102 } });
+    }
+    // onReadyToSubmit continue d'etre appele (signal inchange vers l'app) --
+    // seul le vol de focus est supprime pour ce kind.
+    expect(onReadyToSubmit).toHaveBeenCalledTimes(1);
+    expect(mock.chrome.tabs.update).not.toHaveBeenCalled();
+
+    mock.updatedListeners[0](9102, { status: "complete" }, { id: 9102, url: "https://www.vinted.fr/items/999102111" });
+    await resultPromise;
+  });
+
+  // 5. succes complet (republish, meme item -- court-circuite le delete pour
+  // rester isole sur le comportement des onglets de CREATION) : aucun
+  // chrome.tabs.update(...,{active:true}) nulle part.
+  // 7. tous les onglets techniques sont fermes comme avant (chrome.tabs.remove).
+  it("5+7. succes complet republish -> aucun chrome.tabs.update(active:true), onglet de creation ferme normalement", async () => {
+    const mock = makeMockChrome(9103);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    // previousVintedItemId === newVintedItemId -> performRepublishReplaceTransaction
+    // court-circuite AVANT tout appel a attemptDeleteOldVintedListing (voir
+    // republishTransaction.ts, reason:"same_item_id") -- isole ce test sur le
+    // seul comportement de l'onglet de creation, deja couvert separement par
+    // les tests dedies de deleteOldListing.test.ts pour l'onglet de suppression.
+    const request = makeRequest({
+      payload: { ...makePayload({ title: "Pull Zara", price: 15, description: "d", imageUrls: [] }), previousVintedItemId: "999103111" } as unknown as Record<string, unknown>,
+    });
+
+    const resultPromise = handlePublishListing(request, () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](9103, { status: "complete" }, { id: 9103, url: "https://www.vinted.fr/items/999103111" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("success");
+    expect(mock.chrome.tabs.update).not.toHaveBeenCalled();
+    expect(mock.chrome.tabs.remove).toHaveBeenCalledWith(9103);
+  });
+
+  // 6. echec necessitant intervention (republish) : l'onglet concerne passe
+  // active:true. Reutilise EXACTEMENT le scenario CAS B ambigu deja teste
+  // pour publish_listing plus haut (keepTabOpen:true, signal existant) --
+  // seul le kind change.
+  it("6. republish_listing : CAS B ambigu (keepTabOpen:true) -> l'onglet de creation est ramene au premier plan", async () => {
+    const mock = makeMockChrome(9104);
+    vi.stubGlobal("chrome", mock.chrome);
+    vi.stubGlobal("fetch", vi.fn());
+
+    vi.mocked(listKnownVintedItemIds).mockResolvedValueOnce(new Set(["100"])).mockResolvedValueOnce(new Set(["100", "200", "300"]));
+    vi.mocked(startAccountSync).mockImplementation(async (_vintedUserId, _onProgress, openTab) => {
+      await openTab();
+      return { ok: true } as Awaited<ReturnType<typeof startAccountSync>>;
+    });
+    vi.mocked(findListingsByVintedItemIds).mockResolvedValue([
+      { vintedItemId: "200", vintedUrl: "https://www.vinted.fr/items/200", title: "Pull Zara", price: 15 },
+      { vintedItemId: "300", vintedUrl: "https://www.vinted.fr/items/300", title: "Pull Zara", price: 15 },
+    ]);
+
+    const resultPromise = handlePublishListing(makeRequest(), () => {}, () => {});
+    await vi.waitFor(() => expect(mock.updatedListeners.length).toBeGreaterThan(0));
+
+    mock.updatedListeners[0](9104, { status: "complete" }, { id: 9104, url: "https://www.vinted.fr/member/3152175197" });
+
+    const result = await resultPromise;
+    expect(result.status).toBe("error");
+    // Etat recuperable conserve a l'identique (demande explicite) : onglet
+    // jamais ferme, exactement comme avant ce round.
+    expect(mock.chrome.tabs.remove).not.toHaveBeenCalled();
+    // SEULE difference introduite par ce round : l'onglet, backgrounded a la
+    // creation, est ramene au premier plan puisqu'une intervention humaine
+    // est reellement necessaire (candidats ambigus).
+    expect(mock.chrome.tabs.update).toHaveBeenCalledWith(9104, { active: true });
   });
 });

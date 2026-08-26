@@ -42,7 +42,7 @@ export function PollCreateModal({ onClose, onCreate }: PollCreateModalProps) {
     <Modal onClose={onClose} size="md">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-black">Nouveau sondage</h2>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -56,7 +56,7 @@ export function PollCreateModal({ onClose, onCreate }: PollCreateModalProps) {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
           />
         </div>
 
@@ -65,7 +65,7 @@ export function PollCreateModal({ onClose, onCreate }: PollCreateModalProps) {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[80px] resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[80px] resize-y"
           />
         </div>
 
@@ -79,13 +79,13 @@ export function PollCreateModal({ onClose, onCreate }: PollCreateModalProps) {
                   value={opt}
                   onChange={(e) => updateOption(index, e.target.value)}
                   placeholder={`Option ${index + 1}`}
-                  className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                  className="flex-1 bg-dark-400 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                 />
                 {options.length > 2 && (
                   <button
                     onClick={() => removeOption(index)}
                     aria-label="Retirer cette option"
-                    className="p-2 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all flex-shrink-0"
+                    className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-all flex-shrink-0"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -96,7 +96,7 @@ export function PollCreateModal({ onClose, onCreate }: PollCreateModalProps) {
           <button
             type="button"
             onClick={addOption}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 mt-2 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 mt-2 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             Ajouter une option

@@ -1,0 +1,30 @@
+# Configuration Supabase CLI (2026-08-26).
+#
+# Ce fichier n'existait pas, et son absence etait un PIEGE REEL : sans lui,
+# `supabase functions deploy stripe-webhook` active la verification JWT par
+# defaut. Or Stripe appelle ce endpoint avec un en-tete `stripe-signature`,
+# jamais un JWT Supabase -- la passerelle renverrait 401 AVANT que la fonction
+# s'execute, et tous les evenements d'abonnement cesseraient d'etre appliques
+# EN SILENCE (aucune erreur cote client, les plans arretent simplement de se
+# mettre a jour).
+#
+# Le drapeau `--no-verify-jwt` en ligne de commande reglait le probleme au coup
+# par coup ; ce fichier le rend permanent et indépendant de qui deploie.
+
+project_id = "knvuwyfdbuaiaivuwlke"
+
+# stripe-webhook s'authentifie LUI-MEME par la signature Stripe
+# (supabase/functions/stripe-webhook/verifySignature.ts) : c'est sa protection,
+# et elle est plus stricte qu'un JWT pour cet usage. Ne jamais repasser cette
+# valeur a true sans avoir d'abord change la facon dont Stripe appelle ce
+# endpoint.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Les autres fonctions gardent la verification JWT par defaut (true) : elles
+# sont appelees par des utilisateurs authentifies depuis l'application.
+#   - create-checkout-session : demarre un paiement pour l'utilisateur courant
+#   - create-portal-session   : ouvre le portail de facturation Stripe
+#   - analyze-clothing        : consomme un credit du compte appelant
+#   - scan-market             : declenche un scan au nom de l'utilisateur
+#   - dziko-assistant         : assistant conversationnel

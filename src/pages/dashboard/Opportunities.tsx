@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Heart, ImageOff, Search, Sparkles, Tag, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, Heart, ImageOff, Search, SlidersHorizontal, Sparkles, Tag, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import type { MarketOpportunity, OpportunityBreakdownEntry, OpportunityFilters, OpportunityRiskLevel } from "../../lib/types";
 import { OPPORTUNITY_CATEGORIES } from "../../lib/opportunityCategories";
 import { computeVerdict, VERDICT_BADGES } from "../../lib/opportunityVerdict";
 import { formatEUR } from "../../lib/currency";
+import { VINTED_INK } from "../../lib/brandColors";
+import { buildOpportunityChips, MAX_CARD_CHIPS } from "../../lib/opportunityChips";
 import { formatRelativeSync } from "../../lib/formatRelativeTime";
 import { StatCard } from "../../components/ui/StatCard";
 import { OneScoreBar } from "../../components/ui/OneScoreBar";
@@ -21,15 +23,17 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { useActionEngine } from "../../hooks/useActionEngine";
 import { buildScanFailureState } from "../../lib/actions/scanFailureState";
 import ScanProgressModal from "../../components/opportunities/ScanProgressModal";
-import OpportunityFilterPanel from "../../components/opportunities/OpportunityFilterPanel";
+import OpportunityFilterPanel, { countAdvancedFilters } from "../../components/opportunities/OpportunityFilterPanel";
 
 type SortBy = "score" | "profit" | "roi" | "created_at" | "price_found";
 type CategoryFilter = "all" | (typeof OPPORTUNITY_CATEGORIES)[number];
 
 const RISK_BADGE: Record<OpportunityRiskLevel, { label: string; className: string }> = {
   faible: { label: "Risque estimé : faible", className: "bg-neon-500/15 text-neon-500 border border-neon-500/30" },
-  modere: { label: "Risque estimé : modéré", className: "bg-amber-400/15 text-amber-400 border border-amber-400/30" },
-  eleve: { label: "Risque estimé : élevé", className: "bg-red-400/15 text-red-400 border border-red-400/30" },
+  // Meme correction que VERDICT_BADGES : amber-400 sur fond amber-400/15
+  // mesure 1.43:1, amber-700 y mesure 4.68:1.
+  modere: { label: "Risque estimé : modéré", className: "bg-amber-400/15 text-amber-700 border border-amber-400/30" },
+  eleve: { label: "Risque estimé : élevé", className: "bg-red-400/15 text-red-700 border border-red-400/30" },
 };
 
 function daysSince(iso: string): string {
@@ -79,6 +83,10 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
   const [search, setSearch] = useState("");
   const [favouriteUrls, setFavouriteUrls] = useState<Set<string>>(new Set());
   const [favouritesOnly, setFavouritesOnly] = useState(false);
+  // Replie par defaut : les filtres avances servent a affiner une recherche
+  // deja lancee, pas a la demarrer -- les laisser deplies coutait ~180px de
+  // hauteur avant la premiere carte, a chaque visite.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState | null>(null);
   const [lastScanRun, setLastScanRun] = useState<LastScanRun | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
@@ -324,6 +332,7 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
   }, [products]);
 
   const categories: CategoryFilter[] = ["all", ...OPPORTUNITY_CATEGORIES];
+  const activeAdvancedCount = countAdvancedFilters(filters);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -342,7 +351,7 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
           <>
             Les meilleures opportunités détectées en temps réel.
             {lastScanRun && (
-              <span className="block text-xs text-gray-600 mt-1.5">
+              <span className="block text-xs text-gray-500 mt-1.5">
                 {lastScanRun.status === "success" && lastScanRun.completedAt
                   ? `Dernier scan réussi : ${formatRelativeSync(lastScanRun.completedAt)}`
                   : lastScanRun.status === "error"
@@ -368,8 +377,8 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
 
       {lastScanRun?.status === "error" && (
         <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
-          <p className="text-sm text-red-400">
+          <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0" />
+          <p className="text-sm text-red-700">
             Le dernier scan automatique a échoué. Les opportunités ci-dessous peuvent être obsolètes — un nouveau scan aura lieu automatiquement dans les prochaines heures, ou lance-le toi-même.
           </p>
         </div>
@@ -383,31 +392,15 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
         <StatCard size="lg" icon={Tag} label="Marque la plus vue" value={topBrand ? topBrand.brand : "-"} />
       </div>
 
-      <SearchInput
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Rechercher une opportunité..."
-        className="mb-4"
-      />
-
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
-        <div className="flex flex-wrap gap-1">
-          {categories.map((cat) => (
-            <FilterPill
-              key={cat}
-              label={cat === "all" ? "Toutes" : cat}
-              active={filters.category === cat}
-              onClick={() => setFilters({ ...filters, category: cat })}
-            />
-          ))}
-          <FilterPill
-            label="Favoris"
-            active={favouritesOnly}
-            onClick={() => setFavouritesOnly((v) => !v)}
-            icon={<Heart className={`w-3.5 h-3.5 ${favouritesOnly ? "fill-current" : ""}`} />}
-          />
-        </div>
-
+      {/* Ligne 1 : chercher et ordonner -- les deux gestes qu'on refait le
+          plus souvent, donc toujours visibles, jamais replies. */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-3">
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher une opportunité..."
+          className="flex-1 min-w-0"
+        />
         <SegmentedControl
           options={[
             { value: "score", label: "Score" },
@@ -418,15 +411,66 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
           ]}
           value={sortBy}
           onChange={setSortBy}
+          className="flex-shrink-0 self-start lg:self-auto"
         />
       </div>
 
-      <OpportunityFilterPanel filters={filters} onChange={setFilters} availableBrands={availableBrands} />
+      {/* Ligne 2 : filtres rapides + acces aux filtres avances. */}
+      <div className={`flex flex-wrap items-center gap-1 ${advancedOpen ? "mb-3" : "mb-5"}`}>
+        {categories.map((cat) => (
+          <FilterPill
+            key={cat}
+            label={cat === "all" ? "Toutes" : cat}
+            active={filters.category === cat}
+            onClick={() => setFilters({ ...filters, category: cat })}
+          />
+        ))}
+        <FilterPill
+          label="Favoris"
+          active={favouritesOnly}
+          onClick={() => setFavouritesOnly((v) => !v)}
+          icon={<Heart className={`w-3.5 h-3.5 ${favouritesOnly ? "fill-current" : ""}`} />}
+        />
+
+        <button
+          onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
+          aria-controls="opportunity-advanced-filters"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ml-auto flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 ${
+            advancedOpen || activeAdvancedCount > 0
+              ? "bg-neon-500/10 text-neon-600"
+              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+          }`}
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          Filtres avancés
+          {/* Le compte reste affiche panneau REPLIE : sinon un filtre actif
+              deviendrait invisible et on ne comprendrait plus pourquoi la
+              grille est vide. Le nombre double le code couleur, il ne s'y
+              substitue pas. */}
+          {activeAdvancedCount > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-neon-600 text-white text-[10px] font-bold">
+              {activeAdvancedCount}
+            </span>
+          )}
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+
+      {/* Monte/demonte au lieu de rester cache en CSS : replie, le panneau ne
+          doit occuper AUCUNE hauteur -- c'est tout l'objet du repliement,
+          liberer la grille sans scroll. */}
+      {advancedOpen && (
+        <div id="opportunity-advanced-filters" className="mb-5">
+          <OpportunityFilterPanel filters={filters} onChange={setFilters} availableBrands={availableBrands} />
+        </div>
+      )}
+
 
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-5">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-white/5 overflow-hidden">
+            <div key={i} className="rounded-2xl border border-gray-200 overflow-hidden">
               <Skeleton shape="block" className="h-44 rounded-none" />
               <div className="p-5 space-y-3">
                 <Skeleton shape="text" className="w-3/4" />
@@ -493,8 +537,6 @@ interface OpportunityCardProps {
   onToggleFavourite: () => void;
 }
 
-const MAX_CARD_HIGHLIGHTS = 5;
-
 function buildHighlights(item: MarketOpportunity, risk: { label: string; className: string } | null): string[] {
   // Chiffres concrets dérivés des champs déjà exposés par le moteur (aucun
   // nouveau calcul côté serveur) - complète le breakdown existant, qui reste
@@ -550,8 +592,20 @@ function groupBreakdownByKind(
   }
   return groups;
 }
-
-function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
+// STRUCTURE (2026-08-26) : la carte etait un <button> englobant TOUT, ce qui
+// rendait impossible d'y poser le lien "Voir sur Vinted" demande -- un <a>
+// dans un <button> est du HTML invalide, et les navigateurs en font ce qu'ils
+// veulent. C'est deja pour cette raison que le coeur "favori" etait un
+// <span role="button"> bricole a l'interieur.
+//
+// Desormais : <article> neutre, et DEUX commandes reelles a l'interieur --
+// un <button> qui couvre la zone d'info (ouvre le detail) et un <a> vers
+// Vinted. Le coeur redevient un vrai <button>. Trois elements focusables
+// legitimes, plus aucun role bricole.
+// Exporte pour etre teste seul (meme parti que watchlist/ListingCard) : la
+// page entiere exigerait de simuler supabase + auth juste pour verifier le
+// balisage d'une carte.
+export function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const verdict = computeVerdict(Number(item.score || 0), Number(item.confidence || 0), item.risk_level);
@@ -559,29 +613,37 @@ function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityC
   const favourites = item.favourites ?? 0;
   const risk = item.risk_level ? RISK_BADGE[item.risk_level] : null;
   const allHighlights = buildHighlights(item, risk);
-  // Max 5 lignes d'info sur la carte (demande produit 2026-07-29) -- la vue
-  // detaillee (modale) reste le seul endroit qui montre tout.
-  const cardHighlights = allHighlights.slice(0, MAX_CARD_HIGHLIGHTS);
+  const chips = buildOpportunityChips(item).slice(0, MAX_CARD_CHIPS);
+  const profit = item.profit !== null ? Number(item.profit) : null;
+  const roi = item.roi !== null ? Math.round(Number(item.roi)) : null;
 
   return (
     <>
-      <button
-        onClick={() => setDetailOpen(true)}
-        className="group bg-surface-alt rounded-2xl border border-white/5 hover:border-neon-500/40 hover:-translate-y-1 transition-all duration-300 overflow-hidden hover:shadow-[0_20px_50px_rgba(0,0,0,0.35)] text-left w-full"
-      >
-        <div className="relative h-44 bg-dark-400 border-b border-white/10 overflow-hidden">
+      <article className="group bg-surface-alt rounded-2xl border border-gray-200 hover:border-neon-500/40 transition-colors overflow-hidden flex flex-col">
+        <div className="relative h-44 bg-dark-400 border-b border-gray-200 overflow-hidden flex-shrink-0">
           {item.image && !imageFailed ? (
             <img
               src={item.image}
               alt={item.title}
               onError={() => setImageFailed(true)}
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-700">
               <ImageOff className="w-8 h-8" />
             </div>
           )}
+
+          {/* Badge d'estimation, en bas a gauche : le chiffre qui decide de
+              cliquer, lisible sans avoir a parcourir la carte. Fond opaque
+              plutot que teinte -- il se superpose a une photo quelconque, et
+              le contraste du texte ne doit dependre d'AUCUN pixel en dessous. */}
+          {item.market_price !== null && (
+            <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 bg-black/75 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full">
+              ≈ {formatEUR(Number(item.market_price))} estimés
+            </span>
+          )}
+
           <div className="absolute top-3 right-3 flex items-center gap-1.5">
             {favourites > 0 && (
               <span className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white text-xs font-semibold px-2.5 py-1 rounded-full">
@@ -589,76 +651,108 @@ function OpportunityCard({ item, isFavourited, onToggleFavourite }: OpportunityC
                 {favourites}
               </span>
             )}
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleFavourite();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.stopPropagation();
-                  onToggleFavourite();
-                }
-              }}
+            <button
+              type="button"
+              onClick={onToggleFavourite}
               aria-label={isFavourited ? "Retirer des favoris" : "Ajouter aux favoris"}
-              className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors cursor-pointer ${
+              aria-pressed={isFavourited}
+              className={`w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
                 isFavourited ? "bg-neon-600 text-white" : "bg-black/60 text-white hover:bg-black/80"
               }`}
             >
               <Heart className={`w-3.5 h-3.5 ${isFavourited ? "fill-current" : ""}`} />
-            </span>
+            </button>
           </div>
         </div>
 
-        <div className="p-5">
-          {/* Deplace hors de l'image (2026-07-28) : superpose au visuel, le
-              badge devenait illisible selon la photo -- toujours lisible ici,
-              quel que soit le contenu de l'image. */}
-          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full mb-2 ${verdictBadge.className}`}>
+        <button
+          type="button"
+          onClick={() => setDetailOpen(true)}
+          aria-label={`Voir le détail de ${item.title}`}
+          className="p-5 text-left w-full flex-1 flex flex-col focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neon-500/50"
+        >
+          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full mb-2 self-start ${verdictBadge.className}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
             {verdictBadge.label}
           </span>
           <h2 className="text-base font-black line-clamp-2 min-h-[48px]">{item.title}</h2>
           <p className="text-gray-500 text-sm mt-1">
-            {item.brand} · {item.category}
+            {[item.brand, item.category].filter(Boolean).join(" · ") || "Marque et catégorie inconnues"}
           </p>
 
-          <div className="flex items-center gap-2 mt-4 text-sm">
-            <span className="text-gray-400 font-medium">
-              {item.price_found !== null ? formatEUR(Number(item.price_found)) : "Prix inconnu"}
-            </span>
-            <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
-            <span className="text-gray-200 font-semibold">
-              {item.market_price !== null ? `${formatEUR(Number(item.market_price))} estimés` : "Estimation indisponible"}
-            </span>
+          {/* Le potentiel, en un bloc : ce qu'on paie, ce que ca vaut, ce
+              qu'on gagne. Le gain et le ROI sont la vraie reponse a "est-ce
+              que j'achete ?", d'ou leur taille et leur couleur -- le reste
+              est le contexte qui les rend credibles. */}
+          <div className="mt-4 rounded-xl bg-surface border border-gray-200 px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-700 font-semibold">
+                {item.price_found !== null ? formatEUR(Number(item.price_found)) : "Prix inconnu"}
+              </span>
+              <ArrowRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" aria-hidden="true" />
+              <span className="text-gray-900 font-bold">
+                {item.market_price !== null ? formatEUR(Number(item.market_price)) : "Estimation indisponible"}
+              </span>
+            </div>
+            {(profit !== null || roi !== null) && (
+              <div className="flex items-baseline gap-3 mt-1.5">
+                {profit !== null && (
+                  <span className="text-green-700 text-lg font-black leading-none">
+                    +{formatEUR(profit)}
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500 ml-1.5 font-normal">gain</span>
+                  </span>
+                )}
+                {roi !== null && (
+                  <span className="text-green-700 text-lg font-black leading-none">
+                    +{roi} %
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500 ml-1.5 font-normal">roi</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <OneScoreBar score={Number(item.score || 0)} size="md" className="mt-4" />
 
-          <p className="text-[11px] text-gray-600 mt-3">
+          {/* Remplace le pave "Pourquoi cette opportunite ?" : les memes
+              signaux, en etiquettes scannables. Le detail complet (phrases +
+              breakdown par facteur) reste dans la modale, rien n'est perdu. */}
+          {chips.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5 mt-3">
+              {chips.map((chip) => (
+                <li
+                  key={chip.kind}
+                  className="text-[11px] text-gray-700 bg-surface border border-gray-200 rounded-md px-2 py-1"
+                >
+                  {chip.label}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className="text-[11px] text-gray-500 mt-3">
             {item.price_source ?? "estimation IA"}
             {item.first_observed_at ? ` · vue depuis ${daysSince(item.first_observed_at)}` : ""}
           </p>
+        </button>
 
-          {cardHighlights.length > 0 && (
-            <div className="mt-3">
-              <p className="text-[11px] text-gray-500 font-bold mb-1.5">Pourquoi cette opportunité ?</p>
-              <ul className="space-y-1 text-[11px] text-gray-400">
-                {cardHighlights.map((label, i) => (
-                  <li key={i}>{label}</li>
-                ))}
-              </ul>
-              {allHighlights.length > cardHighlights.length && (
-                <p className="text-[11px] text-neon-500 mt-1.5">
-                  + {allHighlights.length - cardHighlights.length} autre{allHighlights.length - cardHighlights.length > 1 ? "s" : ""} raison{allHighlights.length - cardHighlights.length > 1 ? "s" : ""}
-                </p>
-              )}
-            </div>
+        <div className="px-5 pb-5 pt-0 mt-auto">
+          {item.vinted_url ? (
+            <a
+              href={item.vinted_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white px-3 py-2.5 rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              style={{ backgroundColor: VINTED_INK }}
+            >
+              Voir sur Vinted
+              <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </a>
+          ) : (
+            <p className="text-[11px] text-gray-500 text-center py-2.5">Lien Vinted indisponible</p>
           )}
         </div>
-      </button>
+      </article>
 
       {detailOpen && (
         <OpportunityDetailModal
@@ -704,12 +798,12 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
           <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
           {verdictLabel}
         </span>
-        <button onClick={onClose} aria-label="Fermer" className="text-gray-500 hover:text-gray-300 transition-colors">
+        <button onClick={onClose} aria-label="Fermer" className="text-gray-500 hover:text-gray-700 transition-colors">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="rounded-xl bg-dark-400 border border-white/10 overflow-hidden h-64 mb-2">
+      <div className="rounded-xl bg-dark-400 border border-gray-200 overflow-hidden h-64 mb-2">
         {activeSrc && !imageFailed ? (
           <img src={activeSrc} alt={item.title} onError={() => setImageFailed(true)} className="w-full h-full object-cover" />
         ) : (
@@ -725,7 +819,7 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
             <button
               key={src}
               onClick={() => { setActiveIndex(i); setImageFailed(false); }}
-              className={`w-14 h-14 rounded-lg overflow-hidden border flex-shrink-0 transition-colors ${i === activeIndex ? 'border-neon-500' : 'border-white/10 hover:border-white/30'}`}
+              className={`w-14 h-14 rounded-lg overflow-hidden border flex-shrink-0 transition-colors ${i === activeIndex ? 'border-neon-500' : 'border-gray-200 hover:border-gray-300'}`}
             >
               <img src={src} alt="" className="w-full h-full object-cover" />
             </button>
@@ -733,7 +827,7 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
         </div>
       )}
 
-      <p className="text-[11px] text-gray-600 mb-4">
+      <p className="text-[11px] text-gray-500 mb-4">
         {gallery.length > 1
           ? `Galerie complète (${gallery.length} photos) récupérée depuis l'annonce Vinted.`
           : "Galerie photo pas encore récupérée pour cette annonce — visible directement sur Vinted."}
@@ -743,11 +837,11 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
       <p className="text-gray-500 text-sm mb-4">{item.brand} · {item.category}</p>
 
       <div className="flex items-center gap-2 text-sm mb-4">
-        <span className="text-gray-400 font-medium">
+        <span className="text-gray-500 font-medium">
           {item.price_found !== null ? formatEUR(Number(item.price_found)) : "Prix inconnu"}
         </span>
-        <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
-        <span className="text-gray-200 font-semibold">
+        <ArrowRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+        <span className="text-gray-800 font-semibold">
           {item.market_price !== null ? `${formatEUR(Number(item.market_price))} estimés` : "Estimation indisponible"}
         </span>
       </div>
@@ -760,7 +854,7 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
             d'affichage. Le detail juste en dessous montre precisement quels
             facteurs y ont contribue. */}
         {Number(item.score ?? 0) >= 100 && (
-          <p className="text-[11px] text-amber-400 mt-1.5">
+          <p className="text-[11px] text-amber-700 mt-1.5">
             Score maximal atteint — plusieurs signaux positifs se cumulent (détail ci-dessous).
           </p>
         )}
@@ -769,7 +863,7 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
       {highlights.length > 0 && (
         <div className="mb-5">
           <p className="text-xs text-gray-500 font-bold mb-2">Pourquoi cette opportunité ?</p>
-          <ul className="space-y-1.5 text-sm text-gray-300">
+          <ul className="space-y-1.5 text-sm text-gray-700">
             {highlights.map((label, i) => (
               <li key={i}>{label}</li>
             ))}
@@ -786,10 +880,10 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
             {nonEmptyGroups.map((kind) => (
               <div key={kind}>
                 <p className="text-xs text-gray-500 font-bold mb-2">{BREAKDOWN_GROUP_LABELS[kind]}</p>
-                <ul className="space-y-1.5 text-sm text-gray-300">
+                <ul className="space-y-1.5 text-sm text-gray-700">
                   {groups[kind].map((entry, i) => (
                     <li key={i} className="flex items-start gap-1.5">
-                      <span className={entry.delta >= 0 ? "text-neon-500 flex-shrink-0" : "text-amber-400 flex-shrink-0"}>
+                      <span className={entry.delta >= 0 ? "text-neon-500 flex-shrink-0" : "text-amber-700 flex-shrink-0"}>
                         {entry.delta >= 0 ? "✓" : "⚠"}
                       </span>
                       <span>
@@ -818,7 +912,7 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
           <ArrowUpRight size={18} />
         </a>
       ) : (
-        <div className="w-full bg-dark-400 text-gray-600 px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed">
+        <div className="w-full bg-dark-400 text-gray-500 px-5 py-3 rounded-xl font-black flex items-center justify-center gap-2 border border-gray-200 cursor-not-allowed">
           Lien indisponible
         </div>
       )}

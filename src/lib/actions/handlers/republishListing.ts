@@ -70,7 +70,7 @@ export const republishListingDefinition: ActionDefinition<RepublishListingPayloa
         // voir le rapport) -- mais promettre qu'elle "reste en ligne" serait
         // tout aussi faux si elle etait deja masquee/supprimee avant ce clic.
         // Ne jamais affirmer un etat qui n'est pas garanti.
-        note: "Une nouvelle annonce Vinted sera créée. ResellOS ne modifie ni ne supprime jamais l'ancienne annonce automatiquement -- tu gères toi-même son sort sur Vinted si besoin.",
+        note: "Une nouvelle annonce Vinted sera créée. ResellOS ne modifie ni ne supprime jamais l'ancienne annonce automatiquement — tu gères toi-même son sort sur Vinted si besoin.",
       },
     };
   },

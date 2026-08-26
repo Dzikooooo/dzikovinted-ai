@@ -26,21 +26,41 @@ export default {
           800: '#2A1A66',
           900: '#1D123F',
         },
+        // THEME CLAIR (2026-08-24) -- l'app interieure etait sombre alors que
+        // la landing etait deja passee en clair : deux produits visuellement
+        // differents. Les VALEURS de ces tokens basculent en clair ; leurs
+        // NOMS restent inchanges volontairement.
+        //
+        // Pourquoi ne pas renommer `dark-*` -> `surface-*` : ces noms sont
+        // references ~240 fois dans src/. Un renommage massif serait un
+        // search/replace a haut risque sur des fichiers metier (explicitement
+        // ecarte par l'utilisateur), pour un gain purement cosmetique cote
+        // code. La contrepartie assumee est un nom trompeur -- d'ou ce
+        // commentaire, seul endroit ou la verite est ecrite.
+        //
+        // L'echelle reste ordonnee du plus CLAIR (50) au plus SOMBRE (900),
+        // comme n'importe quelle echelle Tailwind -- mais `dark-400`, qui
+        // etait le fond de page, vaut desormais blanc pur : c'est lui qui
+        // porte le fond principal partout dans l'app.
         dark: {
-          50: '#1C202B',
-          100: '#171A24',
-          200: '#14171F',
-          300: '#11131A',
-          400: '#0F1117',
-          500: '#0D0F14',
-          600: '#0A0B0F',
-          700: '#08090C',
-          800: '#06070A',
-          900: '#040506',
+          50: '#FFFFFF',
+          100: '#FAFAFA',
+          200: '#F7F8F9',
+          300: '#F9FAFB',
+          400: '#FFFFFF', // fond de page (body, coques de pages)
+          500: '#F3F4F6',
+          600: '#E5E7EB',
+          700: '#D1D5DB',
+          800: '#9CA3AF',
+          900: '#6B7280',
         },
+        // Cartes et panneaux. `DEFAULT` = blanc (une carte sur fond blanc se
+        // distingue desormais par sa BORDURE, plus par son fond -- voir la
+        // palette de la landing) ; `alt` = gris tres leger pour les zones
+        // secondaires imbriquees, exactement comme les cartes de Features/FAQ.
         surface: {
-          DEFAULT: '#1A1E28',
-          alt: '#181B25',
+          DEFAULT: '#FFFFFF',
+          alt: '#F9FAFB',
         },
       },
       fontFamily: {

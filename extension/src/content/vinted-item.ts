@@ -34,6 +34,7 @@ import {
   extractSize,
   extractVintedItemId,
 } from "./itemSelectors";
+import { logger } from "../background/logger";
 import { dispatchFullClick } from "./formFill";
 import {
   DELETE_CONFIRM_TEXT,
@@ -42,6 +43,7 @@ import {
   findDeleteConfirmButton,
   findDeleteTriggerButton,
   isDeleteConfirmationModalVisible,
+  isLayoutUnavailable,
 } from "./deleteFlowSelectors";
 import { isContentCommand } from "../lib/messages";
 import type {
@@ -211,67 +213,158 @@ function waitForLdJsonSettled(timeoutMs = 10000): Promise<boolean> {
   });
 }
 
-// Attend un evenement "click" REEL (isTrusted:true) sur l'element resolu par
-// `resolveElement`, jusqu'a `timeoutMs`. isTrusted est une propriete native
-// du navigateur, jamais falsifiable par du JavaScript (synthetique ou non)
-// -- seul signal fiable pour distinguer un vrai clic utilisateur d'un effet
-// de bord quelconque (navigation, re-render, disparition DOM) qui n'a rien a
-// voir avec une action de l'utilisateur.
-//
-// BUG REEL confirme en test live (mission "ROUND DELETE CONFIRM -- reference
-// figee", 2026-08-19) : le clic humain reel a bien ete traite par Vinted
-// (navigation vers /member/{userId} observee), mais jamais detecte ici --
-// confirm_click_timeout apres 90s. Cause racine : le listener etait attache
-// DIRECTEMENT sur la reference DOM `confirmButton` capturee une seule fois
-// avant l'attente (potentiellement longue, jusqu'a 90s). Si Vinted
-// re-rend/remplace ce bouton entre-temps (React), le clic humain reel
-// atterrit sur un NOUVEAU noeud DOM totalement invisible pour un listener
-// attache a l'ancien -- exactement la meme classe de bug deja identifiee et
-// corrigee ailleurs (voir matchesHumanClick() dans
-// attributeDropdownDiagnostics.ts). Corrige ici en reprenant la meme
-// philosophie : ecoute deleguee au niveau `document`, en phase capture
-// (intercepte l'evenement au plus tot dans sa descente, avant qu'un eventuel
-// stopPropagation() du gestionnaire propre de Vinted ne puisse l'empecher
-// d'atteindre ce listener), et `resolveElement()` est appele A CHAQUE clic --
-// jamais une reference figee -- pour toujours cibler le bouton reellement
-// present dans le DOM au moment du clic.
-// Exportee pour testabilite -- jsdom ne peut jamais produire un evenement
-// avec isTrusted:true (aucun script, y compris un test, ne peut le
-// falsifier -- c'est precisement la garantie recherchee ici), et refuse
-// meme Object.defineProperty() pour le reecrire sur une vraie instance de
-// MouseEvent ("Cannot redefine property"). Les tests espionnent donc
-// document.addEventListener("click", ...) pour recuperer directement le
-// callback enregistre par cette fonction, puis l'invoquent avec un objet
-// minimal {isTrusted, target} -- jamais un vrai dispatchEvent().
-export function waitForTrustedClick(resolveElement: () => HTMLElement | null, timeoutMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    function onClick(e: MouseEvent): void {
-      if (!e.isTrusted || settled) return;
-      const current = resolveElement();
-      const target = e.target as Node | null;
-      if (!current || !target || !current.contains(target)) return;
-      settled = true;
-      cleanup();
-      resolve(true);
-    }
-    function cleanup(): void {
-      document.removeEventListener("click", onClick, true);
-      clearTimeout(timer);
-    }
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(false);
-    }, timeoutMs);
-    document.addEventListener("click", onClick, true);
-  });
-}
-
 // Exportee pour testabilite (jsdom, meme discipline que domWait.test.ts) --
 // aucun appelant reel en dehors du listener chrome.runtime.onMessage
 // ci-dessous.
+// Mission "DIAGNOSTIC SUPPRESSION" (2026-08-25), retour de test live :
+// l'onglet de suppression s'est bien ouvert sur l'ancienne annonce, mais elle
+// n'a pas ete supprimee -- et les codes d'echec existants (trigger_not_found /
+// modal_not_found / confirm_button_not_found) disent ce qui MANQUAIT, jamais
+// ce qui etait REELLEMENT PRESENT dans la page.
+//
+// Or tout ce flow repose sur des correspondances de TEXTE EXACT en francais
+// ("Supprimer", "Supprimer l'article", "Confirmer et supprimer", voir
+// deleteFlowSelectors.ts). Un libelle modifie par Vinted, une icone inseree
+// dans le bouton, une espace insecable... suffisent a faire echouer la
+// recherche sans laisser la moindre trace exploitable.
+//
+// Cette sonde dresse l'inventaire des boutons reellement presents au moment
+// de l'echec. Le detail est serialise DANS le message (meme raison que la
+// sonde prix : l'onglet peut se fermer et detruire les objets deplaiables de
+// la console). Purement observationnel -- ne clique rien, ne modifie rien.
+function snapshotDeleteCandidates(stage: string, vintedItemId: string): void {
+  try {
+    const buttons = Array.from(document.querySelectorAll("button")).map((b) => ({
+      text: (b.textContent ?? "").trim().slice(0, 60),
+      visible: b.offsetParent !== null || b.getClientRects().length > 0,
+      disabled: b.disabled,
+      testid: b.getAttribute("data-testid"),
+    }));
+    const detail = {
+      stage,
+      vintedItemId,
+      documentInstanceId: DOCUMENT_INSTANCE_ID,
+      url: location.href,
+      buttonCount: buttons.length,
+      // Etat du flow de confirmation au moment exact du snapshot : une modale
+      // encore visible APRES le clic final signifie que le clic n'a produit
+      // aucun effet (route protegee, handler non declenche...).
+      modalVisible: isDeleteConfirmationModalVisible(document),
+      confirmButtonPresent: findDeleteConfirmButton(document) !== null,
+      hasProductData: document.querySelector('script[type="application/ld+json"]') !== null,
+      // Ne remonte que les boutons porteurs de texte : un bouton-icone sans
+      // libelle n'apprend rien et gonflerait le log.
+      buttons: buttons.filter((b) => b.text.length > 0),
+      expected: { trigger: DELETE_TRIGGER_TEXT, modal: DELETE_MODAL_HEADING_TEXT, confirm: DELETE_CONFIRM_TEXT },
+    };
+    let inline: string;
+    try {
+      inline = JSON.stringify(detail);
+    } catch {
+      inline = String(detail);
+    }
+    logger.warn(`DELETE_DOM_SNAPSHOT ${inline}`, detail);
+  } catch {
+    /* une sonde de diagnostic ne doit jamais interrompre le flow */
+  }
+}
+
+// scrollIntoView() n'existe pas dans jsdom et peut lever selon le contexte :
+// une aide au clic ne doit jamais faire echouer le flow de suppression.
+function scrollTriggerIntoView(btn: HTMLElement): void {
+  try {
+    btn.scrollIntoView({ block: "center", inline: "nearest" });
+  } catch {
+    /* non supporte (jsdom, contexte restreint) -- sans consequence */
+  }
+}
+
+// Mission "ONGLET MASQUE -- GEOMETRIE NULLE" (2026-08-25) : dans un onglet
+// d'arriere-plan, les evenements pointer/mouse synthetiques portent des
+// coordonnees qui ne correspondent a aucune boite reelle (tout est a 0x0).
+// Le clic natif .click() ne depend d'aucune geometrie -- il invoque
+// directement le comportement d'activation de l'element. Il devient donc le
+// canal PRIORITAIRE quand le document n'est pas rendu, et le repli quand il
+// l'est. Un SEUL des deux canaux est emis par tentative : les emettre tous
+// les deux declencherait deux fois le handler et refermerait un menu a
+// bascule.
+function clickDeleteElement(el: HTMLElement, preferNative: boolean): "native" | "synthetic" {
+  scrollTriggerIntoView(el);
+  if (preferNative) {
+    el.click();
+    return "native";
+  }
+  dispatchFullClick(el);
+  return "synthetic";
+}
+
+// Variante booleenne de l'attente de modale : waitForCondition() rejette au
+// timeout, or ici un premier echec est une etape NORMALE du flow (il declenche
+// la seconde tentative) et non une erreur a propager.
+async function waitForDeleteModal(timeoutMs: number): Promise<boolean> {
+  try {
+    await waitForCondition(() => isDeleteConfirmationModalVisible(document), {
+      timeoutMs,
+      description: `modale "${DELETE_MODAL_HEADING_TEXT}"`,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Etablit POURQUOI un bouton declencheur trouve peut etre invisible : rect et
+// position dans le viewport, puis chaine des ancetres avec display/visibility/
+// opacity/hidden. C'est ce qui distingue "hors ecran" (scrollIntoView suffit)
+// de "replie dans un menu ferme" (il faut d'abord ouvrir le menu) -- deux
+// causes qui produisent le meme visible:false. Detail serialise dans le
+// message : l'onglet peut se fermer et detruire les objets deplaiables.
+function logTriggerState(stage: string, btn: HTMLElement, vintedItemId: string): void {
+  try {
+    const rect = btn.getBoundingClientRect();
+    const ancestors: Array<Record<string, unknown>> = [];
+    let node: HTMLElement | null = btn;
+    while (node && ancestors.length < 6) {
+      const style = window.getComputedStyle(node);
+      const testid = node.getAttribute("data-testid");
+      ancestors.push({
+        tag: node.tagName.toLowerCase() + (testid ? `[${testid}]` : ""),
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        hidden: node.hasAttribute("hidden") || node.getAttribute("aria-hidden") === "true",
+      });
+      node = node.parentElement;
+    }
+    const detail = {
+      stage,
+      vintedItemId,
+      documentInstanceId: DOCUMENT_INSTANCE_ID,
+      testid: btn.getAttribute("data-testid"),
+      text: (btn.textContent ?? "").trim().slice(0, 60),
+      visible: btn.offsetParent !== null || btn.getClientRects().length > 0,
+      disabled: (btn as HTMLButtonElement).disabled ?? false,
+      rect: {
+        top: Math.round(rect.top),
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      },
+      inViewport: rect.height > 0 && rect.top < window.innerHeight && rect.bottom > 0,
+      ancestors,
+    };
+    let inline: string;
+    try {
+      inline = JSON.stringify(detail);
+    } catch {
+      inline = String(detail);
+    }
+    logger.warn(`DELETE_TRIGGER_STATE ${inline}`, detail);
+  } catch {
+    /* une sonde de diagnostic ne doit jamais interrompre le flow */
+  }
+}
+
 export async function handleDeleteListing(payload: DeleteListingPayload): Promise<void> {
   const { vintedItemId } = payload;
 
@@ -295,6 +388,7 @@ export async function handleDeleteListing(payload: DeleteListingPayload): Promis
   // deja retiree -- rien a supprimer, jamais une erreur "bouton introuvable".
   const stillHasProductData = await waitForLdJsonSettled();
   if (!stillHasProductData) {
+    snapshotDeleteCandidates("already_gone_ld_json_absent", vintedItemId);
     reportDeleteResult({ ok: true, alreadyGone: true });
     return;
   }
@@ -306,28 +400,64 @@ export async function handleDeleteListing(payload: DeleteListingPayload): Promis
       description: `bouton "${DELETE_TRIGGER_TEXT}"`,
     });
   } catch (err) {
+    snapshotDeleteCandidates("trigger_not_found", vintedItemId);
     reportDeleteResult({ ok: false, reason: "trigger_not_found", errorMessage: `Bouton "${DELETE_TRIGGER_TEXT}" introuvable : ${errorMessage(err)}` });
     return;
   }
   reportDeleteProgress("trigger_found");
 
+  // Mission "DIAGNOSTIC SUPPRESSION" (2026-08-25) -- PREUVE LIVE : au moment
+  // du clic, le bouton item-delete-button etait present mais visible:false.
+  // Cette sonde etablit POURQUOI (hors viewport, display/visibility hérités
+  // d'un ancetre replie, opacite nulle...) -- purement observationnelle.
+  logTriggerState("before_click", triggerButton, vintedItemId);
+
   // Clic synthetique sur "Supprimer" : ouvre uniquement la modale de
   // confirmation (changement d'etat purement client, aucune requete reseau
   // attendue) -- distinct du clic FINAL ci-dessous, qui declenche la vraie
   // mutation et doit rester un clic humain (voir DeleteStep dans messages.ts).
-  dispatchFullClick(triggerButton);
+  // scrollIntoView() prealable : certains composants ignorent un pointer
+  // event sur un element hors viewport, et cela ne coute rien s'il y est deja.
+  // Canal choisi selon le rendu du document : natif d'abord si l'onglet
+  // n'est pas rendu (geometrie nulle), synthetique sinon.
+  const nativeFirst = isLayoutUnavailable(document);
+  clickDeleteElement(triggerButton, nativeFirst);
   reportDeleteProgress("trigger_clicked");
 
-  try {
-    await waitForCondition(() => isDeleteConfirmationModalVisible(document), {
-      timeoutMs: 8000,
-      description: `modale "${DELETE_MODAL_HEADING_TEXT}"`,
-    });
-  } catch (err) {
+  // Attente de la modale en DEUX temps. Premiere fenetre volontairement
+  // courte : si le premier clic a suffi, on n'ajoute aucun delai au flow.
+  let modalAppeared = await waitForDeleteModal(4000);
+
+  if (!modalAppeared) {
+    // Seconde tentative, avec RE-RESOLUTION du bouton (jamais la reference
+    // initiale, potentiellement perimee -- meme discipline que le clic de
+    // confirmation plus bas). Hypothese que ce retry couvre : si le premier
+    // clic a en fait ouvert un menu contenant le vrai bouton de suppression,
+    // findDeleteTriggerButton() retourne desormais un candidat VISIBLE (la
+    // priorite visibilite ajoutee dans deleteFlowSelectors.ts), et c'est
+    // celui-la qu'il faut cliquer.
+    //
+    // Le clic natif .click() est utilise ici plutot que la sequence
+    // synthetique : c'est le seul canal reellement distinct qui reste a
+    // essayer. Il n'est PAS emis en meme temps que dispatchFullClick (cela
+    // declencherait deux fois le handler et refermerait un menu a bascule) --
+    // uniquement apres constat que la modale n'est pas apparue.
+    const retryButton = findDeleteTriggerButton(document);
+    if (retryButton) {
+      logTriggerState("before_retry_click", retryButton, vintedItemId);
+      // Autre canal que la premiere tentative : les deux sont ainsi essayes
+      // exactement une fois chacun.
+      clickDeleteElement(retryButton, !nativeFirst);
+    }
+    modalAppeared = await waitForDeleteModal(6000);
+  }
+
+  if (!modalAppeared) {
+    snapshotDeleteCandidates("modal_not_found", vintedItemId);
     reportDeleteResult({
       ok: false,
       reason: "modal_not_found",
-      errorMessage: `Modale de confirmation introuvable après le clic sur "${DELETE_TRIGGER_TEXT}" : ${errorMessage(err)}`,
+      errorMessage: `Modale de confirmation introuvable après le clic sur "${DELETE_TRIGGER_TEXT}" (2 tentatives, 10 s au total).`,
     });
     return;
   }
@@ -339,6 +469,7 @@ export async function handleDeleteListing(payload: DeleteListingPayload): Promis
       description: `bouton "${DELETE_CONFIRM_TEXT}"`,
     });
   } catch (err) {
+    snapshotDeleteCandidates("confirm_button_not_found", vintedItemId);
     reportDeleteResult({
       ok: false,
       reason: "confirm_button_not_found",
@@ -347,40 +478,56 @@ export async function handleDeleteListing(payload: DeleteListingPayload): Promis
     return;
   }
 
-  // Clic MANUEL requis (decision d'architecture, voir commentaire d'en-tete
-  // de DeleteStep dans messages.ts) : jamais de clic synthetique sur ce
-  // bouton precis.
+  // Mission "AUTOMATISER LA SUPPRESSION -- DERNIER CLIC" (2026-08-19) : CAUSE
+  // CONFIRMEE en test live, CE MEME round -- le bouton "Ajouter" de creation
+  // (/items/new, meme famille de bouton "soumettre" que celui-ci) accepte
+  // deja un clic synthetique (dispatchFullClick) sans exiger isTrusted:true,
+  // contredisant l'ancienne hypothese ("meme classe de protection anti-bot
+  // que submitEdit()") qui n'avait jamais ete reellement testee sur CE
+  // bouton precis (voir DeleteStep, messages.ts). Le clic devient donc
+  // automatise -- UNE SEULE tentative, jamais de retry -- mais n'est JAMAIS
+  // considere comme une preuve de suppression reussie a lui seul : c'est
+  // verifyReallyDeleted() (deleteOldListing.ts, background, onglet
+  // INDEPENDANT reload + lecture ld+json, INCHANGEE par ce round) qui reste
+  // seule autoritaire sur deletedOld:true/false. Si Vinted protege
+  // reellement cette route, ce clic n'aura simplement aucun effet reseau
+  // reel, et cette verification independante le detectera honnetement
+  // (annonce toujours active) -- jamais un succes invente ici.
   //
-  // BUG REEL confirme en test live (mission "CORRIGER LE FAUX TERMINE",
-  // 2026-08-17) : l'ancienne condition (`!document.body.contains(confirmButton)
-  // || !location.pathname.includes(...)`) traitait TOUTE navigation hors de
-  // /items/{id} comme une preuve de clic -- y compris une navigation SANS
-  // AUCUN rapport avec un clic reel (observe en direct : le navigateur est
-  // revenu sur /member/{userId} sans qu'aucune confirmation n'ait ete
-  // donnee). Consequence en cascade : DELETE_RESULT{ok:true} etait envoye a
-  // tort, declenchant la verification independante puis la fermeture de cet
-  // onglet (settle() dans deleteOldListing.ts) -- exactement "l'onglet
-  // n'est plus reste disponible" rapporte par l'utilisateur, ET un
-  // REPUBLISH_COMPLETED potentiellement faux si la verification suivante
-  // se trompait aussi.
-  //
-  // Corrige en detectant un VRAI evenement "click" avec isTrusted:true
-  // directement sur confirmButton -- un clic synthetique (le notre, ou
-  // toute autre origine) a TOUJOURS isTrusted:false, propriete native du
-  // navigateur, non falsifiable depuis JavaScript. Plus aucune inference a
-  // partir d'effets de bord (navigation, disparition DOM) qui peuvent
-  // survenir pour des raisons totalement etrangeres a un clic utilisateur.
-  reportDeleteProgress("waiting_for_manual_confirm_click");
-  const humanClicked = await waitForTrustedClick(() => findDeleteConfirmButton(document), 90000);
-  if (!humanClicked) {
+  // Re-resolution EXPLICITE juste avant le clic (jamais la reference deja
+  // obtenue par waitForElementMatching ci-dessus, qui peut etre perimee si
+  // Vinted a re-rendu la modale entre-temps -- meme discipline que
+  // publishAutoSubmit.ts/attemptColorPrefill) + verification fraiche que le
+  // bouton est reellement present, visible (findDeleteConfirmButton() filtre
+  // deja isVisible(), voir deleteFlowSelectors.ts) ET non desactive.
+  const confirmButton = findDeleteConfirmButton(document);
+  if (!confirmButton || confirmButton.disabled) {
+    snapshotDeleteCandidates("confirm_button_not_clickable", vintedItemId);
     reportDeleteResult({
       ok: false,
-      reason: "confirm_click_timeout",
-      errorMessage: `Aucun clic humain détecté sur "${DELETE_CONFIRM_TEXT}" sous 90s.`,
+      reason: "confirm_button_not_clickable",
+      errorMessage: `Bouton "${DELETE_CONFIRM_TEXT}" introuvable, invisible ou désactivé juste avant le clic.`,
     });
     return;
   }
+  reportDeleteProgress("auto_confirm_click_attempted");
+  // Une SEULE tentative, inchangee dans son principe -- seul le CANAL est
+  // choisi selon le rendu du document (voir clickDeleteElement).
+  clickDeleteElement(confirmButton, isLayoutUnavailable(document));
   reportDeleteProgress("confirm_clicked");
+  // Observation post-clic, NON BLOQUANTE (setTimeout, jamais await) : ne
+  // retarde ni le reportDeleteResult ci-dessous ni la verification
+  // independante verifyReallyDeleted() cote background -- le flow valide
+  // reste identique au tick pres. Seul but : distinguer "le clic a agi"
+  // de "le clic est parti dans le vide" quand l'annonce survit malgre un
+  // ok:true. Si l'onglet se ferme avant, la sonde est simplement perdue.
+  setTimeout(() => snapshotDeleteCandidates("after_confirm_click", vintedItemId), 600);
+  // ok:true ici signifie UNIQUEMENT "le clic a ete tente sur le bon bouton,
+  // reellement present/visible/actif au moment du clic" -- JAMAIS "la
+  // suppression a reussi" (demande explicite, "ne jamais considerer le
+  // simple clic comme une suppression reussie"). C'est ce meme signal,
+  // inchange, qui declenche deja verifyReallyDeleted() cote background --
+  // aucune modification necessaire de ce cote.
   reportDeleteResult({ ok: true, alreadyGone: false });
 }
 

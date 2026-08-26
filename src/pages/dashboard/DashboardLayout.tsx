@@ -22,7 +22,7 @@ import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import AccountSwitcher from '../../components/ui/AccountSwitcher';
-import { Logo } from '../../components/ui/Logo';
+import { Wordmark } from '../../components/ui/Wordmark';
 import { DzikoAiBubble } from '../../components/ui/DzikoAiBubble';
 import { NotificationRecapModal } from '../../components/notifications/NotificationRecapModal';
 import { Modal } from '../../components/ui/Modal';
@@ -271,7 +271,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   };
 
   const planColors: Record<string, string> = {
-    free: 'text-gray-400',
+    free: 'text-gray-500',
     pro: 'text-neon-500',
     team: 'text-yellow-400',
   };
@@ -281,13 +281,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="p-5 border-b border-white/5">
+      <div className="p-5 border-b border-gray-200">
         <button onClick={() => guardLeaveGenerator(() => onNavigate('landing'))} className="flex items-center gap-1">
-          <Logo variant="transparent" size={28} />
-          <span className="text-lg font-black">
-            <span className="text-white">esell</span>
-            <span className="text-neon-500">OS</span>
-          </span>
+          <Wordmark size="md" />
         </button>
       </div>
 
@@ -309,18 +305,18 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-200 group ${
                 isActive
                   ? 'bg-neon-500/10 text-neon-500 font-medium shadow-[0_0_16px_rgba(124,92,255,0.08)]'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
               }`}
             >
               <Icon
                 className={`w-4 h-4 flex-shrink-0 ${
-                  isActive ? 'text-neon-500' : 'text-gray-500 group-hover:text-gray-300'
+                  isActive ? 'text-neon-500' : 'text-gray-500 group-hover:text-gray-700'
                 }`}
               />
 
               <span className="flex-1 min-w-0 text-left">
                 <span className="block truncate">{label}</span>
-                <span className={`block text-[10px] font-normal truncate ${isActive ? 'text-neon-500/70' : 'text-gray-600'}`}>
+                <span className={`block text-[10px] font-normal truncate ${isActive ? 'text-neon-500/70' : 'text-gray-500'}`}>
                   {description}
                 </span>
               </span>
@@ -334,12 +330,12 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       </nav>
 
       {/* User */}
-      <div className="p-3 border-t border-white/5">
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/3 mb-2">
+      <div className="p-3 border-t border-gray-200">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50 mb-2">
           <AccountAvatar label={profile?.full_name || profile?.email || 'U'} brand />
 
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-gray-200 truncate">
+            <p className="text-xs font-medium text-gray-800 truncate">
               {profile?.full_name || profile?.email}
             </p>
             <p className={`text-[10px] font-bold ${planColors[profile?.plan ?? 'free']}`}>
@@ -350,7 +346,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
 
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:text-red-400 hover:bg-red-500/5 transition-all duration-200"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-500 hover:text-red-700 hover:bg-red-500/5 transition-all duration-200"
         >
           <LogOut className="w-4 h-4" />
           Déconnexion
@@ -363,7 +359,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
     <VintedAccountFilterProvider>
       <div className="flex h-screen bg-dark-400 overflow-hidden">
         {/* Desktop sidebar */}
-        <aside className="hidden lg:flex flex-col w-60 bg-dark-400 border-r border-white/5 flex-shrink-0">
+        <aside className="hidden lg:flex flex-col w-60 bg-dark-400 border-r border-gray-200 flex-shrink-0">
           <SidebarContent />
         </aside>
 
@@ -375,13 +371,13 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               onClick={() => setSidebarOpen(false)}
             />
 
-            <aside className="relative z-10 w-64 bg-dark-400 border-r border-white/5 flex flex-col">
+            <aside className="relative z-10 w-64 bg-dark-400 border-r border-gray-200 flex flex-col">
               <button
                 onClick={() => setSidebarOpen(false)}
                 aria-label="Fermer le menu"
-                className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-white/5"
+                className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100"
               >
-                <X className="w-5 h-5 text-gray-400" />
+                <X className="w-5 h-5 text-gray-500" />
               </button>
 
               <SidebarContent />
@@ -392,14 +388,14 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
         {/* Main content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Topbar */}
-          <header className="flex items-center justify-between px-4 sm:px-6 h-16 border-b border-white/5 flex-shrink-0 bg-dark-400">
+          <header className="flex items-center justify-between px-4 sm:px-6 h-16 border-b border-gray-200 flex-shrink-0 bg-dark-400">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Ouvrir le menu"
-                className="lg:hidden p-2 rounded-lg hover:bg-white/5 transition-colors"
+                className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <Menu className="w-5 h-5 text-gray-400" />
+                <Menu className="w-5 h-5 text-gray-500" />
               </button>
 
               <div>
@@ -426,7 +422,16 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
               chaque changement d'onglet (audit RC, 2026-08-05), key={activePage}
               pour ne le rejouer que sur un vrai changement de page, jamais sur
               un re-render de la meme page. */}
-          <main className="flex-1 overflow-y-auto bg-dark-400">
+          {/* Hierarchie de surfaces (2026-08-24) : la coque (sidebar +
+              header) reste BLANCHE, seule la zone de contenu passe sur un
+              gris quasi blanc (dark-200 = #F7F8F9). Les cartes, elles,
+              restent en blanc pur (bg-surface) : c'est ce seul ecart d'un
+              demi-ton qui les fait se detacher. Avant ce changement, canvas
+              ET cartes etaient tous les deux #FFFFFF -- les pages internes
+              paraissaient completement plates, les cartes n'existant que par
+              leur filet de bordure. Le blanc reste dominant : rien ici ne
+              transforme le dashboard en interface grise. */}
+          <main className="flex-1 overflow-y-auto bg-dark-200">
             <div key={activePage} className="page-enter">
               <Suspense fallback={<PageFallback />}>
                 {activePage === 'home' && <DashboardHome onNavigate={navigateToPage} />}
@@ -454,7 +459,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       {pendingLeaveGeneratorAction && (
         <Modal onClose={cancelLeaveGenerator} size="sm">
           <h2 className="text-lg font-black mb-2">Quitter le Générateur ?</h2>
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="text-sm text-gray-500 mb-6">
             Une génération est en cours ou son résultat n'est pas encore enregistré. Le crédit est déjà utilisé et sera
             perdu si tu continues — le résultat ne sera pas conservé, il faudra tout recommencer si tu reviens sur cet
             écran.

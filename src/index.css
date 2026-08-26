@@ -1,18 +1,57 @@
+/* THEME CLAIR (2026-08-24) -- aligne sur la palette REELLE de la landing
+   (voir src/pages/landing/*), jamais une seconde palette parallele :
+   blanc principal, gris-50 pour les surfaces secondaires, gris-200 pour les
+   bordures, gris-900/600 pour le texte. Le violet ResellOS reste la couleur
+   de marque et d'action principale. */
 :root {
-  --bg: #0F1117;
-  --surface: #1A1E28;
-  --card: #1A1E28;
+  --bg: #FFFFFF;
+  --surface: #FFFFFF;
+  --card: #F9FAFB;
 
   --primary: #7C5CFF;
-  --primary-hover: #5429FF;
+  --primary-hover: #5B3FD9;
 
-  --success: #22C55E;
-  --danger: #EF4444;
+  --success: #16A34A;
+  --danger: #DC2626;
 
-  --text: #F8FAFC;
-  --text-secondary: #6B7280;
+  --text: #111827;
+  --text-secondary: #4B5563;
 
-  --border: #2B2B2B;
+  --border: #E5E7EB;
+
+  /* ========================= */
+  /* MOTION SYSTEM (2026-08-24) -- construit a partir de ce qui etait DEJA
+     utilise dans le produit, pas d'une echelle theorique. L'inventaire reel
+     avant cette passe donnait 4 durees Tailwind (300 x15, 200 x7, 500 x6,
+     700 x4) et 3 courbes CSS distinctes -- soit des transitions lentes
+     (500/700 ms) sur des micro-interactions, et aucune regle partagee.
+     Trois paliers seulement, pour ne jamais retomber a 15 timings :
+
+       --motion-micro   hover, pressed, couleur, rotation d'icone
+       --motion-ui      dropdown, tab, popover, changement de surface
+       --motion-reveal  accordeon, modale, bloc qui se developpe
+
+     Une courbe par intention : `--ease-out` (deceleration franche, sans
+     rebond) pour ce qui entre -- c'est deja la courbe de .bascule, la
+     signature motion du produit ; `--ease-in-out` pour ce qui doit repartir
+     dans les deux sens ; `--ease-panel` pour une HAUTEUR qui se deplie, ou
+     l'exponentielle de --ease-out se lit comme un a-coup (voir plus bas).
+
+     Regle : au-dela de --motion-reveal, une transition devient perceptible
+     comme une attente. ResellOS reste un outil rapide. */
+  --motion-micro: 140ms;
+  --motion-ui: 220ms;
+  --motion-reveal: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Courbe dediee aux panneaux qui se DEPLIENT (accordeon FAQ). --ease-out est
+     une exponentielle : elle parcourt ~90 % de la distance dans le premier
+     tiers du temps, ce qui sur une hauteur qui s'ouvre se lit comme un a-coup
+     sec suivi d'un long trainage -- exactement la "sensation brute" remontee
+     le 2026-08-26. Celle-ci demarre plus doucement et repartit le mouvement
+     sur toute la duree. Les DUREES restent celles de l'echelle existante
+     (--motion-reveal / --motion-ui) : seule l'intention de la courbe change. */
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @tailwind base;
@@ -27,23 +66,25 @@
   width: 8px;
 }
 
+/* Theme clair : un pouce BLANC sur une piste sombre etait le bon contraste
+   avant, il devient invisible sur fond blanc -- inverse ici. */
 ::-webkit-scrollbar-track {
-  background: #0F1117;
+  background: #F3F4F6;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #F8FAFC;
+  background: #C7CBD1;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #E5E5E5;
+  background: #9CA3AF;
 }
 
 @layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: #F8FAFC #0F1117;
+    scrollbar-color: #C7CBD1 #F3F4F6;
     /* Retire le flash gris/bleu par defaut au tap sur mobile (iOS Safari/
        Android Chrome) -- le retour visuel maison (active:scale-[0.98] sur
        Button.tsx, hover/active des cartes) suffit deja, audit RC 2026-08-05. */
@@ -51,12 +92,12 @@
   }
 
   body {
-    @apply bg-dark-400 text-slate-50 font-body antialiased;
+    @apply bg-dark-400 text-gray-900 font-body antialiased;
   }
 
   ::selection {
-    background: rgba(124,92,255,.25);
-    color: white;
+    background: rgba(124,92,255,.18);
+    color: #111827;
   }
 }
 
@@ -64,38 +105,33 @@
 
   /* Glow jaune */
 
+  /* Theme clair (2026-08-24) : un halo lumineux ne "brille" que sur un fond
+     sombre -- sur blanc il produit une bavure grisatre. Les trois primitives
+     de glow deviennent des ombres portees douces et teintees violet, qui
+     donnent la meme intention (mise en avant) sans l'artefact.
+     Conservees plutot que supprimees : encore referencees dans le produit. */
   .neon-glow {
-    box-shadow:
-      0 0 10px rgba(124,92,255,.22),
-      0 0 40px rgba(124,92,255,.08);
+    box-shadow: 0 4px 14px rgba(124,92,255,.14);
   }
 
   .neon-glow-strong {
-    box-shadow:
-      0 0 20px rgba(124,92,255,.30),
-      0 0 60px rgba(124,92,255,.15),
-      0 0 100px rgba(124,92,255,.08);
+    box-shadow: 0 10px 30px rgba(124,92,255,.20);
   }
 
   .neon-text-glow {
-    text-shadow:
-      0 0 12px rgba(124,92,255,.35),
-      0 0 40px rgba(124,92,255,.15);
+    text-shadow: none;
   }
 
   .glass-card {
-    @apply bg-dark-200/60 backdrop-blur-xl border border-white/5 rounded-2xl;
+    @apply bg-white/80 backdrop-blur-xl border border-gray-200 rounded-2xl;
   }
 
   .btn-neon {
     @apply bg-neon-600 text-white font-bold rounded-xl px-8 py-4 transition-all duration-300 active:scale-[0.98];
-
-    box-shadow: 0 0 25px rgba(124,92,255,.18);
   }
 
   .btn-neon:hover {
-    background: #5429FF;
-    box-shadow: 0 0 35px rgba(124,92,255,.28);
+    background: #3B258F;
   }
 
   .btn-outline-neon {
@@ -111,31 +147,31 @@
   }
 
   .field-label {
-    color: rgba(124,92,255,.7);
+    color: #5B3FD9;
     @apply text-xs font-mono uppercase tracking-wider;
   }
 
   .field-value {
-    @apply text-sm text-gray-200 leading-relaxed;
+    @apply text-sm text-gray-800 leading-relaxed;
   }
 
+  /* Nom conserve (`input-dark`) : reference dans plusieurs formulaires du
+     produit -- seules ses valeurs basculent en clair. */
   .input-dark {
     @apply
       w-full
-      bg-dark-100
+      bg-white
       border
-      border-white/10
+      border-gray-300
       rounded-xl
       px-4
       py-3
       text-sm
-      text-gray-200
-      placeholder:text-gray-600
+      text-gray-900
+      placeholder:text-gray-400
       focus:outline-none
       transition-all
       duration-200;
-
-    border-color: rgba(255,255,255,.08);
   }
 
   .input-dark:focus {
@@ -172,28 +208,55 @@
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-@keyframes feature-slide-in-right {
-  from { opacity: 0; transform: translateX(24px); }
+/* Transition entre modules Features (Round I.B.2, retour beta Zoe confirme :
+   ancien contenu demonte instantanement, saut de hauteur, direction basee
+   sur la parite de l'index -- remplace feature-slide-in-left/right
+   ci-dessus, qui n'animait que l'entree, jamais la sortie ni la hauteur).
+   Primitive DEDIEE, distincte de .bascule : ceci anime un changement de
+   SELECTION (onglet actif), jamais un changement de valeur/etat confirme --
+   reutiliser .bascule ici aurait detourne sa definition metier (voir son
+   commentaire plus bas). Direction reelle (avant/arriere selon l'onglet
+   cliqued relativement au precedent), jamais la parite de l'index. */
+
+@keyframes features-leave-forward {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-10px); }
+}
+
+@keyframes features-leave-backward {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(10px); }
+}
+
+@keyframes features-enter-forward {
+  from { opacity: 0; transform: translateX(14px); }
   to { opacity: 1; transform: translateX(0); }
 }
 
-@keyframes feature-slide-in-left {
-  from { opacity: 0; transform: translateX(-24px); }
+@keyframes features-enter-backward {
+  from { opacity: 0; transform: translateX(-14px); }
   to { opacity: 1; transform: translateX(0); }
 }
 
-.feature-slide-in-right {
-  animation: feature-slide-in-right .45s ease-out;
-}
+.features-leave-forward { animation: features-leave-forward .14s ease-out both; }
+.features-leave-backward { animation: features-leave-backward .14s ease-out both; }
+.features-enter-forward { animation: features-enter-forward .2s ease-out both; }
+.features-enter-backward { animation: features-enter-backward .2s ease-out both; }
 
-.feature-slide-in-left {
-  animation: feature-slide-in-left .45s ease-out;
+.features-height {
+  transition: height .2s ease-out;
+  overflow: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .feature-slide-in-right,
-  .feature-slide-in-left {
+  .features-leave-forward,
+  .features-leave-backward,
+  .features-enter-forward,
+  .features-enter-backward {
     animation: none;
+  }
+  .features-height {
+    transition: none;
   }
 }
 
@@ -246,13 +309,180 @@
 }
 
 /* ========================= */
+/* Bascule -- signature motion "Poste de Controle" (voir storyboard Le
+   Voyage de l'Article). Joue UNE FOIS quand une valeur prend la place
+   d'une autre suite a un changement d'etat REEL et confirme (statut,
+   heure, prix) -- jamais un etat suppose/optimiste, jamais en boucle,
+   jamais sur un simple hover. A invoquer en la remontant (ex. `key` React
+   sur le noeud qui affiche la nouvelle valeur), meme mecanique que
+   .feature-slide-in-left/right ci-dessus -- pas de doublon avec
+   .slide-down (tailwind.config.js, animation .3s ease-out) : celle-ci
+   reste dediee a l'ouverture d'AccountSwitcher, une signification
+   differente (menu qui s'ouvre, pas une donnee qui change). Courbe
+   volontairement plus nette que .rise-in (decelere fort, aucun rebond) --
+   la sensation doit rester mecanique et sobre, jouable des centaines de
+   fois sans lasser. Prevue pour etre reprise telle quelle dans l'app plus
+   tard (ex. VintedStatusBadge), pas seulement sur la landing. */
+/* ========================= */
+
+@keyframes bascule {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bascule {
+  animation: bascule .28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bascule { animation: none; }
+}
+
+/* ========================= */
+/* Accordeon FAQ -- specification figee (storyboard "Le Poste de
+   Controle", section FAQ). grid-template-rows 0fr/1fr : anime une hauteur
+   "auto" sans mesurer scrollHeight en JS -- technique robuste, pas de
+   saut au premier rendu. Durees asymetriques deliberees : ouverture plus
+   lente (.22s) que fermeture (.18s), meme logique que modal-panel-enter/
+   modal-overlay-enter plus haut (fermer va toujours un peu plus vite
+   qu'ouvrir). Le contenu texte fond en opacite avec un leger delai a
+   l'ouverture (l'espace s'ouvre avant que le texte apparaisse), et
+   disparait sans delai a la fermeture. */
+/* ========================= */
+
+.faq-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  /* Fermeture legerement plus rapide que l'ouverture -- meme convention que
+     modal-panel/overlay : refermer va toujours un peu plus vite qu'ouvrir. */
+  transition: grid-template-rows var(--motion-ui) var(--ease-panel);
+}
+
+.faq-panel-open {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--motion-reveal) var(--ease-panel);
+}
+
+.faq-panel > div {
+  overflow: hidden;
+}
+
+.faq-panel-content {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--motion-micro) var(--ease-panel),
+    transform var(--motion-micro) var(--ease-panel);
+}
+
+.faq-panel-open .faq-panel-content {
+  opacity: 1;
+  transform: translateY(0);
+  /* Leger delai : l'espace s'ouvre AVANT que le texte n'apparaisse -- sans
+     lui, le contenu semble pousser la carte au lieu de la remplir. */
+  transition: opacity var(--motion-ui) var(--ease-panel) 60ms,
+    transform var(--motion-ui) var(--ease-panel) 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .faq-panel,
+  .faq-panel-open {
+    transition: none;
+  }
+  .faq-panel-content,
+  .faq-panel-open .faq-panel-content {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* ========================= */
+/* Porte d'entree -- EntryGate.tsx (Round M). Deux panneaux qui glissent
+   lateralement au clic, jamais pilotes par le scroll (regle anti-
+   scroll-jacking intacte). Meme philosophie de courbe que .bascule
+   (deceleree, aucun rebond) pour une sensation mecanique et sobre,
+   coherente avec le reste de la grammaire "Poste de Controle". */
+/* ========================= */
+
+.gate-panel {
+  transition: transform 550ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gate-panel-left-open {
+  transform: translateX(-100%);
+}
+
+.gate-panel-right-open {
+  transform: translateX(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gate-panel {
+    transition: none;
+  }
+}
+
+/* ========================= */
+/* Respiration du splash -- SplashScreen.tsx. Remplace les deux anneaux en
+   rotation permanente (un spinner generique, explicitement ecarte). Cycle
+   long et amplitude minime (3 %) : perceptible sans jamais attirer le
+   regard. Neutralise sous prefers-reduced-motion. */
+/* ========================= */
+
+.splash-breathe {
+  animation: splash-breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes splash-breathe {
+  0%, 100% { transform: scale(1); opacity: .88; }
+  50% { transform: scale(1.03); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-breathe { animation: none; }
+}
+
+/* ========================= */
 /* Background grille */
 /* ========================= */
 
 .grid-bg {
   background-image:
-    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    linear-gradient(rgba(17,24,39,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17,24,39,.05) 1px, transparent 1px);
 
   background-size: 40px 40px;
+}
+
+/* ========================= */
+/* Mot peint -- PaintedWord.tsx (Round M, remplace l'effet machine a
+   ecrire : retour utilisateur "jamais d'animation brute", le
+   caractere-par-caractere etait juge trop mecanique). Le mot se revele
+   comme peint au pinceau (clip-path qui s'ouvre + flou qui se dissipe),
+   puis s'efface comme essuye (meme technique inversee) -- toujours une
+   courbe deceleree/accelree douce, jamais un cut sec. */
+/* ========================= */
+
+.paint-reveal {
+  animation: paint-reveal-anim .9s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes paint-reveal-anim {
+  from { clip-path: inset(0 100% 0 0); filter: blur(6px); }
+  to { clip-path: inset(0 0% 0 0); filter: blur(0); }
+}
+
+.paint-erase {
+  animation: paint-erase-anim .7s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+@keyframes paint-erase-anim {
+  from { clip-path: inset(0 0 0 0%); filter: blur(0); opacity: 1; }
+  to { clip-path: inset(0 0 0 100%); filter: blur(6px); opacity: .4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paint-reveal,
+  .paint-erase {
+    animation: none;
+  }
 }

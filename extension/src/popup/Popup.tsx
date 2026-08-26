@@ -64,7 +64,7 @@ export default function Popup() {
       <div className="popup-header">
         <img src={logoGlyphTransparent} alt="ResellOS" width={26} height={26} className="popup-logo" />
         <span className="popup-wordmark">
-          <span className="brand-white">esell</span>
+          <span className="brand-name">esell</span>
           <span className="brand-accent">OS</span>
         </span>
       </div>

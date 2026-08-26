@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { chromium, type Page } from "playwright";
 import { supabase } from "./supabase";
 import {
@@ -11,6 +12,8 @@ import {
 } from "./opportunity-engine";
 import type { ScrapedItem } from "./types";
 import { dedupeWatchlist, type WatchlistRow } from "./watchlistDedup";
+import { waitForCardsToSettle } from "./cardSettle";
+import { mapWithConcurrency, planGalleryFetches, PHOTO_FETCH_CONCURRENCY } from "./photoPlan";
 
 // Present uniquement quand ce script est declenche via workflow_dispatch
 // depuis "Scanner maintenant" (voir supabase/functions/scan-market et
@@ -29,6 +32,16 @@ const scanStartedAt = Date.now();
 // CHAQUE run (cron ou manuel), contrairement a action_log qui ne concerne
 // que les runs manuels via ACTION_ID.
 let scanRunId: string | null = null;
+
+// Identifiant du lot ecrit par CE scan. Genere ici et non repris de
+// scan_runs.id : l'insertion dans scan_runs peut echouer sans arreter le scan
+// (le script logue et continue), et faire dependre la bascule de cette
+// insertion rendrait le scan plus fragile qu'avant.
+const scanBatchId = randomUUID();
+
+// Chronometre par phase : "le scan est trop long" doit se diagnostiquer en
+// lisant les logs du run, pas en re-estimant le budget depuis le code.
+const phaseTimings: Array<{ phase: string; seconds: number }> = [];
 
 async function logProgress(step: string, message: string): Promise<void> {
   if (!actionId) return;
@@ -286,7 +299,15 @@ async function scanSearch(page: Page, search: string) {
       page,
       `https://www.vinted.fr/catalog?search_text=${encodeURIComponent(search)}&page=${pageNum}`
     );
-    await page.waitForTimeout(4000);
+    // Attente adaptative au lieu d'un sommeil fixe de 4 s -- voir cardSettle.ts
+    // pour la garantie (jamais plus lent, jamais sur une page en cours de
+    // remplissage) et le budget de temps que ca recupere.
+    await waitForCardsToSettle({
+      countCards: () =>
+        page.evaluate(() => document.querySelectorAll('[data-testid$="--description-title"]').length),
+      wait: (ms) => page.waitForTimeout(ms),
+      now: () => Date.now(),
+    });
     foundItems.push(...(await extractItemsFromPage(page)));
   }
 
@@ -344,17 +365,28 @@ async function main() {
   try {
     const page = await browser.newPage();
 
-    const { error: deleteError } = await supabase
+    // AVANT la suppression : on retient les galeries deja recuperees lors des
+    // scans precedents. Les photos d'une annonce Vinted ne changent pas, et
+    // une bonne partie des opportunites reapparait d'un scan a l'autre (cron
+    // toutes les 4 h) -- les re-telecharger etait une page.goto par annonce
+    // pour un resultat identique. Ce cache ne coute AUCUNE requete vers
+    // Vinted, c'est la difference avec les autres pistes d'optimisation.
+    const { data: previousGalleries } = await supabase
       .from("market_opportunities")
-      .delete()
-      .gte("created_at", "1970-01-01");
+      .select("vinted_url, images");
 
-    if (deleteError) {
-      console.error("DELETE ERROR (aborting, refuse de melanger des donnees perimees) :", deleteError);
-      await writeTerminal("error", { errorMessage: "Échec de la mise à jour des opportunités (suppression)." });
-      process.exitCode = 1;
-      return;
+    const knownPhotos = new Map<string, string[]>();
+    for (const row of previousGalleries ?? []) {
+      const url = row.vinted_url as string | null;
+      const images = row.images as string[] | null;
+      if (url && Array.isArray(images) && images.length > 0) knownPhotos.set(url, images);
     }
+    console.log(`Galeries deja connues : ${knownPhotos.size}`);
+
+    // Plus AUCUNE suppression a ce stade (2026-08-26). Le nettoyage des lots
+    // precedents a lieu tout a la fin, et uniquement si le scan reussit --
+    // voir la bascule apres l'upsert. Un scan qui casse en route laisse donc
+    // les opportunites precedentes intactes et visibles.
 
     const { data: watchlist, error } = await supabase
       .from("watchlist")
@@ -385,9 +417,12 @@ async function main() {
     const observationRows: ObservationRow[] = [];
     const failedSearches: string[] = [];
 
+    const searchesStartedAt = Date.now();
+
     for (let i = 0; i < watchlistRows.length; i++) {
       const watch = watchlistRows[i];
       const search = `${watch.brand} ${watch.model}`;
+      const searchStartedAt = Date.now();
 
       console.log("\nRecherche :", search);
       await logProgress("searching", `Recherche : ${i + 1}/${watchlistRows.length} (${search})`);
@@ -405,6 +440,7 @@ async function main() {
         failedSearches.push(search);
         continue;
       }
+      console.log(`[timing] recherche "${search}" : ${Math.round((Date.now() - searchStartedAt) / 100) / 10}s`);
       perSearchResults.push({ watch, items });
 
       let invalidPriceCount = 0;
@@ -467,6 +503,9 @@ async function main() {
     }
 
     const scanCtx = buildScanContext(perSearchResults, observations ?? []);
+
+    phaseTimings.push({ phase: "recherches", seconds: Math.round((Date.now() - searchesStartedAt) / 100) / 10 });
+    console.log(`[timing] recherches (total) : ${phaseTimings[phaseTimings.length - 1].seconds}s`);
 
     // Passe 2 - score, avec le contexte complet du batch.
     const totalScraped = perSearchResults.reduce((n, r) => n + r.items.length, 0);
@@ -549,15 +588,63 @@ async function main() {
     // - visiter la page de chaque annonce candidate serait inutilement
     // lourd pour des articles qui ne deviendront jamais des opportunites).
     await logProgress("photos", `Récupération des photos de ${unique.length} opportunité${unique.length === 1 ? "" : "s"}…`);
+    const photosStartedAt = Date.now();
     const photosByUrl = new Map<string, string[]>();
-    for (let i = 0; i < unique.length; i++) {
-      const item = unique[i];
-      const photos = await scrapeItemPhotos(page, item.url);
-      photosByUrl.set(item.url, photos);
-      if ((i + 1) % 20 === 0 || i === unique.length - 1) {
-        await logProgress("photos", `Photos récupérées : ${i + 1}/${unique.length}`);
+
+    const plan = planGalleryFetches(
+      unique.map((i) => ({ url: i.url, score: i.score, profit: i.profit })),
+      (url) => knownPhotos.has(url)
+    );
+
+    // Les galeries en cache sont servies d'abord : gratuites, elles ne
+    // consomment pas le plafond.
+    for (const url of plan.reused) photosByUrl.set(url, knownPhotos.get(url)!);
+
+    console.log(
+      `Galeries : ${plan.reused.length} reutilisee(s), ${plan.toFetch.length} a recuperer, ${plan.skipped.length} ignoree(s) (vignette de recherche seulement)`
+    );
+
+    if (plan.toFetch.length > 0) {
+      await logProgress("photos", `Récupération des photos des ${plan.toFetch.length} meilleures opportunités…`);
+
+      // Un onglet par executant, jamais partage : deux page.goto concurrents
+      // sur le MEME objet Page se marcheraient dessus (le second annule la
+      // navigation du premier).
+      const photoPages: Page[] = [page];
+      for (let i = 1; i < PHOTO_FETCH_CONCURRENCY; i++) {
+        photoPages.push(await browser.newPage());
+      }
+
+      let done = 0;
+      try {
+        const fetched = await mapWithConcurrency(plan.toFetch, PHOTO_FETCH_CONCURRENCY, async (url, _index, workerIndex) => {
+          // L'onglet suit l'EXECUTANT, jamais la position de l'element : deux
+          // page.goto concurrents sur le meme Page s'annuleraient (voir
+          // photoPlan.ts).
+          const photos = await scrapeItemPhotos(photoPages[workerIndex], url);
+          done++;
+          if (done % 10 === 0 || done === plan.toFetch.length) {
+            await logProgress("photos", `Photos récupérées : ${done}/${plan.toFetch.length}`);
+          }
+          return photos;
+        });
+
+        plan.toFetch.forEach((url, i) => photosByUrl.set(url, fetched[i]));
+      } finally {
+        // Ne ferme QUE les onglets ouverts ici -- photoPages[0] est la page
+        // principale, encore utilisee ensuite.
+        for (const extra of photoPages.slice(1)) await extra.close().catch(() => {});
       }
     }
+
+    phaseTimings.push({ phase: "photos", seconds: Math.round((Date.now() - photosStartedAt) / 100) / 10 });
+    console.log(`[timing] photos : ${phaseTimings[phaseTimings.length - 1].seconds}s (${plan.toFetch.length} page(s) visitee(s), concurrence ${PHOTO_FETCH_CONCURRENCY})`);
+
+    console.log(
+      "[timing] RECAPITULATIF :",
+      phaseTimings.map((t) => `${t.phase} ${t.seconds}s`).join(" | "),
+      `| total ${Math.round((Date.now() - scanStartedAt) / 100) / 10}s`
+    );
 
     await logProgress("saving", "Enregistrement des résultats…");
 
@@ -593,16 +680,46 @@ async function main() {
 
           vinted_url: item.url,
           status: "live",
+          scan_batch_id: scanBatchId,
         })),
         { onConflict: "vinted_url" }
       );
 
     if (insertError) {
       console.error("INSERT ERROR:", insertError);
+      // Les lignes des lots precedents n'ont PAS ete touchees : l'utilisateur
+      // garde les opportunites du scan d'avant plutot qu'un ecran vide.
       await writeTerminal("error", { errorMessage: "Échec de l'enregistrement des opportunités." });
       process.exitCode = 1;
     } else {
       console.log(`${unique.length} opportunités enregistrées dans Supabase.`);
+
+      // BASCULE -- le seul moment ou l'on supprime quoi que ce soit, et
+      // uniquement apres un upsert reussi.
+      //
+      // `not(..., 'eq', ...)` et non `neq` : en SQL, `scan_batch_id <> '...'`
+      // est NULL (donc faux) pour une ligne dont scan_batch_id EST NULL, et
+      // les lignes ecrites avant la migration ne seraient jamais nettoyees.
+      // La forme negative attrape aussi les NULL.
+      //
+      // Une opportunite presente dans l'ancien ET le nouveau lot a ete mise a
+      // jour en place par l'upsert (contrainte unique sur vinted_url) : elle
+      // porte deja le lot courant et n'est donc pas supprimee ici.
+      const { error: swapError, count: removed } = await supabase
+        .from("market_opportunities")
+        .delete({ count: "exact" })
+        .not("scan_batch_id", "eq", scanBatchId);
+
+      if (swapError) {
+        // Echec non bloquant : les nouvelles opportunites SONT en base et
+        // visibles. Le seul defaut est que des lignes perimees cohabitent
+        // avec elles jusqu'au prochain scan reussi -- tres loin de justifier
+        // de declarer le scan en echec alors qu'il a produit ses resultats.
+        console.error("SWAP ERROR (lignes perimees conservees) :", swapError);
+      } else {
+        console.log(`Bascule : ${removed ?? 0} ligne(s) de lots precedents supprimee(s).`);
+      }
+
       await writeTerminal("success", {
         resultPayload: { opportunitiesFound: unique.length, failedSearches: failedSearches.length },
       });

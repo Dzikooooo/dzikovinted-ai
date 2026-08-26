@@ -131,11 +131,11 @@ function AppContent() {
 
   if (bannedNotice) {
     return (
-      <div className="min-h-screen bg-dark-400 text-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-dark-400 text-gray-900 flex items-center justify-center px-4">
         <div className="max-w-sm w-full text-center">
           <Logo variant="square" size={44} className="mx-auto mb-6" />
           <h1 className="text-xl font-black mb-3">Compte suspendu</h1>
-          <p className="text-sm text-gray-400 leading-relaxed mb-6">
+          <p className="text-sm text-gray-500 leading-relaxed mb-6">
             L'accès à ce compte a été suspendu. Si tu penses qu'il s'agit d'une erreur, contacte-nous à{' '}
             <a href="mailto:resellosapp@gmail.com" className="text-neon-500 hover:underline">resellosapp@gmail.com</a>.
           </p>

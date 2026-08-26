@@ -69,11 +69,11 @@ export function ContactModal({
             <Mail className="w-5 h-5 text-neon-500" />
           </div>
           <h2 className="font-bold text-lg mb-2">Ton client mail s'est ouvert</h2>
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="text-sm text-gray-500 mb-6">
             Vérifie qu'un nouveau message est bien prêt à être envoyé vers resellosapp@gmail.com. Si rien ne s'est
             ouvert, écris-nous directement à cette adresse.
           </p>
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-300 transition-colors py-2">
+          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700 transition-colors py-2">
             Fermer
           </button>
         </div>
@@ -85,17 +85,17 @@ export function ContactModal({
     <Modal onClose={onClose} size="md">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-lg font-black">{title}</h2>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
 
-      {description && <p className="text-sm text-gray-400 mb-5 leading-relaxed">{description}</p>}
+      {description && <p className="text-sm text-gray-500 mb-5 leading-relaxed">{description}</p>}
 
       <div className="space-y-4">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Destinataire</label>
-          <p className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-400">resellosapp@gmail.com</p>
+          <p className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500">resellosapp@gmail.com</p>
         </div>
 
         {showNameField && (
@@ -107,7 +107,7 @@ export function ContactModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ton nom"
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             />
           </div>
         )}
@@ -120,14 +120,14 @@ export function ContactModal({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="toi@exemple.com"
-            className={`w-full bg-dark-400 border rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:ring-2 transition-all ${
+            className={`w-full bg-dark-400 border rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 transition-all ${
               emailTouched && !emailValid
                 ? 'border-red-500/40 focus:border-red-500/60 focus:ring-red-500/20'
-                : 'border-white/10 focus:border-neon-500/40 focus:ring-neon-500/20'
+                : 'border-gray-200 focus:border-neon-500/40 focus:ring-neon-500/20'
             }`}
           />
           {emailTouched && !emailValid && (
-            <p className="text-xs text-red-400 mt-1.5">Cette adresse ne ressemble pas à un email valide.</p>
+            <p className="text-xs text-red-700 mt-1.5">Cette adresse ne ressemble pas à un email valide.</p>
           )}
         </div>
 
@@ -143,7 +143,7 @@ export function ContactModal({
               value={userCount}
               onChange={(e) => setUserCount(e.target.value)}
               placeholder="Ex. 4"
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             />
           </div>
         )}
@@ -154,7 +154,7 @@ export function ContactModal({
             id="contact-message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[120px] resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[120px] resize-y"
           />
         </div>
 

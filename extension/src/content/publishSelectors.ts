@@ -101,8 +101,12 @@ export const PRICE_INPUT_SELECTOR = '[data-testid="price-input--input"]';
 
 // --- Taille du colis : obligatoire, sans equivalent dans le modele
 // ResellOS (Listing) - 3 cellules cliquables, chacune avec un radio
-// package_type_selector_N associe.
+// package_type_selector_N associe. Automatisee depuis la mission "ROUND
+// PACKAGE SIZE" (2026-08-18) : preuve live -- HTMLInputElement.click()
+// (methode NATIVE) appelee DIRECTEMENT sur le radio (jamais sur la cellule
+// englobante) active reellement le champ, voir packageSizeSelection.ts.
 export const PACKAGE_SIZE_CELL_SELECTOR = (n: 1 | 2 | 3) => `[data-testid="${n}-package-size--cell"]`;
+export const PACKAGE_SIZE_RADIO_SELECTOR = (n: 1 | 2 | 3) => `#package_type_selector_${n}`;
 
 // --- Soumission ---
 // upload-form-save-draft-button = "Sauvegarder le brouillon" (NE PAS

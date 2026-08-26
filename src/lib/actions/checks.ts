@@ -102,13 +102,13 @@ export const checkListingRepublishEligible: ActionCheck = (_ctx, deps) => {
   if (listing.status === 'vendu') {
     return {
       ok: false,
-      failure: { code: 'listing_sold', message: 'Cette annonce est déjà vendue -- impossible de la republier.' },
+      failure: { code: 'listing_sold', message: 'Cette annonce est déjà vendue — impossible de la republier.' },
     };
   }
   if (listing.status !== 'en_stock') {
     return {
       ok: false,
-      failure: { code: 'listing_not_in_stock', message: "Cette annonce est en brouillon -- termine-la avant de la republier." },
+      failure: { code: 'listing_not_in_stock', message: "Cette annonce est en brouillon — termine-la avant de la republier." },
     };
   }
   return { ok: true };

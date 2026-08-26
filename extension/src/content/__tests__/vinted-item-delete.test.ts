@@ -25,16 +25,18 @@ vi.hoisted(() => {
   };
 });
 
-import { handleDeleteListing, waitForTrustedClick } from "../vinted-item";
+import { handleDeleteListing } from "../vinted-item";
 import { DELETE_CONFIRM_TEXT, DELETE_MODAL_HEADING_TEXT, DELETE_TRIGGER_TEXT } from "../deleteFlowSelectors";
 
 // Mission "REPUBLICATION : DIAGNOSTIC LIVE SUPPRESSION ANCIENNE ANNONCE
-// VINTED" (2026-08-17) : couvre le flow reel confirme en direct -- page
-// /items/{id} -> bouton "Supprimer" (clic automatise, purement client) ->
-// modale "Supprimer l'article" -> bouton "Confirmer et supprimer" (clic
-// MANUEL requis, jamais simule ici -- seule sa DISPARITION du DOM, apres un
-// vrai clic humain, est simulee). Aucun mock de domWait/deleteFlowSelectors
-// -- meme discipline que domWait.test.ts, DOM reel jsdom + vrais evenements.
+// VINTED" (2026-08-17), etendue par la mission "AUTOMATISER LA SUPPRESSION
+// -- DERNIER CLIC" (2026-08-19) : couvre le flow reel confirme en direct --
+// page /items/{id} -> bouton "Supprimer" (clic automatise, purement client)
+// -> modale "Supprimer l'article" -> bouton "Confirmer et supprimer"
+// (desormais AUSSI automatise, une seule tentative, dispatchFullClick reel
+// -- plus de clic humain simule/attendu ici). Aucun mock de domWait/
+// deleteFlowSelectors -- meme discipline que domWait.test.ts, DOM reel
+// jsdom + vrais evenements.
 
 function sendMessageCalls(mock: ReturnType<typeof vi.fn>) {
   return mock.mock.calls.map((c) => c[0]);
@@ -65,6 +67,15 @@ function stubVisible(el: Element): void {
   Object.defineProperty(el, "offsetParent", { get: () => document.body, configurable: true });
 }
 
+// Mission "ONGLET MASQUE -- GEOMETRIE NULLE" (2026-08-25) : reproduit un
+// onglet d'arriere-plan (chrome.tabs.create({active:false})). Le getter natif
+// du prototype est simplement masque par une propriete propre, retiree dans
+// l'afterEach -- aucun mock global.
+function stubDocumentHidden(): void {
+  Object.defineProperty(document, "hidden", { get: () => true, configurable: true });
+  Object.defineProperty(document, "visibilityState", { get: () => "hidden", configurable: true });
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
   setLocation("https://www.vinted.fr/items/12345");
@@ -72,6 +83,11 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = "";
+  // Mission "ONGLET MASQUE" (2026-08-25) : retire la surcharge eventuelle de
+  // document.hidden/visibilityState posee par un test (voir stubDocumentHidden)
+  // -- supprimer la propriete propre restaure le getter natif du prototype.
+  delete (document as unknown as Record<string, unknown>).hidden;
+  delete (document as unknown as Record<string, unknown>).visibilityState;
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -140,7 +156,7 @@ describe("handleDeleteListing", () => {
     vi.useFakeTimers();
 
     const promise = handleDeleteListing({ vintedItemId: "12345" });
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(11000);
     await promise;
 
     const calls = sendMessageCalls(sendMessage);
@@ -172,7 +188,7 @@ describe("handleDeleteListing", () => {
     vi.useFakeTimers();
 
     const promise = handleDeleteListing({ vintedItemId: "12345" });
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(11000);
     await promise;
 
     const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string }>;
@@ -184,11 +200,152 @@ describe("handleDeleteListing", () => {
     });
   });
 
-  // Contre-preuve du test precedent : le meme scenario, mais avec une VRAIE
-  // modale visible (stubVisible) + un bouton de confirmation lui aussi
-  // visible -- le flow doit atteindre modal_confirmed PUIS
-  // waiting_for_manual_confirm_click, dans cet ordre exact.
-  it("vraie modale visible + confirm visible -> modal_confirmed puis waiting_for_manual_confirm_click", async () => {
+  // Mission "DIAGNOSTIC SUPPRESSION" (2026-08-25) -- REGRESSION du bug live :
+  // le snapshot du run en echec a remonte data-testid="item-delete-button"
+  // avec visible:false. Le libelle "Supprimer" est trop generique pour etre
+  // fiable seul : ce test place DELIBEREMENT un premier bouton "Supprimer"
+  // invisible AVANT le vrai declencheur dans le DOM -- findButtonByExactText()
+  // aurait retourne ce premier candidat cache. La priorite testid + visibilite
+  // doit selectionner le second.
+  it("cible le bouton data-testid=item-delete-button visible plutot que le premier \"Supprimer\" cache du DOM", async () => {
+    const sendMessage = vi.fn();
+    vi.stubGlobal("chrome", { runtime: { sendMessage } });
+    document.body.innerHTML =
+      ldJsonScript(24) +
+      `<button id="leurre">${DELETE_TRIGGER_TEXT}</button>` +
+      `<button id="vrai" data-testid="item-delete-button">${DELETE_TRIGGER_TEXT}</button>`;
+    const leurre = document.getElementById("leurre")!;
+    const vrai = document.getElementById("vrai")!;
+    stubVisible(vrai);
+
+    const leurreClicked = vi.fn();
+    leurre.addEventListener("click", leurreClicked);
+    vrai.addEventListener("click", () => {
+      const modal = document.createElement("div");
+      modal.textContent = DELETE_MODAL_HEADING_TEXT;
+      document.body.appendChild(modal);
+      stubVisible(modal);
+    });
+    vi.useFakeTimers();
+
+    const promise = handleDeleteListing({ vintedItemId: "12345" });
+    await vi.advanceTimersByTimeAsync(20000);
+    await promise;
+
+    expect(leurreClicked).not.toHaveBeenCalled();
+    const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string }>;
+    expect(calls.some((m) => m.type === "DELETE_PROGRESS" && m.step === "modal_confirmed")).toBe(true);
+  });
+
+  // Mission "DIAGNOSTIC SUPPRESSION" (2026-08-25) : seconde tentative de clic
+  // apres une premiere fenetre d'attente sans modale. Le declencheur n'ouvre
+  // la modale qu'au DEUXIEME clic -- sans le retry, ce scenario finissait en
+  // modal_not_found.
+  it("ouvre la modale via la seconde tentative de clic quand le premier clic reste sans effet", async () => {
+    const sendMessage = vi.fn();
+    vi.stubGlobal("chrome", { runtime: { sendMessage } });
+    document.body.innerHTML =
+      ldJsonScript(24) + `<button id="trigger" data-testid="item-delete-button">${DELETE_TRIGGER_TEXT}</button>`;
+    const trigger = document.getElementById("trigger")!;
+    stubVisible(trigger);
+
+    let clicks = 0;
+    trigger.addEventListener("click", () => {
+      clicks += 1;
+      if (clicks < 2) return; // premier clic volontairement sans effet
+      const modal = document.createElement("div");
+      modal.textContent = DELETE_MODAL_HEADING_TEXT;
+      document.body.appendChild(modal);
+      stubVisible(modal);
+    });
+    vi.useFakeTimers();
+
+    const promise = handleDeleteListing({ vintedItemId: "12345" });
+    await vi.advanceTimersByTimeAsync(20000);
+    await promise;
+
+    expect(clicks).toBeGreaterThanOrEqual(2);
+    const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string }>;
+    expect(calls.some((m) => m.type === "DELETE_PROGRESS" && m.step === "modal_confirmed")).toBe(true);
+  });
+
+  // Mission "ONGLET MASQUE -- GEOMETRIE NULLE" (2026-08-25) -- REGRESSION de
+  // la cause racine live : l'onglet de suppression est ouvert avec
+  // chrome.tabs.create({active:false}) (deleteOldListing.ts). Un onglet
+  // d'arriere-plan n'est jamais rendu : offsetParent est null ET
+  // getClientRects() est vide pour TOUT le document (rect 0x0 observe en
+  // direct sur item-delete-button, alors que tous ses ancetres etaient
+  // display:block/grid + visibility:visible). Le controle strict de
+  // visibilite y echouait donc structurellement, quel que soit l'element.
+  // AUCUN stubVisible() ici, volontairement : c'est exactement la situation
+  // reelle, et le flow doit desormais aboutir malgre tout.
+  it("onglet masque (document.hidden) : le flow aboutit malgre une geometrie nulle sur tout le document", async () => {
+    const sendMessage = vi.fn();
+    vi.stubGlobal("chrome", { runtime: { sendMessage } });
+    stubDocumentHidden();
+    document.body.innerHTML =
+      ldJsonScript(24) + `<button id="trigger" data-testid="item-delete-button">${DELETE_TRIGGER_TEXT}</button>`;
+    document.getElementById("trigger")!.addEventListener("click", () => {
+      const heading = document.createElement("div");
+      heading.textContent = DELETE_MODAL_HEADING_TEXT;
+      const confirm = document.createElement("button");
+      confirm.textContent = DELETE_CONFIRM_TEXT;
+      document.body.append(heading, confirm);
+    });
+    vi.useFakeTimers();
+
+    const promise = handleDeleteListing({ vintedItemId: "12345" });
+    await vi.advanceTimersByTimeAsync(20000);
+    await promise;
+
+    const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string; outcome?: unknown }>;
+    expect(calls.some((m) => m.type === "DELETE_PROGRESS" && m.step === "modal_confirmed")).toBe(true);
+    expect(calls.some((m) => m.type === "DELETE_PROGRESS" && m.step === "confirm_clicked")).toBe(true);
+  });
+
+  // Contre-epreuve indispensable : le relachement ci-dessus ne doit PAS
+  // rouvrir le faux "modal_confirmed" corrige en aout. Meme onglet masque,
+  // mais le titre de modale est dans un conteneur display:none -- les styles
+  // calcules restent corrects dans un onglet d'arriere-plan, donc il doit
+  // toujours etre rejete.
+  it("onglet masque : un titre de modale sous display:none reste rejete (pas de faux modal_confirmed)", async () => {
+    const sendMessage = vi.fn();
+    vi.stubGlobal("chrome", { runtime: { sendMessage } });
+    stubDocumentHidden();
+    document.body.innerHTML =
+      ldJsonScript(24) + `<button id="trigger" data-testid="item-delete-button">${DELETE_TRIGGER_TEXT}</button>`;
+    document.getElementById("trigger")!.addEventListener("click", () => {
+      const wrapper = document.createElement("div");
+      wrapper.style.display = "none";
+      const heading = document.createElement("div");
+      heading.textContent = DELETE_MODAL_HEADING_TEXT;
+      wrapper.appendChild(heading);
+      document.body.appendChild(wrapper);
+    });
+    vi.useFakeTimers();
+
+    const promise = handleDeleteListing({ vintedItemId: "12345" });
+    await vi.advanceTimersByTimeAsync(20000);
+    await promise;
+
+    const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string }>;
+    expect(calls.some((m) => m.type === "DELETE_PROGRESS" && m.step === "modal_confirmed")).toBe(false);
+    expect(calls).toContainEqual({
+      type: "DELETE_RESULT",
+      outcome: { ok: false, reason: "modal_not_found", errorMessage: expect.any(String) },
+      documentInstanceId: expect.any(String),
+    });
+  });
+
+  // Mission "AUTOMATISER LA SUPPRESSION -- DERNIER CLIC" (2026-08-19) :
+  // scenario nominal -- modale + bouton de confirmation reellement visibles
+  // et actifs -> clic AUTOMATIQUE (dispatchFullClick, isTrusted:false, jamais
+  // falsifie), ordre exact modal_confirmed -> auto_confirm_click_attempted
+  // -> confirm_clicked -> DELETE_RESULT{ok:true, alreadyGone:false}. Ce
+  // dernier signifie UNIQUEMENT "le clic a ete tente" -- la preuve de
+  // suppression reelle reste verifyReallyDeleted() (deleteOldListing.ts,
+  // background, INCHANGEE), hors de portee de ce test content-script.
+  it("modale + bouton confirm visibles et actifs -> clic automatique declenche, ordre modal_confirmed -> auto_confirm_click_attempted -> confirm_clicked -> DELETE_RESULT ok:true", async () => {
     const sendMessage = vi.fn();
     vi.stubGlobal("chrome", { runtime: { sendMessage } });
     document.body.innerHTML = ldJsonScript(24) + `<button id="trigger">${DELETE_TRIGGER_TEXT}</button>`;
@@ -200,20 +357,67 @@ describe("handleDeleteListing", () => {
     });
     vi.useFakeTimers();
 
+    let clickOnConfirm: MouseEvent | null = null;
+    document.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement | null)?.id === "confirm") clickOnConfirm = e as MouseEvent;
+    });
+
     const promise = handleDeleteListing({ vintedItemId: "12345" });
     await vi.advanceTimersByTimeAsync(1);
+    await promise;
 
-    const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string }>;
+    const calls = sendMessageCalls(sendMessage) as Array<{ type: string; step?: string; outcome?: { ok?: boolean } }>;
     const progressSteps = calls.filter((m) => m.type === "DELETE_PROGRESS").map((m) => m.step);
     const confirmedIndex = progressSteps.indexOf("modal_confirmed");
-    const waitingIndex = progressSteps.indexOf("waiting_for_manual_confirm_click");
+    const clickAttemptedIndex = progressSteps.indexOf("auto_confirm_click_attempted");
+    const clickedIndex = progressSteps.indexOf("confirm_clicked");
     expect(confirmedIndex).toBeGreaterThanOrEqual(0);
-    expect(waitingIndex).toBeGreaterThan(confirmedIndex);
+    expect(clickAttemptedIndex).toBeGreaterThan(confirmedIndex);
+    expect(clickedIndex).toBeGreaterThan(clickAttemptedIndex);
 
-    // Nettoyage : laisse le timeout de clic expirer pour ne pas laisser de
-    // timer en vol entre les tests.
-    await vi.advanceTimersByTimeAsync(90000);
+    expect(calls).toContainEqual({
+      type: "DELETE_RESULT",
+      outcome: { ok: true, alreadyGone: false },
+      documentInstanceId: expect.any(String),
+    });
+
+    expect(clickOnConfirm).not.toBeNull();
+    expect(clickOnConfirm!.isTrusted).toBe(false); // synthetique, jamais falsifie en isTrusted:true
+  });
+
+  // Mission "AUTOMATISER LA SUPPRESSION -- DERNIER CLIC" (2026-08-19) :
+  // re-resolution + verification fraiche juste avant le clic -- un bouton
+  // trouve par waitForElementMatching() mais desactive au moment de cette
+  // re-verification ne doit JAMAIS etre clique.
+  it("bouton \"Confirmer et supprimer\" désactivé au moment du clic -> confirm_button_not_clickable, aucun clic tenté", async () => {
+    const sendMessage = vi.fn();
+    vi.stubGlobal("chrome", { runtime: { sendMessage } });
+    document.body.innerHTML = ldJsonScript(24) + `<button id="trigger">${DELETE_TRIGGER_TEXT}</button>`;
+    const trigger = document.getElementById("trigger")!;
+    trigger.addEventListener("click", () => {
+      document.body.innerHTML += `<div id="modal-heading">${DELETE_MODAL_HEADING_TEXT}</div><button id="confirm" disabled>${DELETE_CONFIRM_TEXT}</button>`;
+      stubVisible(document.getElementById("modal-heading")!);
+      stubVisible(document.getElementById("confirm")!);
+    });
+    vi.useFakeTimers();
+
+    let clicked = false;
+    document.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement | null)?.id === "confirm") clicked = true;
+    });
+
+    const promise = handleDeleteListing({ vintedItemId: "12345" });
+    await vi.advanceTimersByTimeAsync(8000);
     await promise;
+
+    const calls = sendMessageCalls(sendMessage);
+    expect(calls).toContainEqual({
+      type: "DELETE_RESULT",
+      outcome: { ok: false, reason: "confirm_button_not_clickable", errorMessage: expect.any(String) },
+      documentInstanceId: expect.any(String),
+    });
+    expect(clicked).toBe(false);
+    expect((document.getElementById("confirm") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("bouton \"Confirmer et supprimer\" introuvable une fois la modale affichée", async () => {
@@ -242,7 +446,12 @@ describe("handleDeleteListing", () => {
     });
   });
 
-  it("timeout après confirmation : le bouton \"Confirmer et supprimer\" existe mais aucun clic humain n'est jamais détecté", async () => {
+  // Mission "AUTOMATISER LA SUPPRESSION -- DERNIER CLIC" (2026-08-19) :
+  // regression directe -- un bouton trouve par waitForElementMatching() puis
+  // retire du DOM AVANT la re-resolution qui precede le clic ne doit jamais
+  // produire un faux succes (aucune inference a partir d'effets de bord type
+  // navigation/disparition -- seule la re-resolution explicite decide).
+  it("le bouton de confirmation retiré du DOM juste après l'ouverture de la modale -> jamais de faux succès", async () => {
     const sendMessage = vi.fn();
     vi.stubGlobal("chrome", { runtime: { sendMessage } });
     document.body.innerHTML = ldJsonScript(24) + `<button id="trigger">${DELETE_TRIGGER_TEXT}</button>`;
@@ -251,68 +460,18 @@ describe("handleDeleteListing", () => {
       document.body.innerHTML += `<div id="modal-heading">${DELETE_MODAL_HEADING_TEXT}</div><button id="confirm">${DELETE_CONFIRM_TEXT}</button>`;
       stubVisible(document.getElementById("modal-heading")!);
       stubVisible(document.getElementById("confirm")!);
+      // Retire le bouton IMMEDIATEMENT -- simule un re-render qui le retire
+      // juste après l'ouverture de la modale, avant que handleDeleteListing()
+      // n'ait pu le re-résoudre pour le clic.
+      document.getElementById("confirm")!.remove();
     });
     vi.useFakeTimers();
 
     const promise = handleDeleteListing({ vintedItemId: "12345" });
-    await vi.advanceTimersByTimeAsync(90000);
+    await vi.advanceTimersByTimeAsync(8000);
     await promise;
 
     const calls = sendMessageCalls(sendMessage);
-    expect(calls).toContainEqual({
-      type: "DELETE_RESULT",
-      outcome: { ok: false, reason: "confirm_click_timeout", errorMessage: expect.any(String) },
-      documentInstanceId: expect.any(String),
-    });
-    // Le bouton n'a jamais ete retire -- jamais de succes tant qu'aucun clic
-    // n'est detecte.
-    expect(document.body.textContent).toContain(DELETE_CONFIRM_TEXT);
-  });
-
-  // Mission "CORRIGER LE FAUX TERMINE" (2026-08-17) : REGRESSION directe du
-  // bug live -- l'ancienne condition de detection du clic
-  // (`!document.body.contains(confirmButton) || !location.pathname.includes(...)`)
-  // traitait TOUT retrait du bouton du DOM (ou toute navigation) comme une
-  // preuve de clic, meme sans qu'aucun clic reel n'ait eu lieu (observe en
-  // direct : navigation vers /member/{userId} sans confirmation). Ce test
-  // reproduit exactement ce scenario -- le bouton disparait, AUCUN clic
-  // n'est jamais dispatche -- et prouve que cela ne produit plus JAMAIS de
-  // faux succes : seul un vrai evenement "click" isTrusted:true (impossible
-  // a simuler depuis jsdom, voir describe("waitForTrustedClick") ci-dessous)
-  // peut desormais faire progresser handleDeleteListing au-dela de cette
-  // etape.
-  it("le retrait du bouton de confirmation SANS aucun clic (navigation, re-render...) ne produit jamais un faux succès", async () => {
-    const sendMessage = vi.fn();
-    vi.stubGlobal("chrome", { runtime: { sendMessage } });
-    document.body.innerHTML = ldJsonScript(24) + `<button id="trigger">${DELETE_TRIGGER_TEXT}</button>`;
-    const trigger = document.getElementById("trigger")!;
-    trigger.addEventListener("click", () => {
-      document.body.innerHTML += `<div id="modal-heading">${DELETE_MODAL_HEADING_TEXT}</div><button id="confirm">${DELETE_CONFIRM_TEXT}</button>`;
-      stubVisible(document.getElementById("modal-heading")!);
-      stubVisible(document.getElementById("confirm")!);
-    });
-    vi.useFakeTimers();
-
-    const promise = handleDeleteListing({ vintedItemId: "12345" });
-    await vi.advanceTimersByTimeAsync(0);
-
-    // Retire le bouton SANS jamais dispatcher le moindre evenement "click"
-    // dessus -- exactement le symptome observe en direct (navigation vers
-    // /member/{userId} sans confirmation reelle).
-    document.getElementById("confirm")?.remove();
-    setLocation("https://www.vinted.fr/member/999");
-
-    await vi.advanceTimersByTimeAsync(90000);
-    await promise;
-
-    const calls = sendMessageCalls(sendMessage);
-    // Jamais de succes -- uniquement le timeout honnete, malgre le retrait
-    // du bouton et la navigation.
-    expect(calls).toContainEqual({
-      type: "DELETE_RESULT",
-      outcome: { ok: false, reason: "confirm_click_timeout", errorMessage: expect.any(String) },
-      documentInstanceId: expect.any(String),
-    });
     expect(calls.some((m) => (m as { outcome?: { ok?: boolean } }).outcome?.ok === true)).toBe(false);
   });
 });
@@ -387,139 +546,3 @@ describe("garde locale d'execution -- DELETE_LISTING reçu plusieurs fois dans l
   });
 });
 
-describe("waitForTrustedClick", () => {
-  // Mission "ROUND DELETE CONFIRM -- reference figee" (2026-08-19) :
-  // waitForTrustedClick() ecoute desormais `document` en phase capture et
-  // re-resout l'element cible A CHAQUE clic (voir commentaire d'en-tete dans
-  // vinted-item.ts). jsdom (comme tout navigateur reel) ne peut jamais
-  // produire isTrusted:true sur un evenement disptache par du script, ET
-  // (confirme en test) n'autorise meme pas Object.defineProperty() a
-  // reecrire isTrusted sur une VRAIE instance de MouseEvent ("Cannot
-  // redefine property"). Meme discipline que l'ancien makeClickTarget() :
-  // on espionne document.addEventListener("click", ...) pour recuperer
-  // directement le callback reellement enregistre par waitForTrustedClick,
-  // puis on l'invoque nous-memes avec un objet minimal {isTrusted, target}
-  // -- jamais un vrai dispatchEvent(). Un vrai DOM jsdom (document.body +
-  // vrais elements) reste utilise pour resolveElement()/`.contains()`, seul
-  // l'evenement lui-meme est simule.
-  function spyOnClickRegistration() {
-    const addSpy = vi.spyOn(document, "addEventListener");
-    const removeSpy = vi.spyOn(document, "removeEventListener");
-    return { addSpy, removeSpy };
-  }
-
-  type EventListenerSpy = ReturnType<typeof spyOnClickRegistration>["addSpy"];
-
-  function registeredClickListener(addSpy: EventListenerSpy): (e: MouseEvent) => void {
-    const call = addSpy.mock.calls.find((c) => c[0] === "click");
-    if (!call) throw new Error("aucun listener 'click' enregistre sur document");
-    return call[1] as (e: MouseEvent) => void;
-  }
-
-  function fireClick(addSpy: EventListenerSpy, isTrusted: boolean, target: Node | null): void {
-    const listener = registeredClickListener(addSpy);
-    listener({ isTrusted, target } as unknown as MouseEvent);
-  }
-
-  beforeEach(() => {
-    document.body.innerHTML = "";
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-    document.body.innerHTML = "";
-  });
-
-  it("résout true dès qu'un clic isTrusted:true atteint le bouton résolu", async () => {
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const { addSpy } = spyOnClickRegistration();
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 90000);
-    fireClick(addSpy, true, resolveButton());
-    await expect(promise).resolves.toBe(true);
-  });
-
-  it("détecte le clic humain sur un NOUVEAU bouton qui a remplacé l'ancien (re-render Vinted) -- coeur du correctif", async () => {
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const { addSpy } = spyOnClickRegistration();
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 90000);
-
-    // Simule un re-render React qui remplace le noeud (l'ancienne reference
-    // capturee devient stale) : le bouton initial est retire du DOM, un
-    // NOUVEAU bouton identique (meme id, meme texte) le remplace.
-    const oldButton = document.getElementById("confirm") as HTMLButtonElement;
-    oldButton.remove();
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const newButton = document.getElementById("confirm") as HTMLButtonElement;
-    expect(newButton).not.toBe(oldButton);
-
-    // Le clic humain "cible" le nouveau noeud -- resolveElement() (rappele
-    // A CHAQUE clic par waitForTrustedClick) retourne bien newButton.
-    fireClick(addSpy, true, newButton);
-    await expect(promise).resolves.toBe(true);
-  });
-
-  it("ignore un clic isTrusted:true sur un AUTRE élément que celui résolu et continue d'attendre", async () => {
-    vi.useFakeTimers();
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button><button id="other">Annuler</button>';
-    const { addSpy } = spyOnClickRegistration();
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 5000);
-    fireClick(addSpy, true, document.getElementById("other"));
-    await vi.advanceTimersByTimeAsync(5000);
-    await expect(promise).resolves.toBe(false);
-  });
-
-  it("ignore un clic isTrusted:false (synthétique) sur le bouton résolu et continue d'attendre", async () => {
-    vi.useFakeTimers();
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const { addSpy } = spyOnClickRegistration();
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 5000);
-    fireClick(addSpy, false, resolveButton());
-    await vi.advanceTimersByTimeAsync(5000);
-    await expect(promise).resolves.toBe(false);
-  });
-
-  it("résout false après le délai si aucun clic n'est jamais reçu", async () => {
-    vi.useFakeTimers();
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 5000);
-    await vi.advanceTimersByTimeAsync(5000);
-    await expect(promise).resolves.toBe(false);
-  });
-
-  it("retire proprement le listener 'click' de document après un succès (pas de fuite)", async () => {
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const { addSpy, removeSpy } = spyOnClickRegistration();
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 90000);
-    fireClick(addSpy, true, resolveButton());
-    await promise;
-
-    const clickAdds = addSpy.mock.calls.filter((c) => c[0] === "click");
-    const clickRemoves = removeSpy.mock.calls.filter((c) => c[0] === "click");
-    expect(clickAdds).toHaveLength(1);
-    expect(clickRemoves).toHaveLength(1);
-    expect(clickRemoves[0][1]).toBe(clickAdds[0][1]);
-  });
-
-  it("retire proprement le listener 'click' de document après un timeout (pas de fuite)", async () => {
-    vi.useFakeTimers();
-    document.body.innerHTML = '<button id="confirm">Confirmer et supprimer</button>';
-    const { addSpy, removeSpy } = spyOnClickRegistration();
-    const resolveButton = () => document.getElementById("confirm") as HTMLButtonElement | null;
-    const promise = waitForTrustedClick(resolveButton, 5000);
-    await vi.advanceTimersByTimeAsync(5000);
-    await promise;
-
-    const clickAdds = addSpy.mock.calls.filter((c) => c[0] === "click");
-    const clickRemoves = removeSpy.mock.calls.filter((c) => c[0] === "click");
-    expect(clickAdds).toHaveLength(1);
-    expect(clickRemoves).toHaveLength(1);
-    expect(clickRemoves[0][1]).toBe(clickAdds[0][1]);
-  });
-});

@@ -32,7 +32,7 @@ export function SupportTab() {
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6">
-        <p className="text-sm text-gray-400">Un souci, une question ? On te répond ici.</p>
+        <p className="text-sm text-gray-500">Un souci, une question ? On te répond ici.</p>
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => setShowCreate(true)}>
           Nouveau ticket
         </Button>
@@ -66,16 +66,16 @@ export function SupportTab() {
           action={{ label: 'Ouvrir un ticket', onClick: () => setShowCreate(true) }}
         />
       ) : (
-        <div className="bg-surface border border-white/5 rounded-2xl divide-y divide-white/5 overflow-hidden">
+        <div className="bg-surface border border-gray-200 rounded-2xl divide-y divide-gray-200 overflow-hidden">
           {tickets.map((ticket) => {
             const style = STATUS_STYLES[ticket.status];
             return (
               <button
                 key={ticket.id}
                 onClick={() => setOpenTicket(ticket)}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-100 transition-colors"
               >
-                <span className="text-sm font-medium text-gray-200 truncate">{ticket.subject}</span>
+                <span className="text-sm font-medium text-gray-800 truncate">{ticket.subject}</span>
                 <Badge label={style.label} tone={style.tone} />
               </button>
             );

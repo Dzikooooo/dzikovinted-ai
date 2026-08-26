@@ -13,6 +13,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // null).
 const TRAILING_SKU_PATTERN = /\s*#(\d+)\s*$/;
 
+// Mission "ROUND 4 -- EXECUTION REELLE D'UNE REPUBLICATION PROGRAMMEE"
+// (2026-08-20) : miroir EXACT de src/lib/sku.ts::formatTitleWithSku (app) --
+// necessaire pour que le background (republication declenchee par le
+// scheduler, sans app ouverte) reconstruise le meme titre que
+// buildPublishPayload()/buildRepublishPayload() (ListingsManagementSection.tsx)
+// construisent aujourd'hui pour une republication manuelle. Meme
+// comportement, meme signature -- jamais divergent.
+export function formatTitleWithSku(title: string, sku: number | null): string {
+  if (sku === null) return title;
+  return `${title} #${sku}`;
+}
+
 export function extractSkuFromTitle(title: string): { title: string; sku: number | null } {
   const match = title.match(TRAILING_SKU_PATTERN);
   if (!match) return { title, sku: null };

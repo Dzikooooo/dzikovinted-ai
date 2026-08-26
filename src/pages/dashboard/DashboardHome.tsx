@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Clock, Search, Package, ShoppingBag, Puzzle, Layers, Lightbulb, AlertTriangle, Lock, Receipt, Eye, type LucideIcon } from 'lucide-react';
+import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Search, Package, Layers, Lightbulb, Lock, Eye, Receipt, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
@@ -11,7 +11,6 @@ import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
 import { isActivelyInStock } from '../../lib/listingStatus';
 import { startOfLocalDayISO, toLocalDateString } from '../../lib/date';
 import { formatRelativeSync } from '../../lib/formatRelativeTime';
-import { computeDominantSignal, type DominantSignalTier } from '../../lib/dominantSignal';
 import { formatEUR } from '../../lib/currency';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -46,17 +45,72 @@ const QUICK_ACTIONS: { icon: LucideIcon; label: string; page: DashboardPage }[] 
   { icon: Receipt, label: 'Comptabilité', page: 'accounting' },
 ];
 
-const DOMINANT_SIGNAL_STYLES: Record<DominantSignalTier, { bg: string; border: string; text: string; icon: typeof AlertTriangle; label: string }> = {
-  critical_alert: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', icon: AlertTriangle, label: 'Alerte critique' },
-  warning_alert: { bg: 'bg-amber-400/10', border: 'border-amber-400/30', text: 'text-amber-400', icon: AlertTriangle, label: 'À surveiller' },
-  // Pas de bleu dans la palette (regle explicite 2026-07-28) -- jaune
-  // reserve aux elements d'attention/opportunites/badges.
-  opportunity: { bg: 'bg-yellow-400/10', border: 'border-yellow-400/30', text: 'text-yellow-400', icon: Search, label: 'Opportunité' },
-  recommendation: { bg: 'bg-neon-500/10', border: 'border-neon-500/30', text: 'text-neon-500', icon: Lightbulb, label: 'Recommandation' },
-  // 'stat' affiche toujours un chiffre de benefice pur (voir dominantSignal.ts
-  // -- "Benefice ce mois-ci : +X€"), jamais une action -- vert (benefice).
-  stat: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400', icon: TrendingUp, label: 'Aperçu du mois' },
+
+
+// Carte de KPI unique pour les deux lignes de la grille. Extraite parce que le
+// markup etait duplique a l'identique dans trois blocs ("Aujourd'hui", "Ce
+// mois-ci", "Marché") -- et que les trois avaient deja diverge.
+//
+// ATTENTION AUX COULEURS : les valeurs etaient rendues en `text-green-400` /
+// `text-yellow-400` / `text-amber-400`, teintes heritees du theme SOMBRE et
+// jamais reprises lors du passage au blanc. Contrastes mesures sur blanc :
+// green-400 1.74:1, yellow-400 1.53:1, amber-400 1.67:1, red-400 2.77:1 --
+// toutes tres en dessous du seuil AA (4.5:1). Les tons ci-dessous utilisent
+// les paliers 600/700, mesures au-dessus du seuil (voir CLAUDE.md, section
+// Tokens de couleur & accessibilite).
+type KpiTone = 'money' | 'brand' | 'warn' | 'alert' | 'neutral';
+
+const KPI_TONES: Record<KpiTone, { text: string; icon: string; bg: string }> = {
+  money: { text: 'text-green-700', icon: 'text-green-700', bg: 'bg-green-500/10' },
+  brand: { text: 'text-neon-500', icon: 'text-neon-500', bg: 'bg-neon-500/10' },
+  warn: { text: 'text-amber-700', icon: 'text-amber-700', bg: 'bg-amber-500/10' },
+  alert: { text: 'text-red-600', icon: 'text-red-600', bg: 'bg-red-500/10' },
+  neutral: { text: 'text-gray-900', icon: 'text-gray-500', bg: 'bg-gray-100' },
 };
+
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  tone = 'neutral',
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: KpiTone;
+  onClick?: () => void;
+}) {
+  const t = KPI_TONES[tone];
+  const content = (
+    <>
+      <div className={`w-8 h-8 ${t.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+        <Icon className={`w-3.5 h-3.5 ${t.icon}`} />
+      </div>
+      <div className="min-w-0">
+        <p className={`text-base font-bold ${t.text} leading-tight truncate tabular-nums`}>{value}</p>
+        <p className="text-[11px] text-gray-500 truncate">{label}</p>
+        {hint && <p className="text-[10px] text-gray-400 truncate">{hint}</p>}
+      </div>
+    </>
+  );
+
+  // Un bouton UNIQUEMENT quand il mene reellement quelque part : rendre toutes
+  // les cartes cliquables donnerait des affordances qui ne font rien.
+  if (!onClick) {
+    return <div className="bg-surface border border-gray-200 rounded-xl px-3.5 py-3 flex items-center gap-3">{content}</div>;
+  }
+  return (
+    <button
+      onClick={onClick}
+      className="bg-surface border border-gray-200 rounded-xl px-3.5 py-3 flex items-center gap-3 text-left hover:border-neon-500/30 hover:bg-neon-500/5 transition-colors"
+    >
+      {content}
+    </button>
+  );
+}
 
 export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
@@ -132,12 +186,6 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
     };
   }, [user, selectedAccountId]);
 
-  // `listings` porte deja les articles lies a Vinted (fusion 2026-07-09) :
-  // le compteur se derive directement, plus besoin d'une seconde requete.
-  const vintedListingsCount = useMemo(
-    () => listings.filter((l) => l.vinted_item_id !== null).length,
-    [listings]
-  );
 
   const plan = profile?.plan ?? 'free';
   const credits = profile?.credits ?? 0;
@@ -223,71 +271,19 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
 
   // Information dominante de l'ecran (decision produit validee le
   // 2026-07-23) : une seule chaine de conditions deterministe, voir
-  // src/lib/dominantSignal.ts pour l'ordre exact et sa justification.
-  // Remplace l'ancienne liste "Priorites du jour" (score continu).
-  const dominantSignal = useMemo(
-    () =>
-      computeDominantSignal({
-        alerts: insights?.alerts ?? [],
-        recommendations: insights?.recommendations ?? [],
-        newOpportunitiesLast24h: newOpportunities,
-        profitMonth: metrics.profitMonth,
-      }),
-    [insights, newOpportunities, metrics.profitMonth]
-  );
 
-  const todayCards = [
-    {
-      icon: ShoppingBag,
-      label: metrics.soldTodayCount > 0 ? `${metrics.soldTodayCount} vente${metrics.soldTodayCount > 1 ? 's' : ''} aujourd'hui` : 'Aucune vente aujourd\'hui',
-      detail: metrics.soldTodayCount === 0
-        ? 'Ton prochain article pourrait se vendre aujourd\'hui'
-        : metrics.profitToday > 0
-          ? `+${formatEUR(metrics.profitToday)} de bénéfice`
-          : `${formatEUR(metrics.profitToday)} de bénéfice`,
-      page: 'watchlist' as DashboardPage,
-      color: 'text-green-400',
-      bg: 'bg-green-500/10',
-      live: false,
-    },
-    {
-      icon: Search,
-      label: newOpportunities > 0 ? `${newOpportunities} nouvelle${newOpportunities > 1 ? 's' : ''} opportunité${newOpportunities > 1 ? 's' : ''}` : 'Aucune opportunité récente',
-      detail: 'Détectées sur les dernières 24h',
-      page: 'actions' as DashboardPage,
-      color: 'text-yellow-400',
-      bg: 'bg-yellow-400/10',
-      // Petit point pulsant -- signale une vraie detection recente, pas
-      // une decoration permanente (audit personnel utilisateur, 2026-08-04 :
-      // "je voudrais sentir... de nouvelles opportunites").
-      live: newOpportunities > 0,
-    },
-    {
-      icon: Clock,
-      label: metrics.agingStockCount > 0 ? `${metrics.agingStockCount} article${metrics.agingStockCount > 1 ? 's' : ''} a surveiller` : 'Stock sain',
-      detail: metrics.agingStockCount > 0
-        ? `En stock depuis plus de ${AGING_STOCK_DAYS} jours`
-        : metrics.hasAnyListing
-          ? 'Aucun article dormant'
-          : 'Génère ta première annonce pour commencer',
-      page: 'watchlist' as DashboardPage,
-      color: 'text-amber-400',
-      bg: 'bg-amber-400/10',
-      live: false,
-    },
-  ];
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       {loadError && <ErrorBanner message={loadError} className="mb-6" />}
 
-      {/* Header */}
+      {/* ============ 1. EN-TETE : salutation + credits + actions ============ */}
       <PageHeader
         title={<>{greeting()}, <span className="text-neon-500">{firstName}</span></>}
         description="Voici ce qui demande ton attention aujourd'hui."
         meta={
           accounts.length > 0 && (
-            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-white/5 px-2.5 py-1 rounded-full">
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
               <Layers className="w-3 h-3" />
               Vue : {selectedAccountId === 'all' ? 'Tous les comptes' : selectedAccount?.label}
             </span>
@@ -300,32 +296,70 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         }
       />
 
-      {/* Actions rapides -- acces direct aux 4 taches les plus frequentes,
-          distinct des cartes "Aujourd'hui" ci-dessous qui informent plutot
-          qu'elles n'agissent. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {QUICK_ACTIONS.map(({ icon: Icon, label, page }) => (
-          <button
-            key={label}
-            onClick={() => onNavigate(page)}
-            className="flex items-center gap-2.5 bg-surface border border-white/5 rounded-xl px-4 py-3 text-left hover:border-neon-500/30 hover:bg-neon-500/5 transition-all"
-          >
-            <div className="w-8 h-8 bg-neon-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Icon className="w-4 h-4 text-neon-500" />
+      {/* Credits et actions rapides sur la MEME ligne : les credits
+          conditionnent ce que ces actions permettent de faire. Les separer
+          obligeait a chercher l'information ailleurs sur la page. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,260px)_1fr] gap-3 mb-6">
+        {(limit !== null || unlimitedCredits) && (
+          <div className="bg-surface border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            {unlimitedCredits ? (
+              <div className="w-11 h-11 bg-neon-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+                <Zap className="w-4 h-4 text-neon-500" />
+              </div>
+            ) : (
+              <UsageRing
+                value={limit ? (credits / limit) * 100 : 0}
+                colorClassName={credits > 3 ? 'text-neon-500' : credits > 0 ? 'text-amber-600' : 'text-red-600'}
+                size={44}
+              >
+                <span className="text-sm font-black text-gray-900">{credits}</span>
+              </UsageRing>
+            )}
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">Crédits restants</p>
+              {unlimitedCredits ? (
+                <p className="text-sm font-bold text-neon-500">Illimité</p>
+              ) : (
+                <p className="text-sm font-bold text-gray-900">
+                  {credits} <span className="text-gray-500 font-semibold">/ {limit}</span>
+                </p>
+              )}
+              {isLimitReached && (
+                <button onClick={() => onNavigate('subscription')} className="text-[11px] text-red-600 underline hover:text-red-700">
+                  Passer au Pro
+                </button>
+              )}
+              {!unlimitedCredits && limit !== null && credits > 0 && credits <= 3 && (
+                <p className="text-[11px] text-amber-700">Bientôt épuisés</p>
+              )}
             </div>
-            <span className="text-xs font-semibold text-gray-300">{label}</span>
-          </button>
-        ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {QUICK_ACTIONS.map(({ icon: Icon, label, page }) => (
+            <button
+              key={label}
+              onClick={() => onNavigate(page)}
+              className="flex items-center gap-2.5 bg-surface border border-gray-200 rounded-xl px-3 py-3 text-left hover:border-neon-500/30 hover:bg-neon-500/5 transition-all"
+            >
+              <div className="w-8 h-8 bg-neon-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4 text-neon-500" />
+              </div>
+              <span className="text-xs font-semibold text-gray-700 leading-tight">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {showZeroCreditModal && (
         <Modal onClose={() => setShowZeroCreditModal(false)} size="sm">
           <div className="text-center">
             <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-5 h-5 text-red-400" />
+              <Lock className="w-5 h-5 text-red-600" />
             </div>
             <h2 className="font-bold text-lg mb-2">Limite de crédits atteinte</h2>
-            <p className="text-sm text-gray-400 mb-6">
+            <p className="text-sm text-gray-500 mb-6">
               Tu as utilisé tous tes crédits {plan === 'free' ? 'du plan Free' : 'de ce mois-ci'}. Passe au plan Pro pour générer des annonces en illimité.
             </p>
             <div className="flex flex-col gap-2">
@@ -334,7 +368,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
               </Button>
               <button
                 onClick={() => setShowZeroCreditModal(false)}
-                className="text-sm text-gray-500 hover:text-gray-300 transition-colors py-2"
+                className="text-sm text-gray-500 hover:text-gray-700 transition-colors py-2"
               >
                 Plus tard
               </button>
@@ -343,299 +377,133 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         </Modal>
       )}
 
-      {/* Information dominante -- deplacee en tete de contenu et agrandie
-          (audit personnel utilisateur, 2026-08-04 : "il faudrait davantage
-          guider l'oeil") : c'est la seule chose qui merite l'attention
-          immediate, voir src/lib/dominantSignal.ts pour la regle
-          deterministe -- elle doit donc etre lue avant les anneaux et le
-          reste, pas apres. */}
-      {!loading && (
-        <button
-          onClick={() => onNavigate(dominantSignal.actionPage)}
-          className={`w-full text-left mb-6 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} border ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].border} rounded-3xl p-6 flex items-center gap-5 hover:-translate-y-0.5 transition-all duration-200 group`}
-        >
-          <div className={`w-14 h-14 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].bg} rounded-2xl flex items-center justify-center flex-shrink-0`}>
-            {(() => {
-              const Icon = DOMINANT_SIGNAL_STYLES[dominantSignal.tier].icon;
-              return <Icon className={`w-6 h-6 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text}`} />;
-            })()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className={`text-[10px] font-mono uppercase tracking-wider ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} mb-1`}>
-              {DOMINANT_SIGNAL_STYLES[dominantSignal.tier].label}
-            </p>
-            <p className="text-lg sm:text-xl font-black text-gray-100">{dominantSignal.message}</p>
-          </div>
-          <ArrowRight className={`w-5 h-5 ${DOMINANT_SIGNAL_STYLES[dominantSignal.tier].text} flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity`} />
-        </button>
-      )}
-
-      {/* Bandeau circulaire -- deux anneaux plutot qu'un (restructuration
-          2026-07-29) : credits ET sante du stock partagent le meme langage
-          visuel (anneau colore par etat, jamais une seconde couleur
-          concurrente ajoutee autour). Volontairement plus compact que le
-          signal dominant ci-dessus : ce sont des jauges de reference,
-          jamais l'element qui doit capter l'oeil en premier. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        {(limit !== null || unlimitedCredits) && (
-          <div className={`bg-surface border border-white/5 rounded-2xl p-4 flex items-center gap-4 ${
-            !loading && !metrics.hasAnyListing ? 'sm:col-span-2' : ''
-          }`}>
-            {unlimitedCredits ? (
-              <div className="w-14 h-14 bg-neon-500/10 rounded-full flex items-center justify-center flex-shrink-0">
-                <Zap className="w-5 h-5 text-neon-500" />
-              </div>
-            ) : (
-              <UsageRing
-                value={limit ? (credits / limit) * 100 : 0}
-                colorClassName={credits > 3 ? 'text-neon-500' : credits > 0 ? 'text-amber-400' : 'text-red-500'}
-                size={56}
-              >
-                <span className="text-base font-black text-gray-100">{credits}</span>
-              </UsageRing>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-200">Crédits restants</p>
-              {unlimitedCredits ? (
-                <p className="text-base font-black text-neon-500 mt-0.5">Illimité</p>
-              ) : (
-                <p className="text-sm text-gray-500 mt-0.5">{credits} / {limit} ce mois</p>
-              )}
-              {isLimitReached && (
-                <p className="text-xs text-red-400 mt-1.5">
-                  Limite atteinte.{' '}
-                  <button onClick={() => onNavigate('subscription')} className="underline hover:text-red-300">
-                    Passer au Pro
-                  </button>
-                </p>
-              )}
-              {!unlimitedCredits && limit !== null && credits > 0 && credits <= 3 && (
-                <p className="text-xs text-amber-400 mt-1.5">Plus que {credits} crédit{credits > 1 ? 's' : ''} disponible{credits > 1 ? 's' : ''}.</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {!loading && metrics.hasAnyListing && (
-          <div className="bg-surface border border-white/5 rounded-2xl p-4 flex items-center gap-4">
-            <UsageRing
-              value={metrics.stockHealthPct}
-              colorClassName={metrics.stockHealthPct >= 80 ? 'text-neon-500' : metrics.stockHealthPct >= 50 ? 'text-amber-400' : 'text-red-500'}
-              size={56}
-            >
-              <span className="text-base font-black text-gray-100">{metrics.stockHealthPct}%</span>
-            </UsageRing>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-200">Santé du stock</p>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {metrics.agingStockCount > 0
-                  ? `${metrics.agingStockCount} article${metrics.agingStockCount > 1 ? 's' : ''} en stock depuis plus de ${AGING_STOCK_DAYS} jours`
-                  : 'Aucun article dormant'}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Copilote */}
-      {showCopilote && (
-        <div className="mb-8 bg-gradient-to-br from-neon-500/10 via-surface to-surface border border-neon-500/20 rounded-2xl p-5">
-          <div className="flex items-center justify-between gap-2 mb-4">
+      {/* ============ 2. INSIGHTS & MARCHE (Copilote) ============
+          Bloc DISCRET : il informe, il ne reclame pas l'attention. C'est lui
+          qui remplace l'ancien grand bandeau colore -- celui-ci occupait le
+          haut de page en permanence alors qu'il ne disait, la plupart du
+          temps, rien de plus que les KPIs juste en dessous. */}
+      {(showCopilote || newOpportunities > 0) && (
+        <div className="bg-surface border border-gray-200 rounded-2xl p-5 mb-6">
+          <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
               <Lightbulb className="w-4 h-4 text-neon-500" />
-              <h2 className="font-bold text-sm text-gray-200">Copilote</h2>
+              <h2 className="font-bold text-sm text-gray-900">Copilote</h2>
             </div>
             {relevantAccounts.length > 0 && (
-              <span className={`text-[10px] font-mono ${isSyncStale ? 'text-amber-400' : 'text-gray-500'}`}>
-                {isSyncStale
-                  ? oldestSync
-                    ? `Dernière synchro : ${formatRelativeSync(oldestSync)}`
-                    : 'Jamais synchronisé'
-                  : `Dernière synchro : ${formatRelativeSync(oldestSync)}`}
+              <span className={`text-[11px] ${isSyncStale ? 'text-amber-700' : 'text-gray-500'}`}>
+                {oldestSync ? `Dernière synchro : ${formatRelativeSync(oldestSync)}` : 'Jamais synchronisé'}
               </span>
             )}
           </div>
 
           {isSyncStale && relevantAccounts.length > 0 && (
-            <div className="flex items-start gap-2.5 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3 mb-4">
-              <p className="text-xs text-amber-300">
-                Données non synchronisées{oldestSync ? ` depuis ${formatRelativeSync(oldestSync)}` : ''} — synchronise
-                depuis Mes annonces pour des chiffres à jour.
-              </p>
-            </div>
+            <p className="text-xs text-amber-700 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3">
+              Données non synchronisées{oldestSync ? ` depuis ${formatRelativeSync(oldestSync)}` : ''} — synchronise
+              depuis Mes annonces pour des chiffres à jour.
+            </p>
           )}
 
           {!!insights?.narratives.length && (
             <div className="space-y-1.5">
               {insights.narratives.map((n, i) => (
-                <p key={i} className="text-sm text-gray-300">{n.message}</p>
+                <p key={i} className="text-sm text-gray-700">{n.message}</p>
               ))}
             </div>
+          )}
+
+          {/* Alerte opportunites : cliquable, et affichee UNIQUEMENT s'il y en
+              a reellement -- jamais une ligne "0 opportunité" qui occuperait
+              de la place pour ne rien dire. */}
+          {newOpportunities > 0 && (
+            <button
+              onClick={() => onNavigate('actions')}
+              className="mt-3 w-full flex items-center gap-2.5 text-left bg-neon-500/5 border border-neon-500/20 rounded-lg px-3 py-2.5 hover:bg-neon-500/10 transition-colors group"
+            >
+              <span className="relative flex h-2 w-2 flex-shrink-0" aria-hidden="true">
+                <span className="live-ping absolute inline-flex h-full w-full rounded-full bg-neon-500" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-neon-500" />
+              </span>
+              <span className="text-sm text-gray-800 flex-1 min-w-0">
+                <span className="font-bold">{newOpportunities}</span> opportunité{newOpportunities > 1 ? 's' : ''} détectée
+                {newOpportunities > 1 ? 's' : ''} ces dernières 24h
+              </span>
+              <ArrowRight className="w-4 h-4 text-neon-500 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
           )}
         </div>
       )}
 
-      {/* Detail toujours visible (restructuration 2026-07-29, remplace
-          l'ancien "Voir le detail" replie) -- l'information dominante
-          ci-dessus reste la premiere lecture, mais le reste n'est plus
-          cache derriere un clic. */}
-      <div className="space-y-8 mb-8">
-          {/* Aujourd'hui */}
-          <div>
-            <SectionLabel className="mb-4">Aujourd'hui</SectionLabel>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {todayCards.map(({ icon: Icon, label, detail, page, color, bg, live }, i) => (
-                <button
-                  key={label}
-                  onClick={() => onNavigate(page)}
-                  style={{ animationDelay: `${i * 60}ms` }}
-                  className="rise-in bg-surface border border-white/5 rounded-2xl p-5 text-left hover:border-white/10 hover:-translate-y-0.5 transition-all duration-200 group"
-                >
-                  <div className={`relative w-9 h-9 ${bg} rounded-xl flex items-center justify-center mb-3`}>
-                    <Icon className={`w-4 h-4 ${color}`} />
-                    {/* Point pulsant -- signale une detection reelle et recente
-                        (nouvelles opportunites), jamais affiche sans fait a
-                        l'appui (audit personnel utilisateur, 2026-08-04). */}
-                    {live && (
-                      <span className="absolute -top-1 -right-1 flex h-3 w-3" aria-hidden="true">
-                        <span className={`live-ping absolute inline-flex h-full w-full rounded-full ${bg.replace('/10', '')}`} />
-                        <span className={`relative inline-flex rounded-full h-3 w-3 ${bg.replace('/10', '')}`} />
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="font-semibold text-sm mb-1">{loading ? '...' : label}</h3>
-                  <p className="text-xs text-gray-500">{detail}</p>
-                  <ArrowRight className={`w-4 h-4 ${color} mt-3 opacity-0 group-hover:opacity-100 transition-opacity`} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Vue financiere */}
-          <div>
-            <SectionLabel
-              className="mb-3"
-              action={
-                <button onClick={() => onNavigate('accounting')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-                  Voir le détail <ArrowRight className="w-3 h-3" />
-                </button>
-              }
-            >
-              Ce mois-ci
-            </SectionLabel>
-            {/* Chiffres de reference, volontairement plus denses que les cartes
-                "Aujourd'hui" ci-dessus (audit personnel utilisateur,
-                2026-08-04) : purement informatifs, jamais l'element qui doit
-                capter l'oeil en premier sur la page. */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {[
-                { icon: TrendingUp, label: "Chiffre d'affaires", value: loading ? '-' : formatEUR(metrics.revenueMonth), color: 'text-green-400', bg: 'bg-green-500/10' },
-                { icon: Sparkles, label: 'Bénéfice', value: loading ? '-' : formatEUR(metrics.profitMonth), color: 'text-green-400', bg: 'bg-green-500/10' },
-                { icon: TrendingUp, label: 'ROI moyen', value: loading ? '-' : `${metrics.roiMonth} %`, color: 'text-green-400', bg: 'bg-green-500/10' },
-                { icon: Package, label: 'Valeur du stock', value: loading ? '-' : formatEUR(metrics.stockValue), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-              ].map(({ icon: Icon, label, value, color, bg }) => (
-                <div key={label} className="bg-surface/60 border border-white/5 rounded-xl px-3.5 py-3 flex items-center gap-3">
-                  <div className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                    <Icon className={`w-3.5 h-3.5 ${color}`} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className={`text-base font-bold ${color} leading-tight truncate`}>{value}</p>
-                    <p className="text-[10px] text-gray-500 truncate">{label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Marché */}
-          <div>
-            <SectionLabel
-              className="mb-3"
-              action={
-                <button onClick={() => onNavigate('actions')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
-                  Voir les opportunités <ArrowRight className="w-3 h-3" />
-                </button>
-              }
-            >
-              Marché
-            </SectionLabel>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {[
-                { icon: Search, label: 'Opportunités aujourd\'hui', value: loading ? '-' : opportunityStats.today.toString(), color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
-                { icon: TrendingUp, label: 'ROI moyen (marché)', value: loading ? '-' : `${opportunityStats.avgRoi} %`, color: 'text-green-400', bg: 'bg-green-500/10' },
-                { icon: Sparkles, label: 'Bénéfice estimé (marché)', value: loading ? '-' : formatEUR(opportunityStats.avgProfit), color: 'text-green-400', bg: 'bg-green-500/10' },
-                { icon: Package, label: 'Nouvelles annonces (stock)', value: loading ? '-' : metrics.newListingsToday.toString(), color: 'text-gray-100', bg: 'bg-white/5' },
-              ].map(({ icon: Icon, label, value, color, bg }) => (
-                <div key={label} className="bg-surface/60 border border-white/5 rounded-xl px-3.5 py-3 flex items-center gap-3">
-                  <div className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                    <Icon className={`w-3.5 h-3.5 ${color}`} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className={`text-base font-bold ${color} leading-tight truncate`}>{value}</p>
-                    <p className="text-[10px] text-gray-500 truncate">{label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-      {/* Compte Vinted */}
-      <button
-        onClick={() => onNavigate('vinted-account')}
-        className="w-full bg-surface/50 border border-white/5 border-dashed rounded-2xl p-5 mb-8 flex items-center gap-4 text-left hover:border-white/10 transition-colors"
-      >
-        <div className="relative w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
-          <Puzzle className="w-4 h-4 text-gray-500" />
-          {/* Point pulsant -- reflete une vraie session Vinted active,
-              retire des qu'aucun compte pertinent n'est connecte (audit
-              personnel utilisateur, 2026-08-04 : "je voudrais sentir...
-              de la synchronisation"). */}
-          {(selectedAccountId === 'all' ? accounts.some((a) => a.connected) : selectedAccount?.connected) && (
-            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5" aria-hidden="true">
-              <span className="live-ping absolute inline-flex h-full w-full rounded-full bg-neon-500" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-neon-500" />
-            </span>
-          )}
-        </div>
+      {/* ============ 3. KPIs ============
+          Deux lignes, deux natures : ce que TU as fait, puis ce que le MARCHE
+          propose. L'ancienne organisation melangeait les deux et repetait les
+          memes metriques dans "Aujourd'hui", "Ce mois-ci" et "Marché" -- le
+          stock sain et les opportunites apparaissaient chacun deux a trois
+          fois sur la meme page. */}
+      <div className="space-y-5 mb-8">
         <div>
-          {accounts.length === 0 ? (
-            <>
-              <p className="text-sm font-semibold text-gray-300">Synchronisation Vinted</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Connecte l'extension Chrome pour synchroniser automatiquement tes annonces Vinted et piloter tes publications depuis Resell OS.
-              </p>
-            </>
-          ) : selectedAccountId === 'all' ? (
-            <>
-              <p className="text-sm font-semibold text-gray-300">
-                {accounts.filter((a) => a.connected).length} compte{accounts.filter((a) => a.connected).length > 1 ? 's' : ''} connecté{accounts.filter((a) => a.connected).length > 1 ? 's' : ''}
-                {vintedListingsCount > 0 && ` · ${vintedListingsCount} annonce${vintedListingsCount > 1 ? 's' : ''} synchronisée${vintedListingsCount > 1 ? 's' : ''} au total`}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Vue cumulée de tous tes comptes Vinted.</p>
-            </>
-          ) : selectedAccount?.connected ? (
-            <>
-              <p className="text-sm font-semibold text-gray-300">
-                Connecté — {selectedAccount.label}
-                {vintedListingsCount > 0 && ` · ${vintedListingsCount} annonce${vintedListingsCount > 1 ? 's' : ''} synchronisée${vintedListingsCount > 1 ? 's' : ''}`}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {selectedAccount.last_synced_at
-                  ? `Dernière synchro : ${new Date(selectedAccount.last_synced_at).toLocaleString('fr-FR')}`
-                  : 'Synchronisation en cours...'}
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-semibold text-gray-300">{selectedAccount?.label} — déconnecté</p>
-              <p className="text-xs text-gray-500 mt-0.5">Ré-appaire l'extension pour relancer la synchronisation.</p>
-            </>
-          )}
+          <SectionLabel
+            className="mb-3"
+            action={
+              <button onClick={() => onNavigate('accounting')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                Voir le détail <ArrowRight className="w-3 h-3" />
+              </button>
+            }
+          >
+            Ta performance · ce mois-ci
+          </SectionLabel>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <KpiCard icon={TrendingUp} label="Chiffre d'affaires" value={loading ? '—' : formatEUR(metrics.revenueMonth)} tone="money" />
+            <KpiCard
+              icon={Sparkles}
+              label="Bénéfice net"
+              value={loading ? '—' : formatEUR(metrics.profitMonth)}
+              tone={metrics.profitMonth >= 0 ? 'money' : 'alert'}
+            />
+            <KpiCard icon={TrendingUp} label="ROI moyen" value={loading ? '—' : `${metrics.roiMonth} %`} tone="money" />
+            <KpiCard icon={Package} label="Valeur du stock" value={loading ? '—' : formatEUR(metrics.stockValue)} tone="neutral" />
+          </div>
         </div>
-      </button>
 
-      {/* Recent listings */}
+        <div>
+          <SectionLabel
+            className="mb-3"
+            action={
+              <button onClick={() => onNavigate('actions')} className="text-xs text-neon-500 hover:underline flex items-center gap-1">
+                Voir les opportunités <ArrowRight className="w-3 h-3" />
+              </button>
+            }
+          >
+            Veille marché
+          </SectionLabel>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <KpiCard
+              icon={Search}
+              label="Opportunités 24h"
+              value={loading ? '—' : newOpportunities.toString()}
+              tone={newOpportunities > 0 ? 'brand' : 'neutral'}
+              onClick={() => onNavigate('actions')}
+            />
+            <KpiCard icon={TrendingUp} label="ROI moyen (marché)" value={loading ? '—' : `${opportunityStats.avgRoi} %`} tone="money" />
+            <KpiCard icon={Sparkles} label="Bénéfice estimé (marché)" value={loading ? '—' : formatEUR(opportunityStats.avgProfit)} tone="money" />
+            <KpiCard
+              icon={Package}
+              label="Santé du stock"
+              value={loading || !metrics.hasAnyListing ? '—' : `${metrics.stockHealthPct} %`}
+              hint={
+                !metrics.hasAnyListing
+                  ? undefined
+                  : metrics.agingStockCount > 0
+                    ? `${metrics.agingStockCount} article${metrics.agingStockCount > 1 ? 's' : ''} > ${AGING_STOCK_DAYS} j`
+                    : 'Aucun article dormant'
+              }
+              tone={!metrics.hasAnyListing ? 'neutral' : metrics.stockHealthPct >= 80 ? 'money' : metrics.stockHealthPct >= 50 ? 'warn' : 'alert'}
+              onClick={metrics.hasAnyListing ? () => onNavigate('watchlist') : undefined}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ============ 4. ANNONCES RECENTES ============ */}
       <div>
         <SectionLabel
           className="mb-4"
@@ -663,9 +531,9 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
             {metrics.recentListings.map((l) => {
               const listingScore = insights?.scores.get(l.id)?.score;
               return (
-                <div key={l.id} className="bg-surface border border-white/5 rounded-xl px-4 py-3 flex items-center gap-4 hover:border-white/10 transition-colors group">
+                <div key={l.id} className="bg-surface border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-4 hover:border-gray-300 transition-colors group">
                   {l.image_urls?.[0] ? (
-                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
                       <img src={l.image_urls[0]} alt="" className="w-full h-full object-cover" />
                     </div>
                   ) : (
@@ -674,10 +542,10 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate group-hover:text-gray-100 transition-colors">{l.title}</p>
+                    <p className="text-sm font-medium truncate group-hover:text-gray-900 transition-colors">{l.title}</p>
                     <p className="text-xs text-gray-500">{l.brand} &middot; {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</p>
                   </div>
-                  {l.is_favorite && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 flex-shrink-0" />}
+                  {l.is_favorite && <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500 flex-shrink-0" />}
                   <p className="text-sm font-bold text-neon-500 flex-shrink-0">{formatEUR(l.price)}</p>
                   {/* Indicateur secondaire de comparaison, pas l'element dominant de la
                       ligne (decision produit validee le 2026-07-23) -- titre et prix

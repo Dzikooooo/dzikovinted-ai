@@ -9,7 +9,12 @@ import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const MIGRATIONS_DIR = join(ROOT, "supabase", "migrations");
-const CODE_DIRS = ["src", "scripts"];
+// Audit R4 (2026-08-26) : `extension/src` et `supabase/functions` manquaient,
+// et 5 tables etaient signalees a tort comme "jamais referencees" --
+// republish_schedules, vinted_connection, credit_reservations, usage_events,
+// vinted_listings sont toutes consommees depuis l'un de ces deux dossiers.
+// Les re-trier a chaque audit coutait plus cher que de les scanner.
+const CODE_DIRS = ["src", "scripts", "extension/src", "supabase/functions"];
 
 const IGNORED_FIRST_TOKENS = new Set([
   "constraint",
@@ -187,7 +192,7 @@ function main() {
   }
   if (missing === 0) lines.push("(aucune)");
 
-  lines.push("\n## Tables définies en base mais jamais référencées dans le code (src/, scripts/)\n");
+  lines.push("\n## Tables définies en base mais jamais référencées dans le code (src/, scripts/, extension/src/, supabase/functions/)\n");
   let unused = 0;
   for (const [name, info] of tables) {
     if (!usage.has(name)) {

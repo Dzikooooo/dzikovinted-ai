@@ -65,6 +65,8 @@ function buildProps(overrides: Partial<ListingCardProps> = {}): ListingCardProps
     aging: false,
     onMarkSold: vi.fn(),
     onOpenDetail: vi.fn(),
+    onEditSchedule: vi.fn(),
+    onCancelSchedule: vi.fn(),
     ...overrides,
   };
 }
@@ -180,5 +182,131 @@ describe('ListingCard', () => {
     await user.click(card);
 
     expect(props.onOpenDetail).toHaveBeenCalledTimes(2);
+  });
+
+  // Mission "UI DE PROGRAMMATION DES REPUBLICATIONS" (2026-08-20)
+  describe('programmation de republication (schedule)', () => {
+    it('aucun badge affiché quand la carte n\'a pas de programmation', () => {
+      const props = buildProps();
+      render(<ListingCard {...props} />);
+
+      expect(screen.queryByText(/Programmée le/)).not.toBeInTheDocument();
+    });
+
+    it('affiche "Programmée le ..." quand schedule.mode === "scheduled"', () => {
+      const props = buildProps({ schedule: { mode: 'scheduled', date: '2026-08-25', time: '19:30' } });
+      render(<ListingCard {...props} />);
+
+      expect(screen.getByText('Programmée le 25 août 2026 à 19:30')).toBeInTheDocument();
+    });
+
+    it('clic sur "Modifier" appelle onEditSchedule, jamais onOpenDetail', async () => {
+      const user = userEvent.setup();
+      const props = buildProps({ schedule: { mode: 'scheduled', date: '2026-08-25', time: '19:30' } });
+      render(<ListingCard {...props} />);
+
+      await user.click(screen.getByRole('button', { name: 'Modifier' }));
+
+      expect(props.onEditSchedule).toHaveBeenCalledTimes(1);
+      expect(props.onOpenDetail).not.toHaveBeenCalled();
+    });
+
+    it('clic sur "Annuler" appelle onCancelSchedule, jamais onOpenDetail', async () => {
+      const user = userEvent.setup();
+      const props = buildProps({ schedule: { mode: 'scheduled', date: '2026-08-25', time: '19:30' } });
+      render(<ListingCard {...props} />);
+
+      await user.click(screen.getByRole('button', { name: 'Annuler' }));
+
+      expect(props.onCancelSchedule).toHaveBeenCalledTimes(1);
+      expect(props.onOpenDetail).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// Refonte 2026-08-26 -- carte epuree. Ces tests portent sur le BRUIT retire
+// (Achat/Marge/ROI en "—" alors qu'aucun prix d'achat n'est connu, cas
+// majoritaire des annonces importees) et sur l'action ajoutee.
+describe('ListingCard -- affichage epure', () => {
+  it("masque Achat / Marge / ROI quand aucun prix d'achat n'est connu", () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ purchase_price: null }) })} />);
+
+    expect(screen.queryByText('Achat')).toBeNull();
+    expect(screen.queryByText('Marge')).toBeNull();
+    expect(screen.queryByText('ROI')).toBeNull();
+    // Le prix, lui, reste toujours visible.
+    expect(screen.getByText('Prix')).toBeTruthy();
+  });
+
+  it("affiche Achat / Marge / ROI des que le prix d'achat est connu", () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ purchase_price: 10, price: 25 }) })} />);
+
+    expect(screen.getByText('Achat')).toBeTruthy();
+    expect(screen.getByText('Marge')).toBeTruthy();
+    expect(screen.getByText('ROI')).toBeTruthy();
+  });
+
+  it("n'affiche pas le ROI quand le prix d'achat est 0 (division sans objet)", () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ purchase_price: 0, price: 25 }) })} />);
+
+    expect(screen.getByText('Achat')).toBeTruthy();
+    expect(screen.queryByText('ROI')).toBeNull();
+  });
+
+  it('bascule le libelle du prix pour une annonce vendue, sans repeter le mot "Vendu" deja porte par le statut', () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ status: 'vendu', sold_price: 30 }) })} />);
+
+    expect(screen.getByText('Prix de vente')).toBeTruthy();
+    expect(screen.queryByText('Prix')).toBeNull();
+    // Un seul "Vendu" sur la carte : celui du statut.
+    expect(screen.getAllByText('Vendu')).toHaveLength(1);
+  });
+});
+
+describe('ListingCard -- action Republier', () => {
+  it("propose Republier quand l'annonce en relève, avec un libellé qui nomme l'annonce", async () => {
+    const user = userEvent.setup();
+    const onRepublish = vi.fn();
+    // status en_stock + aucun vinted_item_id => needsRepublish() === true
+    const props = buildProps({ item: buildListing({ vinted_item_id: null }), onRepublish });
+    render(<ListingCard {...props} />);
+
+    const btn = screen.getByRole('button', { name: 'Republier Polo Ralph Lauren' });
+    await user.click(btn);
+
+    expect(onRepublish).toHaveBeenCalledTimes(1);
+    // Le clic ne doit jamais ouvrir la fiche en meme temps.
+    expect(props.onOpenDetail).not.toHaveBeenCalled();
+  });
+
+  it("ne propose PAS Republier pour une annonce deja en ligne sur Vinted", () => {
+    render(
+      <ListingCard
+        {...buildProps({
+          item: buildListing({ vinted_item_id: 'v-1', vinted_status: 'online' }),
+          onRepublish: vi.fn(),
+        })}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Republier/ })).toBeNull();
+  });
+
+  it("ne propose PAS Republier pour une annonce vendue", () => {
+    render(
+      <ListingCard
+        {...buildProps({ item: buildListing({ status: 'vendu', sold_price: 30 }), onRepublish: vi.fn() })}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Republier/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Marquer vendu/ })).toBeNull();
+  });
+
+  it("n'affiche rien si l'appelant ne fournit pas de handler", () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ vinted_item_id: null }) })} />);
+
+    expect(screen.queryByRole('button', { name: /^Republier/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Marquer vendu/ })).toBeTruthy();
   });
 });

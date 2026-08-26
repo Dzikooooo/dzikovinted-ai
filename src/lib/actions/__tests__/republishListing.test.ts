@@ -50,7 +50,7 @@ describe('republishListingDefinition', () => {
       photoCount: 2,
       packageSize: 'medium',
       previousVintedItemId: 'old-item-42',
-      note: "Une nouvelle annonce Vinted sera créée. ResellOS ne modifie ni ne supprime jamais l'ancienne annonce automatiquement -- tu gères toi-même son sort sur Vinted si besoin.",
+      note: "Une nouvelle annonce Vinted sera créée. ResellOS ne modifie ni ne supprime jamais l'ancienne annonce automatiquement — tu gères toi-même son sort sur Vinted si besoin.",
     });
   });
 

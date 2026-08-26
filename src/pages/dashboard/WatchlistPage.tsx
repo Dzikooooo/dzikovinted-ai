@@ -130,7 +130,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
           n'avait aucun moyen de savoir qu'un scan devait d'abord tourner -
           les deux pages n'etaient jamais reliees (audit du parcours
           Scanner, 2026-07-24). */}
-      <div className="flex items-start gap-3 bg-surface border border-white/5 rounded-xl px-4 py-3 mb-6">
+      <div className="flex items-start gap-3 bg-surface border border-gray-200 rounded-xl px-4 py-3 mb-6">
         <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-gray-500 flex-1">
           Le scan tourne automatiquement toutes les 4h. Les résultats correspondant à tes recherches
@@ -169,7 +169,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
           {myEntries.map((entry) => (
             <div
               key={entry.id}
-              className="bg-surface border border-white/5 rounded-2xl p-4 transition-all hover:border-white/10 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)] flex items-center justify-between gap-4"
+              className="bg-surface border border-gray-200 rounded-2xl p-4 transition-all hover:border-gray-200 hover:shadow-[0_8px_28px_rgba(0,0,0,0.3)] flex items-center justify-between gap-4"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-9 h-9 rounded-xl bg-neon-500/10 flex items-center justify-center flex-shrink-0">
@@ -185,7 +185,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
                   className="flex-shrink-0"
                 />
                 <div className="min-w-0">
-                  <p className="font-semibold text-sm text-gray-100 truncate">
+                  <p className="font-semibold text-sm text-gray-900 truncate">
                     {entry.brand} {entry.model}
                   </p>
                   <p className="text-xs text-gray-500 mt-0.5">
@@ -198,14 +198,14 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
                 <button
                   onClick={() => openEditForm(entry)}
                   aria-label="Modifier"
-                  className="p-2 rounded-lg hover:bg-white/5 text-gray-600 hover:text-gray-300 transition-all"
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => deleteEntry(entry.id)}
                   aria-label="Supprimer"
-                  className="p-2 rounded-lg hover:bg-red-500/10 text-gray-600 hover:text-red-400 transition-all"
+                  className="p-2 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-all"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -222,20 +222,20 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
             {platformEntries.map((entry) => (
               <div
                 key={entry.id}
-                className="bg-dark-400/40 border border-dashed border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4"
+                className="bg-dark-400/40 border border-dashed border-gray-200 rounded-2xl p-4 flex items-center justify-between gap-4"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
+                  <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
                     <Tag className="w-4 h-4 text-gray-500" />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-semibold text-sm text-gray-300 truncate">
+                    <p className="font-semibold text-sm text-gray-700 truncate">
                       {entry.brand} {entry.model}
                     </p>
-                    <p className="text-xs text-gray-600 mt-0.5">{entry.category}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{entry.category}</p>
                   </div>
                 </div>
-                <span className="text-[10px] uppercase tracking-wider text-gray-600 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1 flex-shrink-0">
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 bg-gray-100 border border-gray-200 rounded-lg px-2.5 py-1 flex-shrink-0">
                   Recommandé
                 </span>
               </div>
@@ -259,7 +259,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
                   value={form.brand}
                   onChange={(e) => setForm({ ...form, brand: e.target.value })}
                   placeholder="Nike"
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                  className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
                 />
               </div>
               <div>
@@ -269,7 +269,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
                   value={form.model}
                   onChange={(e) => setForm({ ...form, model: e.target.value })}
                   placeholder="Shox TL"
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                  className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
                 />
               </div>
             </div>
@@ -279,7 +279,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
               <select
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
               >
                 {OPPORTUNITY_CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -306,7 +306,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
 
             <button
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 font-semibold"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 font-semibold"
             >
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
               Seuils avancés (optionnel)
@@ -322,7 +322,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
                     type="number"
                     value={form.minProfit}
                     onChange={(e) => setForm({ ...form, minProfit: e.target.value })}
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                    className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
                   />
                 </div>
                 <div>
@@ -333,7 +333,7 @@ export default function WatchlistPage({ onNavigate, onViewAction }: WatchlistPag
                     type="number"
                     value={form.minRoi}
                     onChange={(e) => setForm({ ...form, minRoi: e.target.value })}
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                    className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
                   />
                 </div>
               </div>

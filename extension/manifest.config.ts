@@ -89,10 +89,14 @@ export function buildManifest(isBeta = false) {
       service_worker: "src/background/index.ts",
       type: "module",
     },
-    // "alarms" retiree (2026-07-23, revue de coherence) : jamais utilisee par
-    // aucun code de l'extension (grep exhaustif de chrome.alarms/alarms.* sur
-    // extension/src/, aucun resultat) -- une permission Chrome non justifiee
-    // est un risque et une confusion pour rien.
+    // "alarms" retiree le 2026-07-23 (jamais utilisee a l'epoque), REINTRODUITE
+    // le 2026-08-20 (mission "ROUND 3 -- CHROME.ALARMS UNIQUEMENT, REVEIL/LOG
+    // SANS EXECUTION VINTED") : seul mecanisme MV3 capable de reveiller le
+    // service worker a une heure future precise, y compris apres suspension
+    // ou redemarrage du navigateur (voir republishScheduler.ts) -- necessaire
+    // pour detecter automatiquement les programmations de republication
+    // dues (republish_schedules, deja persistees en base depuis le round 2).
+    // Jamais utilisee pour autre chose que ce planificateur.
     //
     // "webRequest" ajoutee (2026-08-17, mission "AUTOMATISER ENTIEREMENT LA
     // SUPPRESSION DE A") : uniquement pour observer en LECTURE SEULE (aucun
@@ -103,7 +107,7 @@ export function buildManifest(isBeta = false) {
     // autres mutations deja confirmees protegees, ou rejouable normalement)
     // sans deviner ni sacrifier une nouvelle annonce reelle juste pour lire
     // ces headers a la main.
-    permissions: ["storage", "tabs", "scripting", "webRequest"],
+    permissions: ["storage", "tabs", "scripting", "webRequest", "alarms"],
     // https://*.vinted.net/* (2026-08-10, audit "prefill partiel" -- CORS
     // confirme en test live sur images1.vinted.net) : le CDN photo de Vinted
     // est un domaine DISTINCT de vinted.fr et ne renvoie aucun header
@@ -146,6 +150,20 @@ export function buildManifest(isBeta = false) {
       // supplementaire necessaire.
       matches: ["https://www.vinted.fr/items/new*"],
       js: ["src/content/publishCreateResponseCaptureBoot.ts"],
+      world: "MAIN",
+      run_at: "document_start",
+    },
+    {
+      // Mission "ECRITURE DU PRIX EN MONDE MAIN" (2026-08-26) : le champ prix
+      // est un composant React controle dont l'etat interne n'etait jamais
+      // atteint depuis le monde ISOLE (voir priceMainWorldWriter.ts pour la
+      // preuve live et la cause structurelle). MONDE MAIN requis pour voir le
+      // vrai `_valueTracker` et l'override de `value` poses par React.
+      // document_start pour la meme raison que la capture ci-dessus : garantir
+      // que le listener est en place avant que le content script ISOLE
+      // (document_idle) ne puisse emettre sa premiere demande.
+      matches: ["https://www.vinted.fr/items/new*"],
+      js: ["src/content/priceMainWorldWriterBoot.ts"],
       world: "MAIN",
       run_at: "document_start",
     },

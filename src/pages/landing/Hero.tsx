@@ -1,42 +1,55 @@
 import { ArrowRight } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
+import { PaintedWord } from './PaintedWord';
 
+// Round M -- retouches Hero (retour utilisateur 2026-08-23, comparaison
+// directe avec VintyResell) :
+// - section jugee trop serree (la section suivante etait deja visible en
+//   arrivant sur la page) -- HeroComparison.tsx ajoute une vraie hauteur
+//   de contenu plutot que du padding artificiel.
+// - "Vinted" recoit une animation ponctuelle (.underline-draw, index.css)
+//   -- un trait qui se dessine une seule fois au chargement, jamais une
+//   boucle.
+// - texte de reassurance ecarte du CTA (etaient colles).
+// - sous-texte reecrit : ton plus humain (tu/ton, virgules plutot qu'un
+//   point sec juste apres "Prends une photo"), taille reduite (etait plus
+//   gros que necessaire pour un sous-texte).
 export function Hero({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
   return (
-    <section className="relative pt-40 pb-28 sm:pt-48 sm:pb-40 overflow-hidden">
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(124,92,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,255,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-neon-500/5 rounded-full blur-[150px]" />
-      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 text-center">
-        <div className="inline-flex items-center rounded-full border border-neon-500/20 bg-neon-500/10 px-5 py-2" >
-          <span className="text-sm font-semibold text-neon-500">
-Plateforme tout-en-un pour revendeurs
-</span>
-        </div>
+    <section className="pt-40 pb-28 sm:pt-48 sm:pb-40">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
+        <p className="text-sm font-semibold tracking-[0.2em] uppercase text-gray-500">
+          Plateforme tout-en-un pour revendeurs
+        </p>
 
-        <h1 className="mt-8 text-7xl md:text-8xl font-black tracking-tight leading-none mb-10">
-  Le système complet
-  <span className="block text-neon-500" style={{ textShadow: '0 0 40px rgba(124,92,255,0.22)' }}>
-    du revendeur.
-  </span>
-</h1>
-<p className="mt-8 max-w-3xl mx-auto text-2xl leading-9 text-zinc-400 mb-14">
- Prenez une photo. ResellOS génère automatiquement vos photos, votre titre, votre description et le meilleur prix.
-Suivez vos annonces, votre stock et votre comptabilité depuis une seule plateforme.
-</p>
-        <div className="flex flex-col items-center justify-center gap-3">
+        {/* Le mot anime occupe sa PROPRE ligne, jamais la fin de "du
+            revendeur" : selon sa longueur il repoussait le reste du titre et
+            faisait sauter tout le bloc sous-titre/CTA a chaque alternance.
+            PaintedWord reserve lui-meme sa hauteur (voir son commentaire). */}
+        <h1 className="mt-8 text-7xl md:text-8xl font-black tracking-tight leading-none mb-10 text-gray-900">
+          <span className="block">Le système complet du revendeur</span>
+          <PaintedWord />
+        </h1>
+        <p className="mt-8 max-w-2xl mx-auto text-lg leading-8 text-gray-600 mb-14">
+          Il est maintenant temps de piloter ton activité et d'automatiser les tâches les plus importantes, mais également de structurer tes déclarations URSSAF en micro-entreprise. Et tout ça, seulement depuis Resell OS !
+        </p>
+        <div className="flex flex-col items-center justify-center gap-5">
           <button
             onClick={() => {
               sessionStorage.setItem('resellos:authMode', 'register');
               onNavigate('auth');
             }}
-            className="group w-full sm:w-auto bg-neon-600 text-white font-bold text-lg px-10 py-5 rounded-2xl transition-all duration-500 hover:-translate-y-1 hover:scale-[1.02] hover:bg-neon-700 hover:shadow-[0_20px_60px_rgba(124,92,255,.35)]"
+            className="w-full sm:w-auto text-white font-bold text-lg px-10 py-5 rounded-2xl transition-colors duration-300"
+            style={{ backgroundColor: '#007782' }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#005f68'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#007782'; }}
           >
-            <span className="flex items-center gap-3">
-  Créer ma première annonce
-  <ArrowRight className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1" />
-</span>
+            <span className="flex items-center gap-3 justify-center">
+              Commencer gratuitement
+              <ArrowRight className="w-5 h-5" aria-hidden="true" />
+            </span>
           </button>
-          <p className="text-sm text-gray-500">Sans carte bancaire · 10 annonces IA offertes chaque mois · Prête en moins d'une minute</p>
+          <p className="text-sm text-gray-600">Sans carte bancaire · 10 annonces offertes</p>
         </div>
       </div>
     </section>

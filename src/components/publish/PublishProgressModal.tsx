@@ -102,7 +102,7 @@ export default function PublishProgressModal({
       )}
 
       {prefillSummary && (prefillSummary.confirmed.length > 0 || prefillSummary.pending.length > 0) && (
-        <div className="mt-4 bg-dark-400 border border-white/10 rounded-xl p-3 space-y-3">
+        <div className="mt-4 bg-dark-400 border border-gray-200 rounded-xl p-3 space-y-3">
           {prefillSummary.confirmed.length > 0 && (
             <div>
               <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">Préremplis</p>
@@ -133,7 +133,7 @@ export default function PublishProgressModal({
       {!isTerminal && hint && onOpenVinted && (
         <button
           onClick={onOpenVinted}
-          className="w-full mt-3 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+          className="w-full mt-3 bg-dark-400 border border-gray-200 text-gray-800 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
         >
           Ouvrir Vinted
         </button>
@@ -141,8 +141,8 @@ export default function PublishProgressModal({
 
       {error && (
         <div className="mt-4 flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-red-300">{error}</p>
+          <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700">{error}</p>
         </div>
       )}
 
@@ -166,7 +166,7 @@ export default function PublishProgressModal({
       {error && onOpenVinted && (
         <button
           onClick={onOpenVinted}
-          className="w-full mt-4 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+          className="w-full mt-4 bg-dark-400 border border-gray-200 text-gray-800 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
         >
           Ouvrir Vinted
         </button>
@@ -185,7 +185,7 @@ export default function PublishProgressModal({
       {isTerminal && onViewAction && (
         <button
           onClick={onViewAction}
-          className="w-full mt-3 bg-dark-400 border border-white/10 text-gray-200 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+          className="w-full mt-3 bg-dark-400 border border-gray-200 text-gray-800 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
         >
           Voir dans Niches
         </button>

@@ -235,7 +235,7 @@ describe("attemptDeleteOldVintedListing", () => {
     expect(result.error).toContain("fermé");
   });
 
-  it("timeout global sans clic humain -> jamais un succès, l'onglet N'EST PAS fermé (aucun clic confirmé)", async () => {
+  it("timeout global sans clic confirme -> jamais un succes, ET l'onglet est ferme (timeout de securite)", async () => {
     vi.useFakeTimers();
     const mock = makeMockChrome();
     vi.stubGlobal("chrome", mock.chrome);
@@ -250,14 +250,19 @@ describe("attemptDeleteOldVintedListing", () => {
 
     const result = await resultPromise;
     expect(result.ok).toBe(false);
-    // Mission "AUTOMATISER ENTIEREMENT LA SUPPRESSION DE A" (2026-08-17,
-    // bug reel confirme en test live) : un timeout/echec survenu AVANT tout
-    // clic humain reel ne doit JAMAIS fermer l'onglet -- l'utilisateur peut
-    // encore etre en train de regarder la modale de confirmation.
-    expect(mock.removeCalls).not.toContain(100);
+    // HISTORIQUE -- ne pas perdre la raison : le 2026-08-17, un bug live avait
+    // impose l'inverse (onglet JAMAIS ferme sans clic confirme) parce que
+    // l'onglet se fermait sous les yeux de l'utilisateur pendant qu'il regardait
+    // la modale -- le clic final etait alors MANUEL. Depuis le 2026-08-19 ce
+    // clic est automatise, et depuis le 2026-08-26 l'onglet s'ouvre en
+    // active:true (indispensable au rendu de la modale React). Laisser un
+    // onglet FOCALISE ouvert indefiniment apres 180 s est desormais plus
+    // nuisible qu'utile : le timeout de securite le ferme. L'echec reste
+    // rapporte honnetement (ok:false).
+    expect(mock.removeCalls).toContain(100);
   });
 
-  it("RÉGRESSION bug live 2026-08-17 : modale visible + aucun clic humain + timeout/erreur -> l'onglet reste ouvert", async () => {
+  it("timeout apres affichage de la modale -> echec honnete, onglet ferme par le timeout de securite", async () => {
     vi.useFakeTimers();
     const mock = makeMockChrome();
     vi.stubGlobal("chrome", mock.chrome);
@@ -272,7 +277,7 @@ describe("attemptDeleteOldVintedListing", () => {
     // (le content script vient de le signaler) -- exactement l'etat observe
     // en direct par l'utilisateur juste avant que l'onglet ne se ferme sous
     // ses yeux.
-    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "waiting_for_manual_confirm_click" });
+    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "auto_confirm_click_attempted" });
 
     // Aucun clic humain n'arrive jamais (ni DELETE_RESULT, ni action de
     // l'utilisateur) -- seul le delai global expire, simulant le
@@ -281,11 +286,11 @@ describe("attemptDeleteOldVintedListing", () => {
 
     const result = await resultPromise;
     expect(result.ok).toBe(false);
-    // L'assertion centrale de ce correctif : jamais de fermeture automatique
-    // tant qu'aucun clic humain reel n'a ete confirme, meme apres que la
-    // modale ait ete affichee.
-    expect(mock.removeCalls).not.toContain(100);
-    expect(mock.chrome.tabs.remove).not.toHaveBeenCalledWith(100);
+    // Meme renversement que le test precedent (voir son commentaire) : le
+    // timeout de securite ferme l'onglet, y compris apres affichage de la
+    // modale. Ce qui reste INCHANGE : aucun succes n'est jamais invente.
+    expect(mock.removeCalls).toContain(100);
+    expect(result.error).toContain("Délai");
   });
 
   it("DELETE_RESULT dupliqué (rejoué) -> aucune double finalisation (une seule vérification, un seul résultat)", async () => {
@@ -372,7 +377,7 @@ describe("attemptDeleteOldVintedListing", () => {
     await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalled());
 
     expect(onAwaitingConfirmation).not.toHaveBeenCalled();
-    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "waiting_for_manual_confirm_click" });
+    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "auto_confirm_click_attempted" });
     expect(onAwaitingConfirmation).toHaveBeenCalledTimes(1);
 
     mock.sendReport(100, {
@@ -468,7 +473,7 @@ describe("attemptDeleteOldVintedListing", () => {
 
     // Content script vivant (modale affichee) mais aucun clic humain pour
     // l'instant.
-    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "waiting_for_manual_confirm_click" });
+    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "auto_confirm_click_attempted" });
 
     // Epuise le canal d'ACK defaillant -- ne doit PAS resoudre la transaction.
     await vi.advanceTimersByTimeAsync(20000);
@@ -584,10 +589,10 @@ describe("sendDeleteCommand -- ACK explicite (2026-08-17)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(mock.getSendMessageCallCount()).toBe(1);
 
-    // Traitement long simule : DELETE_PROGRESS "waiting_for_manual_confirm_click"
+    // Traitement long simule : DELETE_PROGRESS "auto_confirm_click_attempted"
     // peut arriver plusieurs dizaines de secondes plus tard (jusqu'a 90s cote
     // content script) sans qu'aucun retry ne soit jamais declenche entre-temps.
-    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "waiting_for_manual_confirm_click" });
+    mock.sendReport(100, { type: "DELETE_PROGRESS", step: "auto_confirm_click_attempted" });
     await vi.advanceTimersByTimeAsync(60000);
     expect(mock.getSendMessageCallCount()).toBe(1);
 
@@ -958,5 +963,122 @@ describe("verifyReallyDeleted -- retry + renavigation sur 'Frame with ID 0 was r
       "REPUBLISH_OLD_DELETE_VERIFICATION_RESULT",
       expect.objectContaining({ oldVintedItemId: "old-1", stillActive: true })
     );
+  });
+});
+// Mission "ONGLET ACTIF POUR LA MODALE REACT" (2026-08-26) : le mode
+// background du 2026-08-19 est annule. attemptDeleteOldVintedListing() n'est
+// atteignable que pour republish_listing (oldVintedItemId, voir
+// republishTransaction.ts) -- son onglet de SUPPRESSION s'ouvre desormais en
+// active:true, seul moyen d'obtenir de Chromium le cycle de rendu que la
+// modale React de Vinted exige pour se monter. L'onglet de VERIFICATION
+// independante reste en active:false (lecture ld+json uniquement). Le
+// re-focus sur intervention humaine necessaire (signal existant
+// outcomeAllowsTabClose:false) est conserve.
+describe("attemptDeleteOldVintedListing -- onglet actif (mission 'ONGLET ACTIF POUR LA MODALE REACT', 2026-08-26)", () => {
+  it("4. l'onglet de suppression est cree avec active:true (rendu requis pour la modale React)", async () => {
+    const mock = makeMockChrome();
+    vi.stubGlobal("chrome", mock.chrome);
+    mock.setStillActive(false);
+
+    const resultPromise = attemptDeleteOldVintedListing("old-1");
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(1));
+    expect(mock.createCalls[0].active).toBe(true);
+
+    mock.fireComplete(100);
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalled());
+    mock.sendReport(100, { type: "DELETE_RESULT", outcome: { ok: true, alreadyGone: false } });
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(2));
+    // L'onglet de verification independante reste lui aussi active:false,
+    // deja le cas avant ce round -- confirme ici pour ne pas regresser.
+    expect(mock.createCalls[1].active).toBe(false);
+    mock.fireComplete(101);
+
+    await resultPromise;
+  });
+
+  // 6. echec necessitant intervention (clic structurellement impossible,
+  // aucune verification independante jamais declenchee -- exactement le
+  // scenario deja couvert plus haut, DELETE_RESULT ok:false) -> l'onglet est
+  // ramene au premier plan.
+  it("6. DELETE_RESULT ok:false (ex. confirm_button_not_clickable) -> l'onglet de suppression est ramene au premier plan, jamais fermé", async () => {
+    const mock = makeMockChrome();
+    vi.stubGlobal("chrome", mock.chrome);
+
+    const resultPromise = attemptDeleteOldVintedListing("old-1");
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(1));
+    mock.fireComplete(100);
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalled());
+    mock.sendReport(100, {
+      type: "DELETE_RESULT",
+      outcome: { ok: false, reason: "confirm_button_not_clickable", errorMessage: "Bouton introuvable, invisible ou désactivé" },
+    });
+
+    const result = await resultPromise;
+    expect(result.ok).toBe(false);
+    // Etat recuperable conserve a l'identique -- onglet jamais ferme (deja
+    // le cas avant ce round).
+    expect(mock.removeCalls).not.toContain(100);
+    // SEULE difference introduite par ce round : l'onglet, backgrounded a la
+    // creation, est ramene au premier plan puisqu'une intervention humaine
+    // est reellement necessaire.
+    expect(mock.chrome.tabs.update).toHaveBeenCalledWith(100, { active: true });
+  });
+
+  // 7. succes complet : aucun chrome.tabs.update(...,{active:true}) jamais
+  // appele (le succes ferme les deux onglets, comme avant ce round).
+  it("7. succes complet -> jamais de chrome.tabs.update(...,{active:true}), les deux onglets sont fermes", async () => {
+    const mock = makeMockChrome();
+    vi.stubGlobal("chrome", mock.chrome);
+    mock.setStillActive(false);
+
+    const resultPromise = attemptDeleteOldVintedListing("old-1");
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(1));
+    mock.fireComplete(100);
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalled());
+    mock.sendReport(100, { type: "DELETE_RESULT", outcome: { ok: true, alreadyGone: false } });
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(2));
+    mock.fireComplete(101);
+
+    const result = await resultPromise;
+    expect(result).toEqual({ ok: true });
+    expect(mock.removeCalls).toContain(100);
+    expect(mock.removeCalls).toContain(101);
+    expect(mock.chrome.tabs.update).not.toHaveBeenCalledWith(expect.anything(), { active: true });
+  });
+
+  // 8. cleanup_required (verification independante montre l'annonce
+  // toujours active) : comportement recuperable conserve -- l'onglet de
+  // suppression (deja ferme a ce stade, son role etant termine des qu'un
+  // clic a ete tente) ne declenche PAS de foreground, puisque
+  // outcomeAllowsTabClose etait deja vrai avant la verification (aucune
+  // regression de ce round : cette branche existait deja et reste inchangee).
+  it("8. cleanup_required (verification montre toujours active) -> comportement recuperable inchange, aucun foreground superflu", async () => {
+    const mock = makeMockChrome();
+    vi.stubGlobal("chrome", mock.chrome);
+    mock.setStillActive(true); // toujours active malgre le clic
+
+    const resultPromise = attemptDeleteOldVintedListing("old-1");
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(1));
+    mock.fireComplete(100);
+    await vi.waitFor(() => expect(mock.chrome.tabs.sendMessage).toHaveBeenCalled());
+    mock.sendReport(100, { type: "DELETE_RESULT", outcome: { ok: true, alreadyGone: false } });
+
+    await vi.waitFor(() => expect(mock.createCalls.length).toBe(2));
+    mock.fireComplete(101);
+
+    const result = await resultPromise;
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("toujours active");
+    // L'onglet de suppression (100) a deja ete ferme (son role etait
+    // termine des le clic tente) -- jamais de foreground superflu sur un
+    // onglet deja ferme.
+    expect(mock.removeCalls).toContain(100);
+    expect(mock.chrome.tabs.update).not.toHaveBeenCalledWith(expect.anything(), { active: true });
   });
 });

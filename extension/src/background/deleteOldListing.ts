@@ -8,20 +8,34 @@
 // extension/src/content/deleteFlowSelectors.ts pour les selecteurs texte,
 // aucun data-testid n'ayant ete releve en direct).
 //
-// DECISION D'ARCHITECTURE (clic manuel pour la confirmation finale) : ce
-// meme projet a deja prouve, sur la route de sauvegarde d'edition
-// (vinted-edit.ts::submitEdit, 2026-07-25), qu'un clic synthetique
-// n'atteint jamais la vraie requete de mutation Vinted -- route protegee
-// par un service anti-bot qui exige un evenement isTrusted:true. La
-// suppression est une mutation au moins aussi sensible (irreversible), et
-// aucun nouveau test synthetique n'a ete tente sur CE bouton precis (aurait
-// signifie soit reussir a supprimer une annonce reelle sans feu vert final,
-// soit echouer sans le savoir a coup sur) -- le clic sur "Confirmer et
-// supprimer" reste donc un clic humain reel, l'onglet s'ouvre au premier
-// plan (active:true) exactement comme pour l'edition. Seul le clic sur
-// "Supprimer" (ouverture de la modale, purement cote client, aucune requete
-// reseau attendue) est automatise -- coherent avec la preuve deja etablie
-// qu'un clic synthetique atteint bien le DOM/les handlers JS.
+// DECISION D'ARCHITECTURE REVISEE (mission "AUTOMATISER LA SUPPRESSION --
+// DERNIER CLIC", 2026-08-19) : la version precedente laissait le clic sur
+// "Confirmer et supprimer" a l'utilisateur, par analogie avec la route de
+// sauvegarde d'edition (vinted-edit.ts::submitEdit, prouvee protegee
+// anti-bot) -- mais cette analogie n'avait JAMAIS ete testee sur CE bouton
+// precis. Le meme round a confirme en direct que le bouton "Ajouter" de
+// creation (/items/new, meme famille de bouton "soumettre") accepte deja un
+// clic synthetique sans isTrusted:true. Le clic sur "Confirmer et
+// supprimer" est donc desormais lui aussi automatise (vinted-item.ts::
+// handleDeleteListing, une seule tentative, jamais de retry) -- CE MODULE
+// (deleteOldListing.ts) reste totalement INCHANGE : il continue de traiter
+// DELETE_RESULT{ok:true} exactement comme avant (une preuve que le clic a
+// ete tente, jamais que la suppression a reussi) et de faire reposer
+// deletedOld:true/false EXCLUSIVEMENT sur verifyReallyDeleted() ci-dessous
+// (onglet independant, reload + lecture ld+json).
+//
+// ONGLET ACTIF (mission "ONGLET ACTIF POUR LA MODALE REACT", 2026-08-26) :
+// le mode background du 2026-08-19 est ANNULE -- preuve live, la modale de
+// confirmation React de Vinted ne se monte JAMAIS dans un onglet non rendu
+// (throttling Chromium), alors meme que le declencheur etait bien trouve et
+// clique. L'onglet de SUPPRESSION s'ouvre donc en active:true (voir
+// performDeleteOldVintedListing) ; celui de VERIFICATION reste en
+// active:false, il ne fait que lire du ld+json. Ce flow n'est atteint QUE
+// pour republish_listing (oldVintedItemId, republishTransaction.ts, n'existe
+// jamais pour une premiere publication). Le filet de secours (onglet garde
+// ouvert et ramene au premier plan si outcomeAllowsTabClose n'a jamais ete
+// mis a true, voir settle()) est conserve, avec une seule exception : le
+// timeout de securite ferme l'onglet dans tous les cas.
 //
 // PREUVE INDEPENDANTE (ne jamais se fier au seul "un clic a ete detecte") :
 // une fois DELETE_RESULT{ok:true} recu du content script, ce module ouvre
@@ -122,15 +136,42 @@ async function sendDeleteCommand(
           return;
         }
         const command: ContentCommand = { type: "DELETE_LISTING", payload: { vintedItemId } };
+        // INSTRUMENTATION TEMPORAIRE PHASE DELETE (2026-08-25).
+        logger.warn("REPUBLISH_DELETE_COMMAND_SENT", { tabId, oldItemId: vintedItemId });
         chrome.tabs.sendMessage(tabId, command, (response: DeleteCommandResponse | undefined) => {
           if (chrome.runtime.lastError) {
+            // "Could not establish connection" / "Receiving end does not
+            // exist" = aucun content script vivant dans cet onglet. C'est le
+            // symptome attendu d'un content script ORPHELIN (extension
+            // rechargee alors qu'un onglet Vinted etait deja ouvert) --
+            // exactement la famille de "chrome-extension://invalid/".
+            logger.warn("REPUBLISH_DELETE_RESPONSE", {
+              tabId,
+              oldItemId: vintedItemId,
+              acked: false,
+              reason: chrome.runtime.lastError.message ?? "(lastError sans message)",
+            });
             reject(new Error(chrome.runtime.lastError.message));
             return;
           }
           if (!response || response.ok !== true || response.accepted !== true) {
+            logger.warn("REPUBLISH_DELETE_RESPONSE", {
+              tabId,
+              oldItemId: vintedItemId,
+              acked: false,
+              reason: "ACK absent ou invalide",
+              responseOk: response?.ok ?? null,
+              responseAccepted: response?.accepted ?? null,
+            });
             reject(new Error("Réponse ACK absente ou invalide du content script"));
             return;
           }
+          logger.warn("REPUBLISH_DELETE_RESPONSE", {
+            tabId,
+            oldItemId: vintedItemId,
+            acked: true,
+            documentInstanceId: response.documentInstanceId,
+          });
           onAcked(response.documentInstanceId);
           resolve();
         });
@@ -220,6 +261,9 @@ async function verifyReallyDeleted(oldVintedItemId: string): Promise<DeleteOldLi
   const url = `https://www.vinted.fr/items/${oldVintedItemId}`;
   let tab: chrome.tabs.Tab;
   try {
+    // Onglet de VERIFICATION uniquement : reload + lecture ld+json, aucune
+    // modale ni interaction. Reste donc en active:false, contrairement a
+    // l'onglet de suppression (voir performDeleteOldVintedListing).
     tab = await chrome.tabs.create({ url, active: false });
   } catch (err) {
     return { ok: false, error: `Vérification de la suppression impossible (ouverture d'onglet) : ${errorMessage(err)}` };
@@ -287,8 +331,23 @@ async function performDeleteOldVintedListing(
 
   let tab: chrome.tabs.Tab;
   try {
-    // active:true -- la confirmation finale exige un clic humain reel (voir
-    // commentaire d'en-tete), l'onglet doit donc être visible.
+    // Mission "ONGLET ACTIF POUR LA MODALE REACT" (2026-08-26) : active:true.
+    // Ceci REVIENT sur la decision "MODE BACKGROUND" du 2026-08-19, sur preuve
+    // live : le declencheur [data-testid="item-delete-button"] etait bien
+    // trouve ET clique (DELETE_TRIGGER_STATE, before_click + before_retry_click)
+    // mais la modale de confirmation n'apparaissait JAMAIS dans le DOM
+    // (DELETE_DOM_SNAPSHOT stage:"modal_not_found"). Un onglet d'arriere-plan
+    // subit le throttling de Chromium : sans cycle de rendu actif, la modale
+    // React de Vinted ne se monte pas. C'est aussi ce meme non-rendu qui
+    // mettait toutes les geometries a 0x0 (voir isLayoutUnavailable,
+    // deleteFlowSelectors.ts -- ce repli reste en place, il couvre encore le
+    // court instant avant que l'onglet ne soit reellement rendu).
+    //
+    // CONSEQUENCE ASSUMEE : cet onglet prend le focus pendant la republication.
+    // C'est le prix du rendu complet ; il est ferme des que l'issue est connue
+    // (voir settle()). L'onglet de VERIFICATION independante
+    // (verifyReallyDeleted) reste lui en active:false -- il ne fait que lire
+    // du ld+json, aucune modale ni interaction n'y est requise.
     tab = await chrome.tabs.create({ url, active: true });
   } catch (err) {
     return { ok: false, error: `Impossible d'ouvrir l'ancienne annonce à supprimer : ${errorMessage(err)}` };
@@ -298,6 +357,25 @@ async function performDeleteOldVintedListing(
   }
   const tabId = tab.id;
   logger.info("REPUBLISH_OLD_DELETE_TAB_CREATED", { tabId, url, oldVintedItemId, purpose: TAB_PURPOSE });
+
+  // INSTRUMENTATION TEMPORAIRE PHASE DELETE (2026-08-25) : etat REEL de
+  // l'onglet une fois charge -- l'URL effective peut differer de l'URL
+  // demandee (redirection Vinted, page 404/supprimee, mur de connexion). Sans
+  // cela, un echec d'ACK plus bas ne permet pas de distinguer "content script
+  // absent" de "on n'est pas sur la page attendue".
+  void chrome.tabs.get(tabId).then((state) => {
+    logger.warn("REPUBLISH_DELETE_TAB_STATE", {
+      tabId,
+      oldItemId: oldVintedItemId,
+      expectedUrl: url,
+      actualUrl: state.url ?? null,
+      status: state.status ?? null,
+      // true = on n'est PAS sur la page attendue -> le content script
+      // d'annonce ne sera pas injecte, l'ACK echouera forcement.
+      urlMismatch: !!state.url && !state.url.startsWith(url),
+      discarded: state.discarded ?? null,
+    });
+  }).catch(() => {});
 
   return new Promise<DeleteOldListingResult>((resolve) => {
     let settled = false;
@@ -380,14 +458,30 @@ async function performDeleteOldVintedListing(
     // plus bas) -- seul le PARAMETRE passe a sendDeleteCommand() change.
     let deleteCommandAccepted = false;
 
-    function settle(result: DeleteOldListingResult): void {
+    // forceCloseTab : reserve au timeout de securite (mission "ONGLET ACTIF
+    // POUR LA MODALE REACT", 2026-08-26). Depuis que cet onglet prend le focus,
+    // en laisser un ouvert indefiniment apres un delai depasse serait intrusif
+    // alors qu'il n'y a plus rien a y faire. Le resultat reste rapporte
+    // honnetement en echec dans tous les cas.
+    function settle(result: DeleteOldListingResult, forceCloseTab = false): void {
       if (settled) return;
       settled = true;
       cleanup();
-      if (outcomeAllowsTabClose) {
+      if (outcomeAllowsTabClose || forceCloseTab) {
         chrome.tabs.remove(tabId).catch(() => {});
       } else {
         logger.warn("REPUBLISH_OLD_DELETE_TAB_KEPT_OPEN_NO_CLICK_CONFIRMED", { oldVintedItemId, tabId, error: result.error });
+        // Mission "MODE BACKGROUND -- REPUBLICATION" (2026-08-19) : filet de
+        // secours -- reutilise EXACTEMENT le signal existant
+        // (outcomeAllowsTabClose:false = intervention humaine potentiellement
+        // necessaire, aucun clic confirme), aucun nouveau signal introduit.
+        // Cet onglet tourne desormais en arriere-plan (active:false a la
+        // creation, voir plus bas) -- le ramener au premier plan ICI
+        // seulement, jamais sur un succes normal (ce else n'est atteint que
+        // si outcomeAllowsTabClose est reste false). Best-effort.
+        chrome.tabs.update(tabId, { active: true }).catch((err) => {
+          logger.error("REPUBLISH_OLD_DELETE_FALLBACK_ACTIVATE_TAB_FAILED", { oldVintedItemId, tabId, error: errorMessage(err) });
+        });
       }
       resolve(result);
     }
@@ -410,11 +504,12 @@ async function performDeleteOldVintedListing(
         deleteCommandAccepted = true;
         const step: DeleteStep = message.step;
         logger.info("REPUBLISH_OLD_DELETE_PROGRESS", { oldVintedItemId, step, documentInstanceId: message.documentInstanceId });
-        // Point ou ResellOS doit afficher un etat explicite ("confirmation de
-        // suppression requise sur Vinted", demande explicite) -- relaye AVANT
-        // toute preuve de suppression, uniquement pour informer l'utilisateur
-        // qu'un clic humain est desormais attendu dans l'onglet reste ouvert.
-        if (step === "waiting_for_manual_confirm_click") onAwaitingConfirmation?.();
+        // Point ou ResellOS doit afficher un etat explicite -- relaye AVANT
+        // toute preuve de suppression, pour informer que la suppression de
+        // l'ancienne annonce est en cours (desormais automatique, voir
+        // commentaire d'en-tete ; l'onglet reste ouvert et visible au cas ou
+        // une intervention manuelle serait malgre tout necessaire).
+        if (step === "auto_confirm_click_attempted") onAwaitingConfirmation?.();
       } else if (message.type === "DELETE_RESULT") {
         // Meme preuve, memes raisons.
         deleteCommandAccepted = true;
@@ -471,7 +566,8 @@ async function performDeleteOldVintedListing(
     }
 
     const globalTimeout = setTimeout(() => {
-      settle({ ok: false, error: "Délai dépassé pour la suppression de l'ancienne annonce" });
+      logger.warn("REPUBLISH_OLD_DELETE_TAB_CLOSED_ON_TIMEOUT", { oldVintedItemId, tabId, timeoutMs: DELETE_GLOBAL_TIMEOUT_MS });
+      settle({ ok: false, error: "Délai dépassé pour la suppression de l'ancienne annonce" }, true);
     }, DELETE_GLOBAL_TIMEOUT_MS);
 
     chrome.runtime.onMessage.addListener(onMessage);

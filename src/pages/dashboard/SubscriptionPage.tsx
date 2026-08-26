@@ -6,7 +6,9 @@ import { Button } from '../../components/ui/Button';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
-import { PLAN_LIST, type PlanDefinition } from '../../lib/plans';
+import { PURCHASABLE_PLANS, type PlanDefinition } from '../../lib/plans';
+import { BillingIntervalToggle } from '../../components/ui/BillingIntervalToggle';
+import type { BillingInterval } from '../../lib/billingInterval';
 import { startCheckout, openBillingPortal, type BillablePlan } from '../../lib/billing';
 import type { Plan } from '../../lib/types';
 
@@ -43,6 +45,7 @@ export default function SubscriptionPage() {
 
   const [checkoutLoadingPlan, setCheckoutLoadingPlan] = useState<BillablePlan | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [interval, setInterval] = useState<BillingInterval>('month');
   const [actionError, setActionError] = useState<string | null>(null);
   const [subscriptionDetails, setSubscriptionDetails] = useState<SubscriptionDetails | null>(null);
 
@@ -105,12 +108,16 @@ export default function SubscriptionPage() {
   }, [user, currentPlan]);
 
   const busy = checkoutLoadingPlan !== null || portalLoading;
+  const annual = interval === 'year';
 
   const handleCheckout = async (plan: BillablePlan) => {
     if (busy) return;
     setActionError(null);
     setCheckoutLoadingPlan(plan);
-    const result = await startCheckout(plan);
+    // L'intervalle affiche est celui qui part a Stripe : sans ce passage, le
+    // toggle serait purement decoratif et le client serait facture au mois
+    // apres avoir choisi l'annuel.
+    const result = await startCheckout(plan, interval);
     if (!result.ok) {
       setActionError(result.error);
       setCheckoutLoadingPlan(null);
@@ -136,13 +143,13 @@ export default function SubscriptionPage() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader
         title="Abonnement"
-        description={<>Tu es sur le plan <span className={`font-bold ${currentPlan === 'pro' || currentPlan === 'team' ? 'text-neon-500' : 'text-gray-300'}`}>{currentPlan.toUpperCase()}</span>.</>}
+        description={<>Tu es sur le plan <span className={`font-bold ${currentPlan === 'pro' || currentPlan === 'team' ? 'text-neon-500' : 'text-gray-700'}`}>{currentPlan.toUpperCase()}</span>.</>}
       />
 
       {billingReturn === 'success' && (
         <div className="bg-neon-500/10 border border-neon-500/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
           {syncingProfile && <RefreshCw className="w-4 h-4 text-neon-500 flex-shrink-0 mt-0.5 animate-spin" />}
-          <p className="text-sm text-gray-300">
+          <p className="text-sm text-gray-700">
             {syncingProfile
               ? 'Paiement reçu — on synchronise ton abonnement, ça ne prend que quelques secondes.'
               : currentPlan !== 'free'
@@ -152,14 +159,14 @@ export default function SubscriptionPage() {
         </div>
       )}
       {billingReturn === 'cancelled' && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-4 mb-6">
-          <p className="text-sm text-gray-400">Paiement annulé — aucun changement n'a été appliqué à ton abonnement.</p>
+        <div className="bg-surface border border-gray-200 rounded-2xl p-4 mb-6">
+          <p className="text-sm text-gray-500">Paiement annulé — aucun changement n'a été appliqué à ton abonnement.</p>
         </div>
       )}
       {billingReturn === 'return' && syncingProfile && (
-        <div className="bg-surface border border-white/5 rounded-2xl p-4 mb-6 flex items-start gap-3">
-          <RefreshCw className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5 animate-spin" />
-          <p className="text-sm text-gray-400">Mise à jour de ton abonnement en cours...</p>
+        <div className="bg-surface border border-gray-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+          <RefreshCw className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5 animate-spin" />
+          <p className="text-sm text-gray-500">Mise à jour de ton abonnement en cours...</p>
         </div>
       )}
 
@@ -189,39 +196,56 @@ export default function SubscriptionPage() {
         )}
       </div>
 
-      {/* Plans grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {PLAN_LIST.map((plan) => {
+      {/* Plans grid -- Free n'y figure plus (2026-08-26) : un utilisateur
+          deja sur Free n'a rien a "acheter" de gratuit, il voit directement
+          ce vers quoi il peut monter. Son plan courant reste affiche dans
+          l'en-tete au-dessus. */}
+      <div className="flex justify-center mb-6">
+        <BillingIntervalToggle value={interval} onChange={setInterval} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+        {PURCHASABLE_PLANS.map((plan) => {
           const Icon = PLAN_ICONS[plan.id];
           const isCurrent = plan.id === currentPlan;
           const isBillable = plan.id === 'pro' || plan.id === 'team';
           return (
             <div
               key={plan.id}
-              className={`relative bg-surface border rounded-2xl p-7 flex flex-col transition-all duration-300 hover:-translate-y-1 ${plan.highlighted ? 'border-neon-500/30 shadow-[0_0_50px_rgba(124,92,255,0.08)] md:scale-105' : isCurrent ? 'border-neon-500/20' : 'border-white/5'}`}
+              className={`relative bg-surface border rounded-2xl p-7 flex flex-col transition-all duration-300 hover:-translate-y-1 ${plan.highlighted ? 'border-neon-500/30 shadow-[0_0_50px_rgba(124,92,255,0.08)] md:scale-105' : isCurrent ? 'border-neon-500/20' : 'border-gray-200'}`}
             >
               {plan.highlighted && !isCurrent && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-neon-600 text-white text-xs font-bold px-4 py-1 rounded-full">Le plus populaire</div>
               )}
+              {/* Theme clair (2026-08-24) : ce badge etait `bg-white/10
+                  text-white`, lisible sur fond sombre. Passe en surface grise
+                  + texte fonce -- un texte blanc y serait devenu invisible. */}
               {isCurrent && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white/10 text-white text-xs font-semibold px-4 py-1 rounded-full border border-white/10">Plan actuel</div>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gray-100 text-gray-700 text-xs font-semibold px-4 py-1 rounded-full border border-gray-200">Plan actuel</div>
               )}
               <div className="mb-5">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${plan.highlighted ? 'bg-neon-500/15' : 'bg-white/5'}`}>
-                  <Icon className={`w-5 h-5 ${plan.highlighted ? 'text-neon-500' : 'text-gray-400'}`} />
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 ${plan.highlighted ? 'bg-neon-500/15' : 'bg-gray-100'}`}>
+                  <Icon className={`w-5 h-5 ${plan.highlighted ? 'text-neon-500' : 'text-gray-500'}`} />
                 </div>
                 <h3 className="text-lg font-black mb-1">{plan.name}</h3>
                 <p className="text-xs text-gray-500">{PLAN_DESCRIPTIONS[plan.id]}</p>
               </div>
               <div className="mb-6">
-                <span className="text-4xl font-black">{plan.priceDisplay} €</span>
-                <span className="text-gray-500 text-sm">/mois</span>
+                <span className="text-4xl font-black">
+                  {annual ? plan.priceAnnualMonthlyDisplay : plan.priceDisplay} €
+                </span>
+                <span className="text-gray-600 text-sm">/mois</span>
+                {annual && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    Facturé {plan.priceAnnualTotalDisplay} € par an — tu économises {plan.annualSavingDisplay} €
+                  </p>
+                )}
               </div>
               <ul className="space-y-2.5 flex-1 mb-7">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5 text-sm">
-                    <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${plan.highlighted ? 'text-neon-500' : 'text-gray-600'}`} />
-                    <span className="text-gray-300">{f}</span>
+                    <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${plan.highlighted ? 'text-neon-500' : 'text-gray-500'}`} />
+                    <span className="text-gray-700">{f}</span>
                   </li>
                 ))}
               </ul>
@@ -248,7 +272,7 @@ export default function SubscriptionPage() {
         })}
       </div>
 
-      <p className="text-center text-xs text-gray-600 mt-8">Paiement sécurisé par Stripe · Résiliable à tout moment</p>
+      <p className="text-center text-xs text-gray-500 mt-8">Paiement sécurisé par Stripe · Résiliable à tout moment</p>
 
       {/* Factures -- gerees directement dans le Portail de facturation
           Stripe (bouton "Gerer mon abonnement" ci-dessus), pas de re-

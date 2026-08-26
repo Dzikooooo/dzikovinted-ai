@@ -6,7 +6,7 @@ import { Star } from 'lucide-react';
 // fonctionnalite arrive.
 export function ReviewsTab() {
   return (
-    <div className="bg-surface border border-white/5 rounded-2xl p-8 text-center max-w-lg mx-auto">
+    <div className="bg-surface border border-gray-200 rounded-2xl p-8 text-center max-w-lg mx-auto">
       <div className="w-14 h-14 bg-yellow-400/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
         <Star className="w-6 h-6 text-yellow-400" />
       </div>

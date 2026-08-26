@@ -61,7 +61,8 @@ Deno.serve(async (req: Request) => {
       { stripe: toCheckoutClient(stripe), supabaseAdmin, now: () => new Date() },
       userId,
       userEmail,
-      parsed.plan
+      parsed.plan,
+      parsed.interval
     );
 
     if (!result.ok) {

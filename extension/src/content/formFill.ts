@@ -9,6 +9,27 @@
 import { waitForElement } from "./domWait";
 import { matchOption } from "./matchOption";
 import * as sel from "./publishSelectors";
+import { logger } from "../background/logger";
+import {
+  PRICE_WRITER_INSTALLED_ATTR,
+  PRICE_WRITE_REQUEST_EVENT,
+  PRICE_WRITE_RESULT_EVENT,
+  type PriceWriteRequestDetail,
+  type PriceWriteResultDetail,
+} from "./priceMainWorldWriter";
+
+// Mission "ROUND SUIVANT -- AUDIT FOCUS PRIX" (2026-08-19) : identifiant
+// lisible de `document.activeElement`, purement diagnostique -- aucune
+// lecture ne modifie quoi que ce soit. Extrait ici (plutot que duplique)
+// pour etre reutilise par publishSyntheticClickPoc.ts (POC diagnostique
+// isole, jamais le flow normal).
+export function describeActiveElement(): string {
+  const el = document.activeElement;
+  if (!el) return "null";
+  const testId = el.getAttribute("data-testid");
+  const id = (el as HTMLElement).id;
+  return `${el.tagName}${id ? `#${id}` : ""}${testId ? `[data-testid="${testId}"]` : ""}`;
+}
 
 export class PublishError extends Error {
   code: string;
@@ -135,126 +156,220 @@ export function setNativeValue(
   }
 }
 
-// Deduit le KeyboardEvent.code plausible pour un caractere du prix (chiffres
-// et separateur decimal uniquement -- payload.price.toString() ne produit
-// jamais autre chose). Purement cosmetique pour le realisme de la sequence
-// synthetique -- rien dans Vinted n'est suppose lire ce champ precis pour
-// valider quoi que ce soit, mais autant rester fidele a ce qu'un vrai
-// clavier produirait.
-function deriveKeyCodeForDigitChar(char: string): string {
-  if (/^[0-9]$/.test(char)) return `Digit${char}`;
-  if (char === ".") return "Period";
-  if (char === ",") return "Comma";
-  return "";
-}
 
-// Mission "ROUND PRIX -- micro-test synthetique complet" (2026-08-17) :
-// reproduit la sequence EXACTE d'evenements observee en direct pour une
-// vraie frappe humaine (TEST B, PRICE_INPUT_EVENT_TRACE) -- keydown ->
-// keypress -> beforeinput -> input -> keyup pour un caractere insere.
-// EXPERIMENTAL : isTrusted reste TOUJOURS false sur ces evenements
-// synthetiques (propriete native du navigateur, jamais falsifiable depuis
-// JavaScript, voir waitForTrustedClick ailleurs dans ce projet) -- ce
-// correctif teste UNIQUEMENT l'hypothese "sequence d'evenements
-// incomplete", jamais l'hypothese isTrusted (qui reste structurellement
-// invalidable depuis un content script).
-function dispatchPriceCharacterInsertSequence(
-  el: HTMLInputElement,
-  setter: ((this: HTMLInputElement, v: string) => void) | undefined,
-  char: string,
-  valueAfter: string
-): void {
-  const keyInit: KeyboardEventInit = { key: char, code: deriveKeyCodeForDigitChar(char), bubbles: true, cancelable: true };
-  el.dispatchEvent(new KeyboardEvent("keydown", keyInit));
-  el.dispatchEvent(new KeyboardEvent("keypress", keyInit));
-  el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: char }));
-  setter?.call(el, valueAfter);
-  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: char }));
-  el.dispatchEvent(new KeyboardEvent("keyup", keyInit));
-}
-
-// Meme mission -- sequence d'effacement (Backspace) EXACTEMENT comme
-// specifiee : keydown Backspace -> beforeinput deleteContentBackward ->
-// input deleteContentBackward -> keyup Backspace. Deliberement SANS
-// keypress (absent de la sequence humaine specifiee pour l'effacement --
-// coherent avec le comportement des navigateurs reels, qui n'emettent
-// jamais keypress pour une touche non imprimable).
-function dispatchPriceClearSequence(el: HTMLInputElement, setter: ((this: HTMLInputElement, v: string) => void) | undefined): void {
-  const keyInit: KeyboardEventInit = { key: "Backspace", code: "Backspace", bubbles: true, cancelable: true };
-  el.dispatchEvent(new KeyboardEvent("keydown", keyInit));
-  el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "deleteContentBackward" }));
-  setter?.call(el, "");
-  el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
-  el.dispatchEvent(new KeyboardEvent("keyup", keyInit));
-}
-
-// Ecriture par frappe caractere par caractere, reservee au champ PRIX de
-// la page d'edition (/items/{id}/edit) -- BUG REEL demontre en test manuel
-// direct le 2026-07-16 : setNativeValue() (ecriture "98" en un seul bloc,
-// puis un seul jeu d'evenements input/change/blur) VIDE silencieusement ce
-// champ precis (passe de "99,00 €" a "") au lieu de le reformater --
-// reproduit deux fois depuis un etat frais. Le composant de prix de cette
-// page semble exiger un flux de frappes incrementales (comme un vrai
-// utilisateur) plutot qu'un remplacement en bloc pour recalculer son
-// masque de devise correctement. Verifie en test manuel direct : la meme
-// sequence (selection totale, suppression, puis un evenement input par
-// caractere ajoute) produit fidelement "98,00 €", stable apres blur.
-// N'affecte QUE ce champ -- titre/description/autres champs continuent
-// d'utiliser setNativeValue (jamais reproduit comme fautif ailleurs).
+// Mission "SYNCHRONISATION DU TRACKER REACT" (2026-08-26) : React memorise la
+// derniere valeur qu'il a vue dans un `_valueTracker` attache a l'element, et
+// c'est a CELLE-LA qu'il compare pour decider s'il y a eu changement -- jamais
+// a un relecture de el.value. Un champ ecrit par le setter du prototype peut
+// donc rester "inchange" a ses yeux.
 //
-// Mission "ROUND PRIX -- micro-test synthetique complet" (2026-08-17) :
-// CAUSE PROBABLE identifiee par comparaison live directe -- le prix ecrit
-// par ResellOS s'affiche correctement ("24,00 €") mais est refuse au
-// submit, alors qu'une frappe humaine identique est acceptee. La trace
-// live (PRICE_INPUT_EVENT_TRACE) montre que la frappe humaine emet
-// keydown/keypress/beforeinput/input/keyup pour CHAQUE caractere, alors que
-// l'ancienne version de cette fonction n'emettait qu'un seul "input" par
-// caractere (aucun evenement clavier). Cette version reproduit la sequence
-// complete -- si Vinted accepte desormais le prix sans retape humaine, la
-// cause etait la sequence incomplete ; si le refus persiste malgre une
-// sequence identique, isTrusted (impossible a produire depuis ce contexte)
-// est isole comme verrou principal.
-export async function typeIntoPriceField(el: HTMLInputElement, value: string): Promise<void> {
+// Le tracker doit se retrouver avec une valeur DIFFERENTE de celle qu'on vient
+// d'ecrire. La chaine vide convient dans le cas courant ; quand la valeur
+// ecrite est elle-meme vide, il faut un sentinelle non vide, sinon React
+// conclurait a l'absence de changement.
+//
+// Retourne l'etat reellement constate plutot qu'un booleen : au prochain run,
+// "absent" et "reset" ne demandent pas le meme diagnostic.
+// PREUVE LIVE 2026-08-26 : trackerState vaut "absent" en conditions reelles,
+// et c'est ATTENDU -- ne pas le rediagnostiquer. vinted-publish.ts tourne dans
+// le monde ISOLE (seul publishCreateResponseCaptureBoot.ts declare
+// world:"MAIN", voir manifest.config.ts). `_valueTracker` est une propriete
+// expando posee par React dans le monde PRINCIPAL : les deux mondes partagent
+// le DOM mais pas les wrappers JS, donc elle est structurellement invisible
+// ici. "absent" ne dit donc RIEN sur la presence reelle d'un tracker React.
+//
+// Corollaire, et c'est la bonne nouvelle : le meme cloisonnement fait que
+// l'override de `value` pose par React sur l'element (monde principal) ne
+// s'applique pas a nos ecritures (monde isole). Notre setter ne peut donc pas
+// resynchroniser son tracker par accident -- il reste perime, ce qui est
+// exactement ce qu'il faut pour que React detecte un changement. Le tracker
+// n'a jamais ete le blocage.
+//
+// La fonction est CONSERVEE malgre tout : elle est sans effet de bord quand le
+// tracker est inaccessible, et couvre le cas ou ce code serait un jour appele
+// depuis un contexte en monde principal.
+type ReactValueTrackerState = "reset" | "absent" | "unavailable";
+
+function resetReactValueTracker(el: HTMLInputElement, writtenValue: string): ReactValueTrackerState {
+  try {
+    const tracker = (el as HTMLInputElement & { _valueTracker?: { setValue?: (v: string) => void } })._valueTracker;
+    if (!tracker || typeof tracker.setValue !== "function") return "absent";
+    tracker.setValue(writtenValue === "" ? "\u0001" : "");
+    return "reset";
+  } catch {
+    return "unavailable";
+  }
+}
+
+// Mission "ECRITURE DU PRIX EN MONDE MAIN" (2026-08-26) : demande au module
+// monde MAIN (priceMainWorldWriter.ts) d'effectuer l'ecriture dans le contexte
+// JS de React, et attend son accuse. Voir ce module pour la preuve live et la
+// cause structurelle.
+//
+// Le selecteur est derive du data-testid de l'element pour que le monde MAIN
+// retrouve EXACTEMENT le meme noeud (les deux mondes partagent le DOM mais pas
+// les references JS -- un element ne peut pas etre transmis tel quel).
+//
+// Timeout court et repli obligatoire : si le module MAIN n'est pas installe
+// (page hors /items/new, version d'extension partiellement rechargee), rien ne
+// repondra jamais. On ne bloque pas le flux de publication pour autant.
+const MAIN_WORLD_WRITE_TIMEOUT_MS = 1500;
+
+async function writePriceViaMainWorld(el: HTMLInputElement, value: string): Promise<PriceWriteResultDetail | null> {
+  const testId = el.getAttribute("data-testid");
+  if (!testId) return null;
+  if (!document.documentElement.hasAttribute(PRICE_WRITER_INSTALLED_ATTR)) return null;
+
+  const requestId = crypto.randomUUID();
+  return new Promise<PriceWriteResultDetail | null>((resolve) => {
+    let settled = false;
+    const finish = (result: PriceWriteResultDetail | null) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener(PRICE_WRITE_RESULT_EVENT, onResult);
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const onResult = (event: Event) => {
+      const detail = (event as CustomEvent<PriceWriteResultDetail>).detail;
+      // Correlation stricte : une reponse portant un autre requestId (ou
+      // fabriquee par la page) n'est jamais prise pour la notre.
+      if (!detail || detail.requestId !== requestId) return;
+      finish(detail);
+    };
+    const timer = setTimeout(() => finish(null), MAIN_WORLD_WRITE_TIMEOUT_MS);
+
+    document.addEventListener(PRICE_WRITE_RESULT_EVENT, onResult);
+    document.dispatchEvent(
+      new CustomEvent(PRICE_WRITE_REQUEST_EVENT, {
+        detail: { requestId, selector: `[data-testid="${testId}"]`, value } satisfies PriceWriteRequestDetail,
+      })
+    );
+  });
+}
+
+export async function typeIntoPriceField(el: HTMLInputElement, value: string, documentInstanceId?: string): Promise<void> {
   const fieldLabel = el.getAttribute("data-testid") ?? el.tagName;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
 
+
+  // Mission "ECRITURE ATOMIQUE DU PRIX" (2026-08-25) -- FIN DE LA FRAPPE
+  // CARACTERE PAR CARACTERE. Preuve live decisive, apres deux correctifs
+  // successifs sur la position d'insertion :
+  //   domValueBefore "2,00 €"   valueWritten "24,00 €"   domValueAfter "NaN €"
+  //
+  // La valeur ecrite etait cette fois structurellement correcte -- et le
+  // champ est quand meme passe a NaN. Ce n'etait donc jamais un probleme de
+  // position : le composant rejette toute REECRITURE d'une valeur portant
+  // deja les caracteres de son masque (virgule, espace insecable, "€"). Or
+  // des le 1er chiffre, le masque formate -- donc toute frappe suivante
+  // reinjecte du texte formate. La frappe incrementale est structurellement
+  // incompatible avec ce composant.
+  //
+  // Nouvelle strategie : une seule ecriture ATOMIQUE de la valeur BRUTE
+  // ("24", sans virgule, sans espace, sans symbole), et on laisse le masque
+  // produire ",00 €" lui-meme. Le masque n'a alors plus jamais a interpreter
+  // sa propre sortie.
   el.focus();
-  el.setSelectionRange(0, el.value.length);
-  dispatchPriceClearSequence(el, setter);
-  console.log(`[ResellOS][STEP] FIELD_CLEARED (frappe simulee)`, { field: fieldLabel, domValueAfter: el.value });
+  el.select();
 
-  let current = "";
-  for (const char of value) {
-    current += char;
-    dispatchPriceCharacterInsertSequence(el, setter, char, current);
-    // Delai court entre chaque caractere : laisse le composant Vinted
-    // (masque de devise controle) traiter chaque frappe individuellement
-    // plutot que de recevoir plusieurs evenements synchrones empiles avant
-    // tout re-render -- comportement observe necessaire en test manuel.
-    await new Promise((resolve) => setTimeout(resolve, 30));
+  // Mission "SYNCHRONISATION DU TRACKER REACT" (2026-08-26) -- PREUVE LIVE :
+  // avec execCommand seul, le DOM restait stable a "24,00 €" (isNaN:false de
+  // +100 a +600 ms) mais Vinted affichait "Le champ prix doit etre superieur
+  // ou egal a 1.0". Le DOM etait donc correct et l'etat React vide : ecrire
+  // dans le champ ne suffit pas, il faut que React VOIE le changement.
+  //
+  // React ne relit jamais el.value pour detecter une modification : il
+  // compare a la valeur memorisee par son `_valueTracker` (installe sur
+  // l'element). Ecrire via le setter du PROTOTYPE contourne le setter
+  // surcharge par React, donc le tracker reste perime -- mais s'il a ete
+  // resynchronise entre-temps, React conclut "aucun changement" et ignore
+  // l'evenement input. Reinitialiser explicitement le tracker rend la
+  // detection deterministe au lieu de dependre de cet etat.
+  //
+  // execCommand est ABANDONNE ici : il ecrivait correctement le DOM (et sa
+  // chaine d'evenements native etait bien emise) mais ne touchait pas
+  // davantage au tracker. Un seul chemin desormais, ce qui supprime aussi
+  // l'ambiguite des deux sequences distinctes du round precedent.
+  //
+  // `change` n'est volontairement PAS emis : React synthetise son onChange a
+  // partir de "input" pour un champ controle, et la trace live du round
+  // precedent a montre que le `change` synthetique vidait le champ.
+  const valueBeforeWrite = el.value;
+
+  // Chemin PRINCIPAL depuis ce round : l'ecriture complete (setter, tracker,
+  // input, change) est deleguee au monde MAIN, seul contexte ou l'etat interne
+  // de React est reellement atteignable. Voir priceMainWorldWriter.ts.
+  const mainWorldResult = await writePriceViaMainWorld(el, value);
+  const writtenInMainWorld = mainWorldResult?.ok === true;
+  let trackerState: ReactValueTrackerState = mainWorldResult?.trackerState ?? "unavailable";
+
+  if (!writtenInMainWorld) {
+    // Repli monde ISOLE, sequence INCHANGEE de ce round. Elle n'a jamais
+    // suffi a valider le formulaire en conditions reelles -- elle reste
+    // neanmoins le seul recours si le module MAIN n'est pas installe, et
+    // laisse au moins le DOM dans un etat correct.
+    setter?.call(el, value);
+    trackerState = resetReactValueTracker(el, value);
+
+    // Un `Event` generique ne porte ni inputType ni data -- un controleur de
+    // formulaire qui lit ces champs l'ignore. On emet un InputEvent complet.
+    el.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        composed: true,
+        inputType: value.length > 0 ? "insertText" : "deleteContentBackward",
+        data: value.length > 0 ? value : null,
+      })
+    );
+
+    const changeEvent = new Event("change", { bubbles: true });
+    el.dispatchEvent(changeEvent);
+    console.log(`[ResellOS][STEP] CHANGE_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  } else {
   }
-  console.log(`[ResellOS][STEP] FIELD_TYPED (frappe simulee)`, { field: fieldLabel, value, domValueAfter: el.value });
 
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-  console.log(`[ResellOS][STEP] CHANGE_EVENT`, { field: fieldLabel, domValueAfter: el.value });
-  el.dispatchEvent(new Event("blur", { bubbles: true }));
-  console.log(`[ResellOS][STEP] BLUR_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  // el.blur() plutot qu'un FocusEvent fabrique : vraie operation de focus, qui
+  // deplace reellement document.activeElement et emet blur PUIS focusout
+  // nativement. Satisfait le besoin etabli le 2026-08-19 (React ecoute
+  // focusout, pas blur -- sans quoi le POST partait avec price:null).
+  //
+  // Mission "CYCLE COMPLET EN MONDE MAIN" (2026-08-26) : SAUTE quand le monde
+  // MAIN a deja blure. C'est la-bas que le blur compte -- seul le contexte JS
+  // de React peut commiter la valeur dans l'etat du composant -- et un second
+  // blur ici relancerait tout le cycle onBlur sur un champ deja quitte.
+  if (mainWorldResult?.blurred === true) {
+  } else {
+    el.blur();
+    console.log(`[ResellOS][STEP] NATIVE_BLUR`, { field: fieldLabel, domValueAfter: el.value });
+  }
 
-  // Mission "ROUND PRIX -- focusout apres blur" (2026-08-19) : "blur" est un
-  // evenement natif NON-bubbling -- un addEventListener("blur", ...) pose
-  // directement sur l'element le recevrait, mais React delegue son ecoute
-  // d'evenements a la racine (jamais element par element) et n'ecoute donc
-  // jamais "blur" nativement : il ecoute son equivalent BUBBLING, "focusout",
-  // pour synthetiser en interne le onBlur React. Preuve live : le prix
-  // s'affiche correctement ("24,00 €", masque de devise recalcule -- souvent
-  // une ecoute locale directe sur l'element, donc reçoit bien "blur") mais le
-  // POST reel /api/v2/item_upload/items part avec price:null (l'etat React
-  // commite au submit ne recoit jamais la valeur) -- symptome coherent avec
-  // un handler onBlur React jamais declenche faute de "focusout". N'AJOUTE
-  // rien d'autre : meme sequence clavier, meme setter, meme selecteur,
-  // uniquement ce dispatch supplementaire juste apres "blur".
-  el.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-  console.log(`[ResellOS][STEP] FOCUSOUT_EVENT`, { field: fieldLabel, domValueAfter: el.value });
+  console.log(`[ResellOS][STEP] FIELD_WRITTEN (ecriture atomique)`, {
+    field: fieldLabel,
+    value,
+    writtenInMainWorld,
+    trackerState,
+    domValueAfter: el.value,
+  });
+
+  // Sonde CONSERVEE : `writtenInMainWorld` est le fait NOUVEAU a verifier au
+  // prochain run -- il dit si l ecriture a bien eu lieu dans le contexte JS de
+  // React, seul endroit ou son etat interne est atteignable.
+  try {
+    const write = {
+      rawValueWritten: value,
+      writtenInMainWorld,
+      mainWorldReason: mainWorldResult?.reason ?? null,
+      mainWorldBlurred: mainWorldResult?.blurred ?? false,
+      trackerState,
+      valueBeforeWrite,
+      domValueAfter: el.value,
+      documentInstanceId: documentInstanceId ?? null,
+    };
+    logger.info(`PRICE_ATOMIC_WRITE ${JSON.stringify(write)}`, write);
+  } catch {
+    /* sonde de diagnostic -- ne doit jamais interrompre l'ecriture */
+  }
 }
 
 // Mission "BRAND SEARCH INPUT LOCATOR" (2026-08-16) : les 3 tentatives
@@ -298,15 +413,32 @@ export function typeIntoBrandSearchInput(el: HTMLInputElement, value: string): v
 // le reformatage) et rapporte a tort un echec, meme quand l'ecriture a
 // parfaitement reussi (cause du faux negatif observe en direct sur
 // vinted-publish.ts, mission "diagnostic final PHOTOS + CATEGORIE").
-export function parsePriceToNumber(raw: string | null): number | null {
-  if (!raw) return null;
+// Mission "ROUND PRIX + COLIS -- CORRECTIF NaN" (2026-08-19) : CAUSE
+// CONFIRMEE en test live -- Vinted affichait "NaN €" apres republication.
+// Mecanisme trace precisement : payload.price.toString() (vinted-publish.ts)
+// n'a jamais verifie que payload.price est un nombre fini AVANT de le
+// convertir en chaine -- NaN.toString() reussit silencieusement et retourne
+// la chaine litterale "NaN" (contrairement a null/undefined, dont
+// .toString() leverait une exception deja interceptee ailleurs), qui est
+// alors tapee caractere par caractere par typeIntoPriceField(). Cette
+// fonction devient desormais la source UNIQUE de normalisation, reutilisee a
+// la fois pour lire l'etat DOM (comme avant) et pour valider payload.price
+// AVANT toute frappe (nouveau) -- jamais deux logiques de parsing
+// divergentes. Accepte desormais `number` en plus de `string` : rejette tout
+// nombre non fini (NaN, Infinity, -Infinity) via Number.isFinite() plutot
+// que le seul Number.isNaN() precedent (Infinity n'est pas NaN mais n'est
+// pas plus une valeur de prix valide).
+export function parsePriceToNumber(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (!raw) return null; // chaine vide
   const normalized = raw
     .replace(/\s/g, "")
     .replace(",", ".")
     .replace(/[^0-9.]/g, "");
   if (normalized === "") return null;
   const value = parseFloat(normalized);
-  return Number.isNaN(value) ? null : value;
+  return Number.isFinite(value) ? value : null;
 }
 
 // Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT" (2026-08-16) :
@@ -344,15 +476,40 @@ export interface PriceValidationState {
   validationMessage: string | null;
   ariaInvalid: string | null;
   errorTextFound: boolean;
-  // Agrege tous les signaux ci-dessus -- found:false vaut `true` (permissif :
-  // impossible de prouver une erreur sur un champ qu'on ne peut pas observer,
-  // jamais transforme en blocage indefini de la readiness pour ce cas).
+  // Agrege tous les signaux ci-dessus. found:false vaut desormais `false`
+  // (voir mission ci-dessous) : le prix est obligatoire dans ce flow de
+  // publication, un champ qu'on ne peut pas observer ne peut plus etre
+  // suppose valide.
   valid: boolean;
+}
+
+// Mission "BUG CONFIRME -- readiness prix faussement positive" (2026-08-19) :
+// CAUSE CONFIRMEE en test live -- apres typeIntoPriceField(), le champ prix
+// peut se retrouver reellement VIDE en DOM (domValue:"", cf. PREFILL_PRICE)
+// alors que priceInput.validity.valid reste `true` (Vinted ne cable
+// apparemment pas de contrainte native sur un champ simplement vide, par
+// opposition au cas "24,00 € rejete" deja traite plus haut) et qu'aucun
+// aria-invalid/texte d'erreur n'est encore affiche (aucun submit tente).
+// `valid` n'agregeait alors QUE des signaux de validation Vinted, jamais la
+// valeur elle-meme -- PUBLISH_READY_TO_SUBMIT partait donc avec un prix
+// reellement vide. `valid` exige maintenant EN PLUS un `parsedValue`
+// reellement parsable et >= 1 (seuil Vinted reel, message "doit être
+// supérieur ou égal à 1.0"). `parsePriceToNumber("")` retourne deja `null`
+// (chaine vide falsy), donc `domValue:""` est deja couvert par ce seul
+// check, aucune condition separee necessaire.
+// Number.isFinite() explicite (defense en profondeur, demande explicite
+// "refuser toute valeur non finie... avant readiness") : deja garanti par
+// parsePriceToNumber() en amont (jamais NaN/Infinity au-dela de `null`),
+// mais rend l'invariant evident ici sans dependre de le savoir.
+function isPriceParsedAndAboveMinimum(parsedValue: number | null): boolean {
+  return parsedValue !== null && Number.isFinite(parsedValue) && parsedValue >= 1;
 }
 
 export function describePriceValidationState(priceInput: HTMLInputElement | null): PriceValidationState {
   if (!priceInput) {
-    return { found: false, domValue: null, parsedValue: null, validityValid: null, validationMessage: null, ariaInvalid: null, errorTextFound: false, valid: true };
+    // Le prix est un champ obligatoire dans ce flow -- un champ introuvable
+    // ne peut plus etre suppose valide (voir mission ci-dessus).
+    return { found: false, domValue: null, parsedValue: null, validityValid: null, validationMessage: null, ariaInvalid: null, errorTextFound: false, valid: false };
   }
   const domValue = priceInput.value;
   const parsedValue = parsePriceToNumber(domValue);
@@ -361,7 +518,7 @@ export function describePriceValidationState(priceInput: HTMLInputElement | null
   const ariaInvalid = priceInput.getAttribute("aria-invalid");
   const scope = priceInput.closest("form") ?? document.body;
   const errorTextFound = PRICE_ERROR_TEXT_PATTERN.test(scope.textContent ?? "");
-  const valid = validityValid && ariaInvalid !== "true" && !errorTextFound;
+  const valid = isPriceParsedAndAboveMinimum(parsedValue) && validityValid && ariaInvalid !== "true" && !errorTextFound;
   return { found: true, domValue, parsedValue, validityValid, validationMessage, ariaInvalid, errorTextFound, valid };
 }
 

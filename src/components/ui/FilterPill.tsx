@@ -18,7 +18,7 @@ export function FilterPill({ label, active, onClick, icon, className = '' }: Fil
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition-all flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neon-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-400 ${
-        active ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+        active ? 'bg-neon-500/10 text-neon-500 font-medium' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
       } ${className}`}
     >
       {icon}

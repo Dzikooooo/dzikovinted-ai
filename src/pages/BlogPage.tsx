@@ -166,7 +166,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-dark-400 text-white flex flex-col">
+    <div className="min-h-screen bg-dark-400 text-gray-900 flex flex-col">
       <Navbar onNavigate={onNavigate} currentPage="blog" />
       <main className="flex-1 pt-32 pb-28 px-4 sm:px-6">
         <div className="max-w-[1360px] mx-auto">
@@ -194,7 +194,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-left whitespace-nowrap lg:whitespace-normal flex-shrink-0 transition-all duration-200 ${
                       isActive
                         ? 'bg-neon-500/10 text-neon-500 font-semibold shadow-[0_0_16px_rgba(124,92,255,0.08)]'
-                        : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
                     }`}
                   >
                     <Icon className="w-4 h-4 flex-shrink-0 text-neon-500" />
@@ -203,7 +203,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                 );
               })}
               </nav>
-              <div className="lg:hidden pointer-events-none absolute top-0 right-0 bottom-2 w-10 bg-gradient-to-l from-dark-400 to-transparent" />
+              <div className="lg:hidden pointer-events-none absolute top-0 right-0 bottom-2 w-10 bg-gradient-to-l from-white to-transparent" />
             </div>
 
             {/* Contenu de la section active uniquement */}
@@ -214,19 +214,19 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     <img
                       src={dzikoPhoto}
                       alt="Dziko"
-                      className="w-20 h-20 aspect-square object-cover rounded-2xl border border-white/10 flex-shrink-0"
+                      className="w-20 h-20 aspect-square object-cover rounded-2xl border border-gray-200 flex-shrink-0"
                     />
                     <h2 className="text-2xl font-black">Qui je suis</h2>
                   </div>
 
                   {/* Mini-resume -- premiere chose lue, avant l'histoire
                       complete (retour utilisateur 2026-08-04). */}
-                  <p className="max-w-3xl text-lg text-gray-200 font-medium leading-relaxed mb-8">
+                  <p className="max-w-3xl text-lg text-gray-800 font-medium leading-relaxed mb-8">
                     Artiste, revendeur et fondateur de ResellOS. Je construis aujourd'hui les outils que j'aurais
                     aimé avoir lorsque j'ai commencé.
                   </p>
 
-                  <div className="max-w-3xl space-y-6 text-gray-300 leading-8">
+                  <div className="max-w-3xl space-y-6 text-gray-700 leading-8">
                     <p>Hey ! Moi, c'est Dziko.</p>
                     <p>J'ai 20 ans et je viens du nord de la France.</p>
                   </div>
@@ -240,22 +240,22 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                       const isLast = i === TIMELINE.length - 1;
                       return (
                         <li key={label} className="relative pl-7 pb-6 last:pb-0">
-                          {!isLast && <span className="absolute left-[5px] top-3 bottom-0 w-px bg-white/10" />}
+                          {!isLast && <span className="absolute left-[5px] top-3 bottom-0 w-px bg-gray-100" />}
                           <span
                             className={`absolute left-0 top-1.5 w-[11px] h-[11px] rounded-full border-2 ${
-                              isLast ? 'bg-neon-500 border-neon-500' : 'bg-dark-400 border-white/20'
+                              isLast ? 'bg-neon-500 border-neon-500' : 'bg-dark-400 border-gray-200'
                             }`}
                           />
-                          <span className={`text-[10px] font-mono uppercase tracking-wider ${isLast ? 'text-neon-500' : 'text-gray-600'}`}>
+                          <span className={`text-[10px] font-mono uppercase tracking-wider ${isLast ? 'text-neon-500' : 'text-gray-500'}`}>
                             {age}
                           </span>
-                          <span className={`block text-sm ${isLast ? 'text-neon-500 font-semibold' : 'text-gray-400'}`}>{label}</span>
+                          <span className={`block text-sm ${isLast ? 'text-neon-500 font-semibold' : 'text-gray-500'}`}>{label}</span>
                         </li>
                       );
                     })}
                   </ol>
 
-                  <div className="max-w-3xl space-y-6 text-gray-300 leading-8">
+                  <div className="max-w-3xl space-y-6 text-gray-700 leading-8">
                     <p>
                       Mon parcours n'a jamais été simple. J'ai grandi dans une situation familiale compliquée, mais
                       j'ai toujours eu cette envie de créer et de construire quelque chose qui ait du sens.
@@ -282,12 +282,12 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                       d'addictions qui ont occupé plusieurs années de ma vie. Je faisais plusieurs nuits blanches
                       par semaine parce qu'au fond de moi, je savais que je n'étais pas à ma place.
                     </p>
-                    <p className="font-semibold text-gray-100">Aujourd'hui, je me relève.</p>
+                    <p className="font-semibold text-gray-900">Aujourd'hui, je me relève.</p>
                   </div>
 
-                  <div className="max-w-3xl my-10 h-px bg-white/5" />
+                  <div className="max-w-3xl my-10 h-px bg-gray-100" />
 
-                  <div className="max-w-3xl space-y-6 text-gray-300 leading-8">
+                  <div className="max-w-3xl space-y-6 text-gray-700 leading-8">
                     <p>
                       J'ai toujours rêvé de devenir un homme libre, capable de créer, de construire, de partager
                       et surtout de transmettre ce qu'on ne m'a jamais transmis, alors que c'est exactement ce
@@ -297,7 +297,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                   </div>
 
                   <blockquote className="max-w-3xl my-8 border-l-2 border-neon-500/40 pl-5 py-1">
-                    <p className="text-xl sm:text-2xl font-black text-white leading-snug">
+                    <p className="text-xl sm:text-2xl font-black text-gray-900 leading-snug">
                       Le business est mon ascenseur.
                       <br />
                       La musique est ma destination.
@@ -305,7 +305,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     <p className="text-sm text-gray-500 mt-3">Cette phrase résume tout ce que je construis.</p>
                   </blockquote>
 
-                  <div className="max-w-3xl space-y-6 text-gray-300 leading-8">
+                  <div className="max-w-3xl space-y-6 text-gray-700 leading-8">
                     <p>C'est aussi pour cette raison que j'ai créé ResellOS.</p>
                     <p>
                       Pendant plus de cinq mois, j'ai conçu une solution que j'aurais aimé avoir lorsque je
@@ -327,7 +327,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
 
                   <div className="flex flex-wrap gap-2 mt-10 max-w-3xl">
                     {INTERESTS.map((interest) => (
-                      <span key={interest} className="text-xs font-medium text-gray-300 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full">
+                      <span key={interest} className="text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full">
                         {interest}
                       </span>
                     ))}
@@ -338,7 +338,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
               {active === 'pourquoi' && (
                 <div>
                   <h2 className="text-2xl font-black mb-4">Pourquoi j'ai créé Resell OS</h2>
-                  <p className="max-w-3xl text-gray-300 leading-8 mb-12">
+                  <p className="max-w-3xl text-gray-700 leading-8 mb-12">
                     Concrètement, j'ai créé Resell OS parce que les photos me prenaient trop de temps, la
                     gestion des SKU était pénible, et suivre ma comptabilité à la lettre — mes marges, mes
                     bénéfices — demandait un travail que je ne faisais jamais correctement. Pareil pour la
@@ -350,23 +350,23 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                   </p>
                   <div className="relative grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6 mb-14">
                     <div className="bg-surface border border-red-500/10 rounded-2xl p-7">
-                      <p className="text-xs font-mono uppercase tracking-wider text-red-400 font-bold mb-5">Avant</p>
+                      <p className="text-xs font-mono uppercase tracking-wider text-red-700 font-bold mb-5">Avant</p>
                       <ul className="space-y-3.5">
                         {['Un tableur pour le stock', 'Des notes pour la comptabilité', "Vinted ouvert dans dix onglets", 'Aucune vue d\'ensemble'].map((t) => (
-                          <li key={t} className="flex items-start gap-2.5 text-sm text-gray-400">
-                            <X className="w-4 h-4 text-red-400/70 flex-shrink-0 mt-0.5" /> {t}
+                          <li key={t} className="flex items-start gap-2.5 text-sm text-gray-500">
+                            <X className="w-4 h-4 text-red-700/70 flex-shrink-0 mt-0.5" /> {t}
                           </li>
                         ))}
                       </ul>
                     </div>
-                    <div className="hidden sm:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-dark-400 border border-white/10 items-center justify-center">
+                    <div className="hidden sm:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-dark-400 border border-gray-200 items-center justify-center">
                       <ArrowRight className="w-4 h-4 text-gray-500" />
                     </div>
                     <div className="bg-surface border border-green-500/20 rounded-2xl p-7">
                       <p className="text-xs font-mono uppercase tracking-wider text-green-400 font-bold mb-5">Avec Resell OS</p>
                       <ul className="space-y-3.5">
                         {['Annonces générées par IA', 'Stock et comptabilité au même endroit', 'Opportunités détectées automatiquement', 'Un seul système, pensé pour Vinted'].map((t) => (
-                          <li key={t} className="flex items-start gap-2.5 text-sm text-gray-300">
+                          <li key={t} className="flex items-start gap-2.5 text-sm text-gray-700">
                             <Check className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" /> {t}
                           </li>
                         ))}
@@ -376,12 +376,12 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                   <p className="text-xs font-mono uppercase tracking-wider text-neon-500 font-bold mb-5">Mes principes</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6">
                     {PRINCIPLES.map(({ icon: Icon, title, description }) => (
-                      <div key={title} className="bg-surface border border-white/5 rounded-2xl p-7 min-h-[220px]">
+                      <div key={title} className="bg-surface border border-gray-200 rounded-2xl p-7 min-h-[220px]">
                         <div className="w-10 h-10 bg-neon-500/10 rounded-xl flex items-center justify-center mb-4">
                           <Icon className="w-5 h-5 text-neon-500" />
                         </div>
                         <h3 className="font-bold text-sm mb-2.5">{title}</h3>
-                        <p className="text-xs text-gray-400 leading-relaxed">{description}</p>
+                        <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
                       </div>
                     ))}
                   </div>
@@ -391,18 +391,18 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
               {active === 'coulisses' && (
                 <div>
                   <h2 className="text-2xl font-black mb-4">Les coulisses du développement</h2>
-                  <p className="max-w-3xl text-gray-300 leading-8 mb-12">
+                  <p className="max-w-3xl text-gray-700 leading-8 mb-12">
                     Resell OS est construit sans équipe -- juste moi, tout seul. Voici ce que ça prend
                     vraiment pour faire tourner le produit au quotidien, du code jusqu'à la communauté :
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6 mb-12">
                     {COULISSES.map(({ icon: Icon, title, description }) => (
-                      <div key={title} className="bg-surface border border-white/5 rounded-2xl p-7 min-h-[200px]">
+                      <div key={title} className="bg-surface border border-gray-200 rounded-2xl p-7 min-h-[200px]">
                         <div className="w-10 h-10 bg-neon-500/10 rounded-xl flex items-center justify-center mb-4">
                           <Icon className="w-5 h-5 text-neon-500" />
                         </div>
                         <h3 className="font-bold text-sm mb-2.5">{title}</h3>
-                        <p className="text-xs text-gray-400 leading-relaxed">{description}</p>
+                        <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
                       </div>
                     ))}
                   </div>
@@ -414,11 +414,11 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     {COULISSES_PREVIEWS.map(({ icon: Icon, label }) => (
                       <div
                         key={label}
-                        className="aspect-[4/3] rounded-2xl border border-dashed border-white/10 bg-white/[0.02] flex flex-col items-center justify-center gap-2.5 text-center px-3"
+                        className="aspect-[4/3] rounded-2xl border border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2.5 text-center px-3"
                       >
-                        <Icon className="w-5 h-5 text-gray-600" />
+                        <Icon className="w-5 h-5 text-gray-500" />
                         <ImageIcon className="w-3.5 h-3.5 text-gray-700" />
-                        <p className="text-[11px] text-gray-600">{label}</p>
+                        <p className="text-[11px] text-gray-500">{label}</p>
                       </div>
                     ))}
                   </div>
@@ -426,10 +426,10 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                   {/* Candidature "rejoindre les coulisses" -- capture reelle,
                       traitement manuel par email (demande produit
                       2026-08-04). */}
-                  <div className="max-w-2xl mt-14 bg-surface border border-white/5 rounded-2xl p-7 sm:p-8">
+                  <div className="max-w-2xl mt-14 bg-surface border border-gray-200 rounded-2xl p-7 sm:p-8">
                     <p className="text-xs font-mono uppercase tracking-wider text-neon-500 font-bold mb-2">Rejoindre les coulisses</p>
                     <h3 className="text-xl font-black mb-2">Envie de rejoindre l'équipe ?</h3>
-                    <p className="text-sm text-gray-400 mb-6">
+                    <p className="text-sm text-gray-500 mb-6">
                       Resell OS reste construit seul aujourd'hui, mais ça pourrait changer. Si l'aventure
                       t'intéresse, laisse tes coordonnées -- je recontacte chaque candidature moi-même,
                       pas de réponse automatique.
@@ -443,50 +443,50 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     ) : (
                       <form onSubmit={handleTeamApplicationSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                           <input
                             required
                             type="text"
                             value={teamForm.firstName}
                             onChange={(e) => setTeamForm((f) => ({ ...f, firstName: e.target.value }))}
                             placeholder="Prénom"
-                            className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                            className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                           />
                         </div>
                         <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                           <input
                             required
                             type="text"
                             value={teamForm.lastName}
                             onChange={(e) => setTeamForm((f) => ({ ...f, lastName: e.target.value }))}
                             placeholder="Nom"
-                            className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                            className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                           />
                         </div>
                         <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                           <input
                             required
                             type="email"
                             value={teamForm.email}
                             onChange={(e) => setTeamForm((f) => ({ ...f, email: e.target.value }))}
                             placeholder="Email"
-                            className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                            className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                           />
                         </div>
                         <div className="relative">
-                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                           <input
                             type="tel"
                             value={teamForm.phone}
                             onChange={(e) => setTeamForm((f) => ({ ...f, phone: e.target.value }))}
                             placeholder="Téléphone (optionnel)"
-                            className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                            className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                           />
                         </div>
 
-                        {teamError && <p className="sm:col-span-2 text-sm text-red-400">{teamError}</p>}
+                        {teamError && <p className="sm:col-span-2 text-sm text-red-700">{teamError}</p>}
 
                         <button
                           type="submit"
@@ -505,21 +505,21 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
               {active === 'mises-a-jour' && (
                 <div>
                   <h2 className="text-2xl font-black mb-4">Les mises à jour du produit</h2>
-                  <p className="max-w-3xl text-gray-300 leading-8 mb-10">
+                  <p className="max-w-3xl text-gray-700 leading-8 mb-10">
                     Le détail de chaque changement (nouveautés, améliorations, corrections) est publié dans
                     l'onglet Changelog de l'espace Communauté. Un aperçu des derniers changements :
                   </p>
 
-                  <div className="max-w-xl bg-surface border border-white/5 rounded-2xl p-7 mb-6">
+                  <div className="max-w-xl bg-surface border border-gray-200 rounded-2xl p-7 mb-6">
                     <div className="flex items-center justify-between gap-3 mb-5">
                       <p className="text-xs font-mono uppercase tracking-wider text-neon-500 font-bold">Dernières mises à jour</p>
-                      <span className="text-[10px] font-mono text-gray-600" title="Sélection mise à jour manuellement, pas un flux automatique">
+                      <span className="text-[10px] font-mono text-gray-500" title="Sélection mise à jour manuellement, pas un flux automatique">
                         Aperçu figé — {UPDATES_SNAPSHOT_DATE}
                       </span>
                     </div>
                     <ul className="space-y-3.5 mb-6">
                       {RECENT_UPDATES.map((u) => (
-                        <li key={u} className="flex items-start gap-2.5 text-sm text-gray-300">
+                        <li key={u} className="flex items-start gap-2.5 text-sm text-gray-700">
                           <Check className="w-4 h-4 text-neon-500 flex-shrink-0 mt-0.5" /> {u}
                         </li>
                       ))}
@@ -534,7 +534,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
 
                   <button
                     onClick={goToCommunityChangelog}
-                    className="w-full sm:w-auto flex items-center justify-between gap-6 bg-surface border border-white/5 hover:border-neon-500/30 rounded-2xl px-6 py-5 transition-all group"
+                    className="w-full sm:w-auto flex items-center justify-between gap-6 bg-surface border border-gray-200 hover:border-neon-500/30 rounded-2xl px-6 py-5 transition-all group"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -569,10 +569,10 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
 
           <button
             onClick={() => setContactOpen(true)}
-            className="flex items-center gap-3 bg-surface border border-white/5 hover:border-neon-500/30 rounded-xl px-5 py-4 mt-12 max-w-2xl mx-auto lg:mx-0 lg:ml-[19rem] w-full text-left transition-all"
+            className="flex items-center gap-3 bg-surface border border-gray-200 hover:border-neon-500/30 rounded-xl px-5 py-4 mt-12 max-w-2xl mx-auto lg:mx-0 lg:ml-[19rem] w-full text-left transition-all"
           >
             <Mail className="w-4 h-4 text-neon-500 flex-shrink-0" />
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-500">
               Une question, une remarque ?{' '}
               <span className="text-neon-500 font-medium">Envoyer un message</span>
             </p>

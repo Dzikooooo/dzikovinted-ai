@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import type { AuthMode, AppPage } from '../lib/types';
-import { Logo } from '../components/ui/Logo';
+import { Wordmark } from '../components/ui/Wordmark';
 import { Button } from '../components/ui/Button';
 
 interface AuthPageProps {
@@ -103,21 +103,18 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-dark-400 flex flex-col items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(124,92,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(124,92,255,0.025) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[500px] bg-neon-500/4 rounded-full blur-[160px]" />
+    <div className="min-h-screen bg-dark-200 flex flex-col items-center justify-center px-4">
 
       <div className="relative z-10 w-full max-w-md">
         <button onClick={() => onNavigate('landing')} className="flex items-center gap-2 text-sm text-gray-500 hover:text-neon-500 transition-colors mb-8">
           <ArrowLeft className="w-4 h-4" /> Retour à l'accueil
         </button>
 
-        <div className="flex items-center gap-1.5 mb-8">
-          <Logo variant="transparent" size={44} />
-          <span className="text-2xl font-black">esell<span className="text-neon-500">OS</span></span>
+        <div className="mb-8">
+          <Wordmark size="lg" />
         </div>
 
-        <div className="bg-surface border border-white/8 rounded-2xl p-8">
+        <div className="bg-surface border border-gray-200 rounded-2xl p-8">
           <h1 className="text-2xl font-black mb-1">
             {mode === 'login' ? 'Connexion' : mode === 'register' ? 'Créer un compte' : 'Mot de passe oublié'}
           </h1>
@@ -127,8 +124,8 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
 
           {error && (
             <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-400">{error}</p>
+              <AlertCircle className="w-4 h-4 text-red-700 flex-shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
 
@@ -144,7 +141,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
               <div>
                 <label htmlFor="auth-fullname" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input
                     id="auth-fullname"
                     type="text"
@@ -154,7 +151,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Jean Dupont"
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                    className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                   />
                 </div>
               </div>
@@ -163,7 +160,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             <div>
               <label htmlFor="auth-email" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
                   id="auth-email"
                   type="email"
@@ -173,7 +170,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="toi@example.com"
-                  className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                  className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                 />
               </div>
             </div>
@@ -182,7 +179,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
               <div>
                 <label htmlFor="auth-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Mot de passe</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input
                     id="auth-password"
                     type={showPassword ? 'text' : 'password'}
@@ -191,9 +188,9 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-dark-400 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                    className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                   />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-500">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
@@ -204,7 +201,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
               <div>
                 <label htmlFor="auth-confirm-password" className="text-xs font-mono uppercase tracking-wider text-gray-500 block mb-2">Confirmer le mot de passe</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input
                     id="auth-confirm-password"
                     type={showPassword ? 'text' : 'password'}
@@ -213,14 +210,14 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className={`w-full bg-dark-400 border rounded-xl pl-10 pr-4 py-3 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
+                    className={`w-full bg-dark-400 border rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 placeholder:text-gray-500 focus:outline-none focus:ring-2 transition-all ${
                       passwordsMismatch
                         ? 'border-red-500/40 focus:border-red-500/60 focus:ring-red-500/20'
-                        : 'border-white/10 focus:border-neon-500/40 focus:ring-neon-500/20'
+                        : 'border-gray-200 focus:border-neon-500/40 focus:ring-neon-500/20'
                     }`}
                   />
                 </div>
-                {passwordsMismatch && <p className="text-xs text-red-400 mt-1.5">Les mots de passe ne correspondent pas.</p>}
+                {passwordsMismatch && <p className="text-xs text-red-700 mt-1.5">Les mots de passe ne correspondent pas.</p>}
               </div>
             )}
 
@@ -237,7 +234,7 @@ export default function AuthPage({ onNavigate }: AuthPageProps) {
             </Button>
           </form>
 
-          <div className="border-t border-white/5 mt-6 pt-6 text-center">
+          <div className="border-t border-gray-200 mt-6 pt-6 text-center">
             {mode === 'login' ? (
               <p className="text-sm text-gray-500">Pas encore de compte ?{' '}
                 <button onClick={() => { setMode('register'); setError(null); }} className="text-neon-500 hover:underline font-medium">Créer un compte</button>

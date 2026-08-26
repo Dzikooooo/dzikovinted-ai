@@ -39,7 +39,7 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
-      <button onClick={onReset} className="flex items-center gap-2 text-sm text-gray-400 hover:text-neon-500 transition-colors mb-6">
+      <button onClick={onReset} className="flex items-center gap-2 text-sm text-gray-500 hover:text-neon-500 transition-colors mb-6">
         <ArrowLeft className="w-4 h-4" /> Nouvelle annonce
       </button>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -47,7 +47,7 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           <h1 className="text-2xl sm:text-3xl font-black mb-1">
             Annonce <span className="text-neon-500">prête</span>
           </h1>
-          <p className="text-gray-400 text-sm">Optimisée pour Vinted</p>
+          <p className="text-gray-500 text-sm">Optimisée pour Vinted</p>
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="secondary" size="sm" icon={<Copy className="w-4 h-4" />} onClick={handleCopyAll}>
@@ -71,8 +71,8 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
 
       {error && (
         <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-6">
-          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-          <p className="text-sm text-red-400">{error}</p>
+          <AlertCircle className="w-4 h-4 text-red-700 flex-shrink-0" />
+          <p className="text-sm text-red-700">{error}</p>
         </div>
       )}
 
@@ -101,14 +101,14 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
       {images.length > 0 && (
         <div className="flex gap-2 mb-5 overflow-x-auto pb-2">
           {images.map((src, i) => (
-            <div key={i} className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-white/10">
+            <div key={i} className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
               <img src={src} alt="" className="w-full h-full object-cover" />
             </div>
           ))}
         </div>
       )}
 
-      <div className="bg-surface border border-white/5 rounded-2xl p-5 sm:p-7 space-y-4">
+      <div className="bg-surface border border-gray-200 rounded-2xl p-5 sm:p-7 space-y-4">
         <FieldCard label="Titre SEO" value={result.title} icon={Tag} />
         <FieldCard label="Description" value={result.description} icon={Layers} />
 
@@ -151,12 +151,12 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
             { label: 'Vente rapide', val: formatEUR(result.quick_price) },
             { label: 'Prix premium', val: formatEUR(result.premium_price) },
           ].map(({ label, val }) => (
-            <div key={label} className="bg-dark-400 border border-white/5 rounded-xl p-3.5">
+            <div key={label} className="bg-dark-400 border border-gray-200 rounded-xl p-3.5">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500">{label}</span>
                 <CopyBtn text={val} />
               </div>
-              <p className="text-lg font-bold text-gray-300">{val}</p>
+              <p className="text-lg font-bold text-gray-700">{val}</p>
             </div>
           ))}
         </div>
@@ -170,7 +170,7 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           <FieldCard label="État" value={result.condition} icon={Tag} />
         </div>
 
-        <div className="bg-dark-400 border border-white/5 rounded-xl p-4">
+        <div className="bg-dark-400 border border-gray-200 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Tag className="w-3.5 h-3.5 text-neon-500/60" />
@@ -187,7 +187,7 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           </div>
         </div>
 
-        <div className="bg-dark-400 border border-white/5 rounded-xl p-4">
+        <div className="bg-dark-400 border border-gray-200 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Filter className="w-3.5 h-3.5 text-neon-500/60" />
@@ -197,9 +197,9 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {result.vinted_filters.map((f) => (
-              <div key={f.label} onClick={() => navigator.clipboard.writeText(f.value)} className="bg-surface rounded-lg px-3 py-2 border border-white/5 cursor-pointer hover:border-neon-500/20 transition-colors">
-                <p className="text-[9px] font-mono uppercase tracking-wider text-gray-600 mb-0.5">{f.label}</p>
-                <p className="text-xs text-gray-200">{f.value}</p>
+              <div key={f.label} onClick={() => navigator.clipboard.writeText(f.value)} className="bg-surface rounded-lg px-3 py-2 border border-gray-200 cursor-pointer hover:border-neon-500/20 transition-colors">
+                <p className="text-[9px] font-mono uppercase tracking-wider text-gray-500 mb-0.5">{f.label}</p>
+                <p className="text-xs text-gray-800">{f.value}</p>
               </div>
             ))}
           </div>

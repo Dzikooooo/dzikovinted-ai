@@ -1,5 +1,5 @@
-/* Fondations visuelles du popup ResellOS -- valeurs recopiees EXACTEMENT des
-   tokens du dashboard (racine du projet, aucune valeur inventee) :
+/* Fondations visuelles du popup ResellOS -- valeurs alignees sur les tokens
+   du dashboard (racine du projet, aucune valeur inventee) :
    - couleurs : tailwind.config.js theme.extend.colors (neon/dark/surface)
    - glow CTA : src/components/ui/Button.tsx (variante primary)
    - couleurs d'erreur : src/components/ui/ErrorBanner.tsx
@@ -8,29 +8,42 @@
    tooling monorepo, choix deja assume avant cette passe) -- si la palette du
    dashboard change, repercuter manuellement ces valeurs ici. */
 
+/* THEME CLAIR (2026-08-26) : le SaaS est passe au fond blanc, ce popup etait
+   reste sombre. Bascule par RE-VALORISATION des tokens, sans renommer les
+   variables -- meme technique que la migration de l'app (un renommage de masse
+   sur 32 usages aurait ete risque pour zero gain).
+   ATTENTION a la rampe de gris : dans le theme sombre elle allait du plus
+   CLAIR (--gray-200, texte principal) au plus SOMBRE (--gray-700, detail le
+   plus discret). Sur fond blanc elle doit etre INVERSEE, sinon le texte
+   principal devient le moins lisible. */
 :root {
   --neon-500: #7C5CFF;
   --neon-600: #5B3FD9;
   --neon-700: #3B258F;
 
-  --dark-400: #0F1117;
-  --surface: #1A1E28;
+  --dark-400: #FFFFFF;
+  --surface: #FFFFFF;
 
-  --gray-200: #E5E7EB;
-  --gray-400: #9CA3AF;
+  /* Rampe inversee : du plus fonce (texte principal) au plus clair (detail). */
+  --gray-200: #111827;
+  --gray-400: #4B5563;
   --gray-500: #6B7280;
-  --gray-600: #4B5563;
-  --gray-700: #374151;
+  --gray-600: #9CA3AF;
+  --gray-700: #9CA3AF;
 
-  --red-300: #FCA5A5;
-  --red-400: #F87171;
-  --red-bg: rgba(239, 68, 68, 0.1);
-  --red-border: rgba(239, 68, 68, 0.2);
+  /* Rouges assombris : les teintes claires du theme sombre (#FCA5A5) sont
+     illisibles sur blanc. */
+  --red-300: #B91C1C;
+  --red-400: #DC2626;
+  --red-bg: rgba(239, 68, 68, 0.08);
+  --red-border: rgba(239, 68, 68, 0.25);
 
-  --green-500: #22C55E;
+  --green-500: #15803D;
 
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border: rgba(255, 255, 255, 0.1);
+  /* Bordures sombres : une carte blanche sur fond blanc ne se distingue plus
+     que par sa bordure (meme parti pris que les cartes du dashboard). */
+  --border-subtle: rgba(17, 24, 39, 0.08);
+  --border: rgba(17, 24, 39, 0.14);
 
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
@@ -77,13 +90,18 @@ body {
   outline-offset: 2px;
 }
 
-/* Header / wordmark -- meme construction que DashboardLayout.tsx :
-   glyphe (le "R") + "esell" (blanc) + "OS" (violet), pour lire "ResellOS".
+/* Header / wordmark -- transposition EXACTE du composant Wordmark.tsx de
+   l'app (src/components/ui/Wordmark.tsx), seule source du lockup.
+   Le glyphe "R" fait office de PREMIERE LETTRE : il doit rester colle au
+   texte. Les 8px de `gap` cassaient le mot "Resell" en deux ("R" + "esell").
+   Remplaces par le meme retrait negatif que l'app (-0.12em), qui compense
+   aussi la marge transparente du PNG. L'espace avant "OS" (0.28em) est
+   exprime en `em` pour rester proportionnel a la taille du texte.
    Jamais de "R" textuel en plus du glyphe. */
 .popup-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   margin-bottom: 16px;
 }
 
@@ -96,12 +114,25 @@ body {
   font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
+  line-height: 1;
 }
 
-.popup-wordmark .brand-white {
-  color: #fff;
+.popup-wordmark .brand-name {
+  margin-left: -0.12em;
 }
 
+.popup-wordmark .brand-accent {
+  margin-left: 0.28em;
+}
+
+/* Renomme depuis `.brand-white` (2026-08-26) : sur fond blanc, un nom de
+   classe qui dit "white" invite tot ou tard a remettre du blanc sur blanc. */
+.popup-wordmark .brand-name {
+  color: #111827;
+}
+
+/* "OS" toujours en majuscules et toujours violet -- regle d'identite, jamais
+   parametrable (voir Wordmark.tsx). */
 .popup-wordmark .brand-accent {
   color: var(--neon-500);
 }
@@ -300,7 +331,7 @@ body {
 }
 
 .diagnostic-entry.level-warn {
-  color: #facc15;
+  color: #A16207;
 }
 
 .diagnostic-entry.level-info,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   X, Sparkles, Clock, RefreshCw, Eye, Heart, Lightbulb, Pencil, UploadCloud,
   CheckSquare, Square, Trash2, FileEdit, Layers, Info, History,
+  CheckCircle2, AlertTriangle, ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../../contexts/VintedAccountFilterContext';
@@ -17,7 +18,6 @@ import { Skeleton } from '../../../components/ui/Skeleton';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
-import { SectionLabel } from '../../../components/ui/SectionLabel';
 import { FilterPill } from '../../../components/ui/FilterPill';
 import { SearchInput } from '../../../components/ui/SearchInput';
 import AccountAvatar from '../../../components/ui/AccountAvatar';
@@ -27,7 +27,7 @@ import PublishConfirmationModal, { type PackageSize } from '../../../components/
 import PublishProgressModal from '../../../components/publish/PublishProgressModal';
 import { EditListingModal } from '../../../components/stock/EditListingModal';
 import { ListingDetailModal } from '../../../components/listings/ListingDetailModal';
-import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR, syncVintedAccount, type SyncStep, type SyncVintedAccountResult } from '../../../lib/extensionBridge';
+import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR, syncVintedAccount, type SyncStep } from '../../../lib/extensionBridge';import { describeSyncResult } from '../../../lib/syncResultMessage';
 import { formatRelativeSync } from '../../../lib/formatRelativeTime';
 import { AGING_STOCK_DAYS } from '../../../lib/insights/constants';
 import { isActivelyInStock } from '../../../lib/listingStatus';
@@ -46,6 +46,18 @@ import type { ListingRecommendationResult } from '../../../lib/insights/types';
 import { needsRepublish } from '../../../lib/listingStatus';
 import { devLog, devWarn, devError } from '../../../lib/devLog';
 import { notifySale } from '../../../hooks/useNotifications';
+import { formatScheduleLabel, isoToLocalDateTime, type RepublishSchedule } from '../../../lib/republishSchedule';
+import { explainRepublishFailure } from '../../../lib/republishOutcome';
+import { acknowledgeSchedule, getAcknowledgedScheduleIds } from '../../../lib/republishAcknowledgements';
+import {
+  cancelRepublishSchedule,
+  createRepublishSchedule,
+  listActiveRepublishSchedules,
+  updateRepublishSchedule,
+  listRecentRepublishOutcomes,
+  type RepublishScheduleRow,
+  type RepublishOutcomeRow,
+} from '../../../services/republishSchedules';
 
 // category/condition peuvent reellement etre vides ici (aucun check ne
 // bloque plus dessus depuis le 2026-08-11, republication assistee -- voir
@@ -74,6 +86,20 @@ function buildPublishPayload(listing: Listing, account: VintedAccount, packageSi
     packageSize,
     expectedVintedUsername: account.vinted_username,
   };
+}
+
+// Mission "ROUND 2 -- PERSISTANCE APP" (2026-08-20) : convertit une ligne
+// Supabase brute (republish_schedules) vers la forme consommee par l'UI
+// (ListingCard/PublishConfirmationModal, inchangees depuis le round 1) --
+// isoToLocalDateTime() fait la conversion fuseau reelle (jamais de
+// concatenation naive), voir son en-tete dans lib/republishSchedule.ts.
+// `undefined` si aucune ligne (pas de programmation active pour cette
+// annonce) -- jamais un objet {mode:'now'} invente, qui laisserait croire a
+// une programmation "vide" plutot qu'a une absence reelle.
+function toUiSchedule(row: RepublishScheduleRow | undefined): RepublishSchedule | undefined {
+  if (!row) return undefined;
+  const { date, time } = isoToLocalDateTime(row.scheduled_for);
+  return { mode: 'scheduled', date, time, packageSize: row.package_size };
 }
 
 // Meme champs que buildPublishPayload : republish_listing cree une NOUVELLE
@@ -142,30 +168,6 @@ const SYNC_STEP_LABELS: Record<SyncStep, string> = {
 // presentee comme un succes (voir la mission : "ne doit jamais afficher
 // 'synchronisé' quand complete=false"). tone pilote la couleur du message
 // (voir son usage dans le JSX ci-dessous).
-function describeSyncResult(result: SyncVintedAccountResult): { tone: 'success' | 'warning' | 'error'; message: string } {
-  if (!result.ok) {
-    switch (result.reason) {
-      case 'not_paired':
-        return { tone: 'error', message: "Extension non appairée à ce compte ResellOS. Reconnecte-la dans Compte Vinted." };
-      case 'tab_open_failed':
-        return { tone: 'error', message: `Impossible d'ouvrir Vinted${result.error ? ` : ${result.error}` : '.'}` };
-      case 'timeout':
-        return { tone: 'error', message: 'Échec — aucune réponse de Vinted dans le délai imparti (session expirée ou profil injoignable).' };
-      default:
-        return { tone: 'error', message: result.error ? `Échec de la synchronisation : ${result.error}` : 'Échec de la synchronisation.' };
-    }
-  }
-  const total = result.created + result.updated;
-  if (!result.complete) {
-    return {
-      tone: 'warning',
-      message: `Synchronisation partielle — ${result.pagesRead}/${result.pagesExpected} pages lues (${total} annonce(s) traitée(s), rien supprimé par prudence).`,
-    };
-  }
-  const parts = [`${total} annonce(s) synchronisée(s)`];
-  if (result.deletedMarked > 0) parts.push(`${result.deletedMarked} retirée(s)`);
-  return { tone: 'success', message: parts.join(' · ') };
-}
 
 interface ListingsManagementSectionProps {
   onViewAction?: (actionId: string) => void;
@@ -208,6 +210,27 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   const [syncTone, setSyncTone] = useState<'success' | 'warning' | 'error' | null>(null);
 
   const [publishingItem, setPublishingItem] = useState<Listing | null>(null);
+  // Mission "ROUND 2 -- PERSISTANCE APP" (2026-08-20) : la source de verite
+  // est desormais la table `republish_schedules` (deja appliquee et validee
+  // en prod, round 1) -- ce state est un simple CACHE local, indexe par
+  // listing_id, peuple par listActiveRepublishSchedules() au montage et
+  // maintenu a jour a chaque creation/modification/annulation reussie (pas
+  // de refetch systematique). N'entre JAMAIS dans runVintedAction()/l'Action
+  // Engine. `activeSchedulesLoadError` reste non-bloquant (best-effort,
+  // meme discipline que le reste de la page -- une erreur ici ne doit
+  // jamais empecher d'utiliser "Mes annonces").
+  const [activeSchedulesByListingId, setActiveSchedulesByListingId] = useState<Record<string, RepublishScheduleRow>>({});
+  // Mission "ROUND 5" (2026-08-23) : resultats termines recents, indexes par
+  // annonce. `acknowledgedIds` vient du localStorage (voir
+  // republishAcknowledgements.ts) -- un resultat acquitte disparait sans
+  // toucher a la base.
+  const [outcomesByListingId, setOutcomesByListingId] = useState<Record<string, RepublishOutcomeRow>>({});
+  const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(() => getAcknowledgedScheduleIds());
+  const [activeSchedulesLoadError, setActiveSchedulesLoadError] = useState<string | null>(null);
+  // Erreur d'une action Annuler (le seul flux de mutation qui n'a pas sa
+  // propre modale pour afficher un message -- Programmer/Modifier affichent
+  // l'erreur DANS PublishConfirmationModal, voir handleSchedule).
+  const [scheduleCancelError, setScheduleCancelError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Listing | null>(null);
   // Fiche annonce (Lot "Suivi des annonces") -- distincte de editingItem
   // (formulaire d'edition) : ouvre une vue lecture-seule (etat courant +
@@ -306,6 +329,53 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   useEffect(() => {
     load();
   }, [load]);
+
+  // Mission "ROUND 2 -- PERSISTANCE APP" (2026-08-20) : recharge les
+  // programmations actives de l'utilisateur au montage (et si `user`
+  // change) -- c'est ce qui fait "survivre" une programmation a un refresh
+  // de page (state local reconstruit depuis Supabase, jamais suppose). Pas
+  // de dependance a selectedAccountId : RLS scope deja a l'utilisateur, une
+  // annonce d'un autre compte Vinted que le filtre courant garde son badge
+  // correct des qu'on repasse dessus (coherent avec `items`, qui n'est lui
+  // non plus jamais filtre client-side par ce state).
+  const loadActiveSchedules = useCallback(async () => {
+    if (!user) return;
+    const result = await listActiveRepublishSchedules();
+    if (!result.ok) {
+      devWarn('[ResellOS][schedule] echec du chargement des programmations actives (non bloquant)', result.message);
+      setActiveSchedulesLoadError(result.message);
+      return;
+    }
+    setActiveSchedulesLoadError(null);
+    const byListingId: Record<string, RepublishScheduleRow> = {};
+    for (const row of result.data) byListingId[row.listing_id] = row;
+    setActiveSchedulesByListingId(byListingId);
+  }, [user]);
+
+  // Mission "ROUND 5" (2026-08-23) : les resultats termines recents. Charges
+  // separement des programmations actives -- un echec de l'un ne doit jamais
+  // empecher l'autre de s'afficher (meme discipline non bloquante).
+  const loadOutcomes = useCallback(async () => {
+    if (!user) return;
+    const result = await listRecentRepublishOutcomes();
+    if (!result.ok) {
+      devWarn('[ResellOS][schedule] echec du chargement des resultats recents (non bloquant)', result.message);
+      return;
+    }
+    // Resultats deja tries du plus recent au plus ancien par la requete : le
+    // premier vu pour une annonce est donc le plus recent, on ne l'ecrase
+    // jamais avec un plus ancien.
+    const byListingId: Record<string, RepublishOutcomeRow> = {};
+    for (const row of result.data) {
+      if (!byListingId[row.listing_id]) byListingId[row.listing_id] = row;
+    }
+    setOutcomesByListingId(byListingId);
+  }, [user]);
+
+  useEffect(() => {
+    loadActiveSchedules();
+    loadOutcomes();
+  }, [loadActiveSchedules, loadOutcomes]);
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
@@ -648,6 +718,102 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     }
   };
 
+  // Mission "ROUND 2 -- PERSISTANCE APP" (2026-08-20) : jamais d'appel a
+  // runVintedAction/prepareAction/confirmAction ici -- ecrit reellement dans
+  // `republish_schedules` (via le service dedie), aucune action Vinted
+  // declenchee. `onSchedule` (PublishConfirmationModal) n'appelle cette
+  // fonction qu'avec une date/heure deja validees cote UI (isScheduleValid) --
+  // Postgres reste la source de verite finale (contrainte unique, voir
+  // republishSchedules.ts::toActionError pour la traduction du conflit
+  // 23505). Retourne un resultat explicite : la modale n'affiche le succes
+  // (fermeture) qu'apres cette reponse REELLE, jamais avant -- sur echec,
+  // elle reste ouverte et affiche `result.error` tel quel.
+  // Si une programmation active existe deja pour cette annonce (ex. reouverte
+  // via "Modifier"), met a jour CETTE ligne plutot que d'en creer une
+  // seconde -- jamais deux appels differents cote UI pour create/update, un
+  // seul point de decision ici.
+  const handleSchedule = async (
+    date: string,
+    time: string,
+    packageSize: PackageSize
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    if (!publishingItem || !selectedAccount) {
+      return { ok: false, error: 'Aucun compte Vinted sélectionné.' };
+    }
+    // Mission "ROUND 2 -- BUG RLS user_id manquant" (2026-08-20) : CAUSE
+    // CONFIRMEE -- createRepublishSchedule() n'envoyait jamais user_id, donc
+    // NULL en base (aucun `default auth.uid()` sur cette colonne) ;
+    // `auth.uid() = NULL` n'est jamais vrai, d'ou "new row violates row-level
+    // security policy" au clic sur "Programmer la republication" (reproduit
+    // et corrige, voir republishSchedules.ts). `user` est deja disponible
+    // ici (useAuth(), meme source que partout ailleurs dans ce composant) --
+    // jamais une nouvelle source d'identite inventee pour ce correctif.
+    if (!user) {
+      return { ok: false, error: 'Session expirée -- reconnecte-toi puis réessaie.' };
+    }
+    const listing = publishingItem;
+    const existing = activeSchedulesByListingId[listing.id];
+
+    const result = existing
+      ? await updateRepublishSchedule(existing.id, { date, time, packageSize })
+      : await createRepublishSchedule({
+          userId: user.id,
+          listingId: listing.id,
+          vintedAccountId: selectedAccount.id,
+          date,
+          time,
+          packageSize,
+        });
+
+    if (!result.ok) {
+      return { ok: false, error: result.message };
+    }
+    setActiveSchedulesByListingId((prev) => ({ ...prev, [listing.id]: result.data }));
+    setPublishingItem(null);
+    return { ok: true };
+  };
+
+  // UPDATE status='cancelled' (jamais un DELETE, voir le service) -- le
+  // badge ne disparait de l'UI qu'APRES la reponse Supabase confirmee,
+  // jamais de facon optimiste : un echec laisse le badge et la ligne
+  // active intacts, avec un message explicite plutot qu'un succes silencieux
+  // suppose.
+  const handleCancelSchedule = async (listingId: string) => {
+    const existing = activeSchedulesByListingId[listingId];
+    if (!existing) return;
+    setScheduleCancelError(null);
+    const result = await cancelRepublishSchedule(existing.id);
+    if (!result.ok) {
+      devWarn('[ResellOS][schedule] echec annulation', result.message);
+      setScheduleCancelError(result.message);
+      return;
+    }
+    setActiveSchedulesByListingId((prev) => {
+      const next = { ...prev };
+      delete next[listingId];
+      return next;
+    });
+  };
+
+  // Mission "ROUND 5" (2026-08-23) : acquitter un resultat. Purement local
+  // (localStorage) -- aucune ecriture en base, la ligne republish_schedules
+  // garde son statut terminal intact et reste consultable/auditable.
+  const handleAcknowledgeOutcome = (listingId: string) => {
+    const outcome = outcomesByListingId[listingId];
+    if (!outcome) return;
+    acknowledgeSchedule(outcome.id);
+    setAcknowledgedIds((prev) => new Set(prev).add(outcome.id));
+  };
+
+  // Reprogrammer apres un echec : acquitte d'abord le resultat (sinon il
+  // resterait affiche sous la nouvelle programmation), puis rouvre la modale
+  // de publication -- exactement le meme chemin que "Modifier" sur une
+  // programmation active, jamais un second flux parallele.
+  const handleRescheduleAfterFailure = (listing: Listing) => {
+    handleAcknowledgeOutcome(listing.id);
+    handleRequestPublish(listing);
+  };
+
   const handleConfirmUpdate = async (listing: Listing, changedFields: EditableFieldName[]) => {
     if (!selectedAccount) {
       setPublishState({
@@ -750,17 +916,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
 
   const stockItems = items.filter(isActivelyInStock);
   const soldItems = items.filter((item) => item.status === 'vendu');
+  // "En ligne" au sens Vinted (vinted_status), pas "en stock" cote ResellOS :
+  // le libelle du KPI dit "en ligne", le chiffre doit compter exactement ca.
+  const onlineCount = items.filter((item) => item.vinted_status === 'online').length;
   const stockValue = stockItems.reduce((sum, item) => sum + Number(item.price || 0), 0);
-  const stockWithCost = stockItems.filter((item) => item.purchase_price !== null);
-  const investment = stockWithCost.reduce((sum, item) => sum + Number(item.purchase_price), 0);
-  const potentialMargin = stockWithCost.reduce((sum, item) => sum + Number(item.price || 0) - Number(item.purchase_price), 0);
-  const averageRoi = investment > 0 ? Math.round((potentialMargin / investment) * 100) : 0;
   const revenue = soldItems.reduce((sum, item) => sum + Number(item.sold_price || 0), 0);
-  const soldWithCost = soldItems.filter((item) => item.purchase_price !== null);
-  const profit = soldWithCost.reduce(
-    (sum, item) => sum + (Number(item.sold_price || 0) - Number(item.purchase_price) - Number(item.fees || 0)),
-    0
-  );
 
   const lastSyncedAt =
     selectedAccountId === 'all'
@@ -774,11 +934,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     item.status !== 'vendu' && Date.now() - new Date(item.created_at).getTime() > AGING_STOCK_DAYS * 24 * 60 * 60 * 1000;
 
   const syncFreshnessClass = (iso: string | null) => {
-    if (!iso) return 'text-red-400';
+    if (!iso) return 'text-red-700';
     const hours = (Date.now() - new Date(iso).getTime()) / 3_600_000;
-    if (hours > 48) return 'text-red-400';
-    if (hours > 24) return 'text-amber-400';
-    return 'text-gray-600';
+    if (hours > 48) return 'text-red-700';
+    if (hours > 24) return 'text-amber-700';
+    return 'text-gray-500';
   };
 
   // Bandeau de sync plus discret une fois l'etat stable (demande produit
@@ -790,7 +950,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   const accountNotDetected =
     selectedAccountId === 'all' ? accounts.every((a) => !a.connected) : !!selectedAccount && !selectedAccount.connected;
   const syncNeedsAttention =
-    extensionState !== 'ready' || syncFreshnessClass(lastSyncedAt) !== 'text-gray-600' || accountNotDetected || !!syncHint;
+    extensionState !== 'ready' || syncFreshnessClass(lastSyncedAt) !== 'text-gray-500' || accountNotDetected || !!syncHint;
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -854,33 +1014,27 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
 
   return (
     <div>
-      <div className="mb-6">
-        <SectionLabel>Stock actif</SectionLabel>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Articles en stock" value={stockItems.length.toString()} />
-          <StatCard label="Valeur du stock" value={formatEUR(stockValue)} />
-          <StatCard label="Investissement" value={formatEUR(investment)} />
-          <StatCard label="Marge potentielle" value={formatEUR(potentialMargin)} highlight tone="positive" />
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <SectionLabel>Ventes</SectionLabel>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard label="Articles vendus" value={soldItems.length.toString()} />
-          <StatCard label="Chiffre d'affaires" value={formatEUR(revenue)} highlight tone="positive" />
-          <StatCard label="Bénéfice" value={formatEUR(profit)} highlight tone="positive" />
-          <StatCard label="ROI moyen" value={`${averageRoi} %`} highlight tone="positive" />
-        </div>
+      {/* Deux blocs de 4 StatCards ("Stock actif" + "Ventes") occupaient tout
+          le haut de page avant la moindre annonce. Fusionnes en UNE rangee de
+          4 chiffres essentiels (2026-08-26). Les quatre retires
+          (Investissement, Marge potentielle, Benefice, ROI moyen) ne sont pas
+          perdus : ils vivent deja sur la page Comptabilite, dont c'est le
+          sujet -- ici ils repoussaient le catalogue, qui est ce qu'on vient
+          reellement consulter. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Articles en ligne" value={onlineCount.toString()} />
+        <StatCard label="Valeur du stock" value={formatEUR(stockValue)} />
+        <StatCard label="Ventes réalisées" value={soldItems.length.toString()} />
+        <StatCard label="CA total" value={formatEUR(revenue)} highlight tone="positive" />
       </div>
 
       {accounts.length > 0 && (
         <div
           className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 transition-colors ${
-            syncNeedsAttention ? 'bg-surface border border-white/5 rounded-2xl p-4' : 'border-b border-white/5 py-2.5'
+            syncNeedsAttention ? 'bg-surface border border-gray-200 rounded-2xl p-4' : 'border-b border-gray-200 py-2.5'
           }`}
         >
-          <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
             <span
               className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                 extensionState === 'ready' ? 'bg-neon-500' : extensionState === 'checking' ? 'bg-amber-400' : 'bg-gray-600'
@@ -895,7 +1049,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             {syncHint && (
               <p
                 className={`text-xs max-w-sm ${
-                  syncTone === 'success' ? 'text-green-400' : syncTone === 'error' ? 'text-red-400' : 'text-amber-400'
+                  syncTone === 'success' ? 'text-green-700' : syncTone === 'error' ? 'text-red-700' : 'text-amber-700'
                 }`}
               >
                 {syncHint}
@@ -928,25 +1082,21 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             icon={<RefreshCw className="w-3.5 h-3.5" />}
           />
         </div>
-        {/* "Tout selectionner" -- transparent, effet lumineux au survol
-            (demande produit 2026-07-31), distinct des boutons pleins du
-            reste du produit puisque ce n'est pas une action destructive. */}
-        <button
-          onClick={toggleSelectAll}
-          disabled={visibleItems.length === 0}
-          className="flex items-center gap-1.5 text-xs font-bold text-neon-500 border border-neon-500/30 bg-transparent px-3 py-1.5 rounded-lg hover:border-neon-500/70 hover:shadow-[0_0_16px_rgba(124,92,255,0.45)] hover:text-white transition-all disabled:opacity-40 disabled:pointer-events-none flex-shrink-0"
-        >
-          <Layers className="w-3.5 h-3.5" />
-          {allVisibleSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
-        </button>
+        {/* "Tout selectionner" a rejoint la barre d'outils unifiee plus bas :
+            il y est aux cotes de la recherche et du filtre, avec lesquels il
+            partage le meme perimetre (ce qui est visible a l'ecran). */}
       </div>
 
       {loadError && <ErrorBanner message={loadError} className="mb-4" />}
       {bulkError && <ErrorBanner message={bulkError} className="mb-4" />}
+      {activeSchedulesLoadError && (
+        <ErrorBanner message={`Impossible de charger tes programmations : ${activeSchedulesLoadError}`} className="mb-4" />
+      )}
+      {scheduleCancelError && <ErrorBanner message={`Impossible d'annuler cette programmation : ${scheduleCancelError}`} className="mb-4" />}
 
       {selected.size > 0 && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 bg-surface-alt border border-neon-500/30 rounded-2xl px-4 py-3 mb-4 shadow-[0_10px_30px_rgba(0,0,0,0.4)]">
-          <p className="text-sm font-semibold text-gray-200 mr-auto">
+          <p className="text-sm font-semibold text-gray-800 mr-auto">
             {selected.size} annonce{selected.size > 1 ? 's' : ''} sélectionnée{selected.size > 1 ? 's' : ''}
           </p>
           <Button
@@ -989,13 +1139,39 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         </div>
       )}
 
-      <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
-        {FILTERS.map(({ key, label }) => (
-          <FilterPill key={key} label={label} active={filter === key} onClick={() => setFilter(key)} />
-        ))}
+      {/* Barre d'outils unifiee (2026-08-26) : recherche, filtre de statut et
+          actions rapides tenaient sur TROIS rangees distinctes empilees, en
+          plus du bandeau de synchro. Regroupees ici sur une seule ligne.
+          Le filtre passe de 8 pastilles a un <select> : huit pastilles ne
+          tiennent pas sur une ligne partagee, et defilaient horizontalement
+          -- les derniers statuts etaient invisibles sans scroller. */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Rechercher un article..."
+          className="flex-1 min-w-0"
+        />
+        <label className="sr-only" htmlFor="listing-status-filter">Filtrer par statut</label>
+        <select
+          id="listing-status-filter"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value as StatusFilter)}
+          className="bg-surface border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 sm:w-48 flex-shrink-0"
+        >
+          {FILTERS.map(({ key, label }) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+        <button
+          onClick={toggleSelectAll}
+          disabled={visibleItems.length === 0}
+          className="flex items-center justify-center gap-1.5 text-xs font-bold text-neon-500 border border-neon-500/30 bg-transparent px-3 py-2.5 rounded-xl hover:border-neon-500/70 hover:bg-neon-500/5 transition-all disabled:opacity-40 disabled:pointer-events-none flex-shrink-0"
+        >
+          <Layers className="w-3.5 h-3.5" />
+          {allVisibleSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
+        </button>
       </div>
-
-      <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un article..." className="mb-6" />
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1025,12 +1201,23 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 score={insights?.scores.get(item.id)?.score ?? null}
                 recommendationState={insights?.listingRecommendations.get(item.id)}
                 aging={isAging(item)}
+                onRepublish={() => handleRequestPublish(item)}
                 onMarkSold={() => {
                   setSellingItem(item);
                   setSoldPrice(String(item.price ?? ''));
                   setFees('0');
                 }}
                 onOpenDetail={() => setDetailItem(item)}
+                schedule={toUiSchedule(activeSchedulesByListingId[item.id])}
+                onEditSchedule={() => handleRequestPublish(item)}
+                onCancelSchedule={() => handleCancelSchedule(item.id)}
+                outcome={
+                  acknowledgedIds.has(outcomesByListingId[item.id]?.id ?? '')
+                    ? undefined
+                    : outcomesByListingId[item.id]
+                }
+                onAcknowledgeOutcome={() => handleAcknowledgeOutcome(item.id)}
+                onRescheduleAfterFailure={() => handleRescheduleAfterFailure(item)}
               />
             ))}
           </div>
@@ -1049,7 +1236,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
               <h2 className="text-lg font-black">Marquer comme vendu</h2>
               <p className="text-xs text-gray-500 mt-1">{sellingItem.title}</p>
             </div>
-            <button onClick={() => { setSellingItem(null); setSellError(null); }} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+            <button onClick={() => { setSellingItem(null); setSellError(null); }} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
               <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
@@ -1061,7 +1248,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 type="number"
                 value={soldPrice}
                 onChange={(e) => setSoldPrice(e.target.value)}
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
               />
             </div>
             <div>
@@ -1070,7 +1257,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                 type="number"
                 value={fees}
                 onChange={(e) => setFees(e.target.value)}
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
               />
               {/* P1-4 (Freeze Audit correctif) : ce montant est deja soustrait
                   de la marge de cette vente (voir AccountingPage.tsx::stats.fees)
@@ -1078,7 +1265,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
                   precise, donc pas de deduplication automatique fiable
                   possible (choix assume : avertir plutot qu'inventer un
                   rapprochement incertain). */}
-              <p className="text-[10px] text-gray-600 mt-1.5">
+              <p className="text-[10px] text-gray-500 mt-1.5">
                 Déjà déduit automatiquement de la marge de cette vente — ne le rajoute pas aussi comme dépense « Frais Vinted » en Comptabilité, ça compterait le même coût deux fois.
               </p>
             </div>
@@ -1095,6 +1282,8 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           account={selectedAccount}
           onCancel={() => setPublishingItem(null)}
           onConfirm={handleConfirmPublish}
+          onSchedule={handleSchedule}
+          initialSchedule={toUiSchedule(activeSchedulesByListingId[publishingItem.id])}
           isRepublish={!!publishingItem.vinted_item_id}
         />
       )}
@@ -1218,7 +1407,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       {pendingUpdate && (
         <Modal onClose={() => setPendingUpdate(null)} size="sm">
           <h2 className="text-lg font-black mb-2">Mettre à jour sur Vinted ?</h2>
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="text-sm text-gray-500 mb-6">
             Un nouvel onglet Vinted va s'ouvrir avec les champs déjà préparés. Il te suffira de cliquer une fois sur
             Valider dans cet onglet pour terminer la modification.
           </p>
@@ -1243,7 +1432,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       {confirmBulkDelete && (
         <Modal onClose={() => setConfirmBulkDelete(false)} size="sm">
           <h2 className="text-lg font-black mb-2">Supprimer {selected.size} annonce{selected.size > 1 ? 's' : ''} ?</h2>
-          <p className="text-sm text-gray-400 mb-5">
+          <p className="text-sm text-gray-500 mb-5">
             Cette action supprime ces annonces de ResellOS uniquement (jamais de suppression automatique sur Vinted). Irréversible côté ResellOS.
           </p>
           <div className="flex items-center gap-3">
@@ -1269,9 +1458,31 @@ export interface ListingCardProps {
   aging: boolean;
   onMarkSold: () => void;
   onOpenDetail: () => void;
+  // Republication depuis la carte (2026-08-26) : l'action n'existait que dans
+  // la barre groupee, et exigeait donc de SELECTIONNER l'annonce d'abord.
+  // Optionnel : la carte ne l'affiche que si l'appelant la fournit ET que
+  // l'annonce en releve reellement (needsRepublish).
+  onRepublish?: () => void;
+  // Mission "UI DE PROGRAMMATION DES REPUBLICATIONS" (2026-08-20) : tous
+  // optionnels -- une carte sans programmation (cas normal) ne rend rien de
+  // plus qu'avant. `schedule` ne rend un affichage que si mode==='scheduled'
+  // (jamais pour {mode:'now'}). Depuis le round 2, derive d'une ligne
+  // republish_schedules reelle via toUiSchedule() -- {mode:'now'} n'est
+  // toujours construit nulle part, une absence de programmation reste
+  // `undefined`, jamais devine.
+  schedule?: RepublishSchedule;
+  onEditSchedule?: () => void;
+  onCancelSchedule?: () => void;
+  // Mission "ROUND 5" (2026-08-23) : resultat d'une republication programmee
+  // deja EXECUTEE. `undefined` = rien a montrer (aucune execution recente, ou
+  // resultat deja acquitte par l'utilisateur) -- l'appelant filtre les
+  // acquittes, la carte ne connait pas le localStorage.
+  outcome?: RepublishOutcomeRow;
+  onAcknowledgeOutcome?: () => void;
+  onRescheduleAfterFailure?: () => void;
 }
 
-export function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold, onOpenDetail }: ListingCardProps) {
+export function ListingCard({ item, selected, onToggleSelect, showAccount, accountLabel, score, recommendationState, aging, onMarkSold, onOpenDetail, onRepublish, schedule, onEditSchedule, onCancelSchedule, outcome, onAcknowledgeOutcome, onRescheduleAfterFailure }: ListingCardProps) {
   const isSold = item.status === 'vendu';
   const hasCost = item.purchase_price !== null;
   const margin = isSold
@@ -1292,10 +1503,10 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
       }}
       aria-label={`Voir le détail de ${item.title}`}
       className={`group bg-surface-alt rounded-2xl border overflow-hidden transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-neon-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-500 ${
-        selected ? 'border-neon-500/60 shadow-[0_0_0_1px_rgba(124,92,255,0.3),0_20px_50px_rgba(0,0,0,0.35)]' : 'border-white/5 hover:border-neon-500/30'
+        selected ? 'border-neon-500/60 shadow-[0_0_0_1px_rgba(124,92,255,0.3),0_20px_50px_rgba(0,0,0,0.35)]' : 'border-gray-200 hover:border-neon-500/30'
       }`}
     >
-      <div className="relative h-32 bg-dark-400 border-b border-white/10 overflow-hidden">
+      <div className="relative h-32 bg-dark-400 border-b border-gray-200 overflow-hidden">
         {item.image_urls?.[0] ? (
           <img src={item.image_urls[0]} alt="" className="w-full h-full object-cover" />
         ) : (
@@ -1324,22 +1535,22 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
 
       <div className="p-4">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <p className="font-semibold text-sm text-gray-100 truncate">{item.title}</p>
+          <p className="font-semibold text-sm text-gray-900 truncate">{item.title}</p>
         </div>
         {item.sku !== null && <p className="text-[11px] text-gray-500 font-mono mb-1">#{item.sku}</p>}
         <p className="text-xs text-gray-500 truncate">{[item.brand, item.category, item.size].filter(Boolean).join(' · ') || '—'}</p>
 
         <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className={`text-[11px] ${isSold ? 'text-green-400' : 'text-neon-500'}`}>
+          <span className={`text-[11px] ${isSold ? 'text-green-700' : 'text-neon-500'}`}>
             {isSold ? 'Vendu' : item.status === 'draft' ? 'Brouillon' : 'En stock'}
           </span>
           {aging && (
-            <span className="flex items-center gap-1 text-[11px] text-amber-400">
+            <span className="flex items-center gap-1 text-[11px] text-amber-700">
               <Clock className="w-3 h-3" /> +{AGING_STOCK_DAYS}j
             </span>
           )}
           {item.vinted_sync_status === 'sync_failed' && (
-            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20">
+            <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-red-500/10 text-red-700 border border-red-500/20">
               Échec sync
             </span>
           )}
@@ -1374,7 +1585,7 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
         )}
         {recommendationState?.status === 'donnees_insuffisantes' && (
           <span
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-white/5 px-1.5 py-0.5 rounded-md mt-2"
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-md mt-2"
             title={recommendationState.reason}
           >
             <Info className="w-3 h-3" /> Données insuffisantes
@@ -1382,7 +1593,7 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
         )}
         {recommendationState?.status === 'recommandation_differee' && (
           <span
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-400/80 bg-amber-500/10 px-1.5 py-0.5 rounded-md mt-2"
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded-md mt-2"
             title={recommendationState.reason}
           >
             <History className="w-3 h-3" /> Action déjà tentée récemment
@@ -1391,28 +1602,235 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
 
         {score !== null && <OneScoreBar score={score} size="sm" className="mt-2" />}
 
-        <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-white/5">
-          <MiniValue label={isSold ? 'Vente' : 'Valeur'} value={formatEUR(isSold ? item.sold_price ?? 0 : item.price ?? 0)} />
-          <MiniValue label="Achat" value={hasCost ? formatEUR(item.purchase_price!) : '—'} />
-          <MiniValue label={isSold ? 'Bénéfice' : 'Marge'} value={hasCost ? formatEUR(margin) : '—'} highlight={hasCost} />
-          <MiniValue label="ROI" value={hasCost ? `${roi} %` : '—'} highlight={hasCost} />
+        {/* Le prix devient l'element dominant du bas de carte. Avant, il
+            partageait une grille de 4 colonnes avec Achat/Marge/ROI, tous
+            trois affiches en "—" tant qu'aucun prix d'achat n'est saisi --
+            soit, en pratique, sur la majorite des annonces importees depuis
+            Vinted. Trois tirets sur quatre colonnes, c'est du bruit qui
+            noyait la seule valeur reellement connue. */}
+        <div className="flex items-end justify-between gap-3 mt-3 pt-3 border-t border-gray-200">
+          <div className="min-w-0">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500">
+              {isSold ? 'Prix de vente' : 'Prix'}
+            </p>
+            <p className="text-lg font-black text-gray-900 tabular-nums leading-tight">
+              {formatEUR(isSold ? item.sold_price ?? 0 : item.price ?? 0)}
+            </p>
+          </div>
+          {/* Achat / Marge / ROI n'apparaissent QUE s'ils sont connus. */}
+          {hasCost && (
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <MiniValue label="Achat" value={formatEUR(item.purchase_price!)} />
+              <MiniValue label={isSold ? 'Bénéfice' : 'Marge'} value={formatEUR(margin)} highlight />
+              {Number(item.purchase_price) > 0 && <MiniValue label="ROI" value={`${roi} %`} highlight />}
+            </div>
+          )}
         </div>
 
+        {/* Mission "ROUND 5" : resultat d'une republication programmee deja
+            executee. Rendu AVANT le bloc "Programmée le..." -- si
+            l'utilisateur a deja reprogramme, il voit le resultat passe puis
+            la prochaine echeance, dans l'ordre chronologique. */}
+        {outcome && (
+          <RepublishOutcomeBlock
+            outcome={outcome}
+            onAcknowledge={onAcknowledgeOutcome}
+            onReschedule={onRescheduleAfterFailure}
+          />
+        )}
+
+        {schedule?.mode === 'scheduled' && (
+          <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between gap-2 flex-wrap">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-neon-500">
+              <Clock className="w-3 h-3" /> Programmée le {formatScheduleLabel(schedule.date, schedule.time)}
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditSchedule?.();
+                }}
+                className="text-[11px] font-semibold text-gray-500 hover:text-gray-900"
+              >
+                Modifier
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancelSchedule?.();
+                }}
+                className="text-[11px] font-semibold text-red-700 hover:text-red-700"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Actions selon le STATUT reel : "Republier" n'apparait que pour une
+            annonce qui en releve (en stock, absente de Vinted), et jamais sur
+            une annonce vendue. */}
         {!isSold && (
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            className="mt-3"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMarkSold();
-            }}
-          >
-            Marquer vendu
-          </Button>
+          <div className="flex gap-2 mt-3">
+            {onRepublish && needsRepublish(item) && (
+              <Button
+                variant="primary"
+                size="sm"
+                className="flex-1"
+                icon={<UploadCloud className="w-3.5 h-3.5" />}
+                // Nom accessible qui NOMME l'annonce : une grille en affiche
+                // plusieurs, et "Republier" seul ne dit pas laquelle -- ni a
+                // un lecteur d'ecran, ni a un test. Ce libelle le distingue
+                // aussi du "Republier" de la barre d'action groupee, qui
+                // porte sur la selection et non sur cette carte.
+                aria-label={`Republier ${item.title}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRepublish();
+                }}
+              >
+                Republier
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkSold();
+              }}
+            >
+              Marquer vendu
+            </Button>
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Mission "ROUND 5 -- RESULTAT D'UNE REPUBLICATION PROGRAMMEE" (2026-08-23).
+// Repond au trou identifie a l'audit : l'extension ecrivait bien
+// succeeded/failed en base, mais l'app ne lisait que scheduled/running -- une
+// republication executee la nuit disparaissait sans laisser de trace, ECHEC
+// COMPRIS. Un echec silencieux contredit frontalement la promesse produit
+// affichee en FAQ ("toujours apres ta confirmation, jamais en silence").
+//
+// Le message d'erreur BRUT n'est jamais affiche tel quel (regle explicite de
+// l'utilisateur) : explainRepublishFailure() en tire un message vendeur +
+// une piste d'action, et conserve le brut dans un <details> replie pour un
+// rapport de bug exploitable.
+//
+// "Reprogrammer" n'est propose que si l'echec a une chance d'aboutir au
+// second essai (canReschedule) -- reproposer l'action apres "annonce
+// supprimee" ferait echouer l'utilisateur une deuxieme fois.
+function RepublishOutcomeBlock({
+  outcome,
+  onAcknowledge,
+  onReschedule,
+}: {
+  outcome: RepublishOutcomeRow;
+  onAcknowledge?: () => void;
+  onReschedule?: () => void;
+}) {
+  const completedLabel = outcome.completed_at
+    ? (() => {
+        const { date, time } = isoToLocalDateTime(outcome.completed_at as string);
+        return formatScheduleLabel(date, time);
+      })()
+    : null;
+
+  if (outcome.status === 'succeeded') {
+    return (
+      <div className="mt-3 pt-3 border-t border-gray-200">
+        <div className="flex items-start justify-between gap-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-green-700">
+            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+            Republiée{completedLabel ? ` le ${completedLabel}` : ''}
+          </span>
+          {onAcknowledge && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAcknowledge();
+              }}
+              className="text-[11px] font-semibold text-gray-500 hover:text-gray-900 flex-shrink-0"
+            >
+              OK
+            </button>
+          )}
+        </div>
+        {outcome.result_vinted_url && (
+          <a
+            href={outcome.result_vinted_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-neon-500 hover:text-neon-400"
+          >
+            Voir la nouvelle annonce <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  const explanation = explainRepublishFailure(outcome.error_message);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-200">
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex items-start gap-1.5 text-[11px] font-semibold text-red-700">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+          <span>{explanation.message}</span>
+        </span>
+        {onAcknowledge && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAcknowledge();
+            }}
+            className="text-[11px] font-semibold text-gray-500 hover:text-gray-900 flex-shrink-0"
+          >
+            OK
+          </button>
+        )}
+      </div>
+
+      {explanation.hint && <p className="mt-1 text-[11px] text-gray-500">{explanation.hint}</p>}
+
+      {/* "Tentative precedente" et non "Tentative du ..." (retour test reel
+          2026-08-24) : cette ligne peut s'afficher JUSTE AU-DESSUS d'un bloc
+          "Programmée le ..." qui, lui, concerne un cycle DIFFERENT et encore a
+          venir. Le libelle d'origine laissait croire a une incoherence de date
+          alors que les deux dates etaient correctes -- il s'agissait bien de
+          deux programmations distinctes. */}
+      {completedLabel && <p className="mt-1 text-[10px] text-gray-500">Tentative précédente : {completedLabel}</p>}
+
+      {explanation.canReschedule && onReschedule && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReschedule();
+          }}
+          className="mt-2 text-[11px] font-semibold text-neon-500 hover:text-neon-400"
+        >
+          Reprogrammer
+        </button>
+      )}
+
+      {explanation.technicalDetail && (
+        <details className="mt-2" onClick={(e) => e.stopPropagation()}>
+          <summary className="text-[10px] text-gray-500 cursor-pointer hover:text-gray-500">Détail technique</summary>
+          <p className="mt-1 text-[10px] font-mono text-gray-500 break-words">{explanation.technicalDetail}</p>
+        </details>
+      )}
     </div>
   );
 }
@@ -1421,7 +1839,7 @@ function MiniValue({ label, value, highlight }: { label: string; value: string; 
   return (
     <div className="min-w-0">
       <p className="text-[9px] uppercase tracking-wider text-gray-500 truncate">{label}</p>
-      <p className={`text-xs font-bold truncate ${highlight ? 'text-neon-500' : 'text-gray-200'}`}>{value}</p>
+      <p className={`text-xs font-bold truncate ${highlight ? 'text-neon-500' : 'text-gray-800'}`}>{value}</p>
     </div>
   );
 }

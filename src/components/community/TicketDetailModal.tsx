@@ -48,7 +48,7 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
                   className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
                     ticket.status === opt.value
                       ? 'bg-neon-600 text-white border-neon-500'
-                      : 'bg-dark-400 text-gray-400 border-white/10 hover:text-white'
+                      : 'bg-dark-400 text-gray-500 border-gray-200 hover:text-gray-900'
                   }`}
                 >
                   {opt.label}
@@ -56,12 +56,12 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
               ))}
             </div>
           ) : (
-            <span className="text-[10px] font-bold text-gray-500 bg-white/5 px-1.5 py-0.5 rounded-lg">
+            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-lg">
               {STATUS_OPTIONS.find((o) => o.value === ticket.status)?.label}
             </span>
           )}
         </div>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5 flex-shrink-0">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -78,7 +78,7 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
               <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                 <div
                   className={`max-w-[85%] rounded-xl p-3 ${
-                    msg.is_admin_reply ? 'bg-neon-500/5 border border-neon-500/20' : 'bg-dark-400 border border-white/10'
+                    msg.is_admin_reply ? 'bg-neon-500/5 border border-neon-500/20' : 'bg-dark-400 border border-gray-200'
                   }`}
                 >
                   {msg.is_admin_reply && (
@@ -87,7 +87,7 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
                       <span className="text-[10px] font-bold uppercase tracking-wider text-neon-500">Réponse de l'équipe</span>
                     </div>
                   )}
-                  <p className="text-sm text-gray-200 whitespace-pre-line">{msg.body}</p>
+                  <p className="text-sm text-gray-800 whitespace-pre-line">{msg.body}</p>
                 </div>
               </div>
             );
@@ -101,7 +101,7 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Ta réponse..."
-            className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[48px] max-h-32 resize-y"
+            className="flex-1 bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[48px] max-h-32 resize-y"
           />
           <button
             onClick={handleSend}

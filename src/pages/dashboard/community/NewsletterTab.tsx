@@ -27,7 +27,7 @@ export function NewsletterTab() {
   };
 
   return (
-    <div className="bg-surface border border-white/5 rounded-2xl p-8 text-center max-w-lg mx-auto">
+    <div className="bg-surface border border-gray-200 rounded-2xl p-8 text-center max-w-lg mx-auto">
       <div className="w-14 h-14 bg-neon-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
         <Mail className="w-6 h-6 text-neon-500" />
       </div>
@@ -49,7 +49,7 @@ export function NewsletterTab() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="ton@email.com"
-            className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-neon-500/50"
+            className="flex-1 bg-dark-400 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-neon-500/50"
           />
           <button
             type="submit"
@@ -60,7 +60,7 @@ export function NewsletterTab() {
           </button>
         </form>
       )}
-      {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+      {error && <p className="text-sm text-red-700 mt-3">{error}</p>}
     </div>
   );
 }

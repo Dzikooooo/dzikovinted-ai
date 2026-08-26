@@ -13,9 +13,9 @@ export function ErrorBanner({ message, className = '' }: ErrorBannerProps) {
   return (
     <div
       role="alert"
-      className={`flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3 sm:p-4 text-sm text-red-300 ${className}`}
+      className={`flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3 sm:p-4 text-sm text-red-700 ${className}`}
     >
-      <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+      <AlertTriangle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
       <p>{message}</p>
     </div>
   );

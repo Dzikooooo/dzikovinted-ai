@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { X, Package, AlertTriangle, Info } from 'lucide-react';
+import { X, Package, AlertTriangle, Info, CalendarClock } from 'lucide-react';
 import AccountAvatar from '../ui/AccountAvatar';
 import { Modal } from '../ui/Modal';
+import { SegmentedControl } from '../ui/SegmentedControl';
+import { DatePicker, TimePicker } from '../ui/DatePicker';
 import type { Listing, VintedAccount } from '../../lib/types';
 import { formatEUR } from '../../lib/currency';
+import { formatScheduleLabel, isDateInPast, isScheduleValid, isTimeInPastToday, type RepublishSchedule } from '../../lib/republishSchedule';
 
 export type PackageSize = 'small' | 'medium' | 'large';
 
@@ -36,6 +39,24 @@ interface PublishConfirmationModalProps {
   account: VintedAccount;
   onCancel: () => void;
   onConfirm: (packageSize: PackageSize) => void;
+  // Mission "UI DE PROGRAMMATION DES REPUBLICATIONS" (2026-08-20) : optionnel
+  // et UNIQUEMENT utilise quand isRepublish -- une publication fraiche
+  // (isRepublish=false) ne propose jamais le choix Maintenant/Programmer,
+  // comportement strictement inchange (voir plus bas, `showScheduleChoice`).
+  // Appele UNIQUEMENT avec une date/heure deja validees (voir
+  // isScheduleValid) -- ne declenche jamais onConfirm ni aucune action
+  // Vinted reelle. Mission "ROUND 2 -- PERSISTANCE APP" (2026-08-20) :
+  // asynchrone et retourne desormais un resultat explicite -- l'appelant
+  // (ListingsManagementSection) ecrit reellement dans Supabase
+  // (republish_schedules) et peut echouer (ex. conflit 23505, erreur
+  // reseau). Cette modale attend la reponse REELLE avant de se considerer
+  // fermee : jamais de fermeture/badge optimiste avant que Supabase ait
+  // confirme.
+  onSchedule?: (date: string, time: string, packageSize: PackageSize) => Promise<{ ok: true } | { ok: false; error: string }>;
+  // Prefill pour "Modifier" une programmation existante -- reouvre cette
+  // meme modale avec le mode et la date/heure deja choisies plutot que de
+  // repartir de zero.
+  initialSchedule?: RepublishSchedule;
   // true quand l'annonce a deja un vinted_item_id (deja publiee, en ligne ou
   // non -- voir checks.ts::checkListingRepublishEligible). Le formulaire de
   // confirmation reste identique (memes champs a valider),
@@ -50,9 +71,65 @@ export default function PublishConfirmationModal({
   account,
   onCancel,
   onConfirm,
+  onSchedule,
+  initialSchedule,
   isRepublish = false,
 }: PublishConfirmationModalProps) {
-  const [packageSize, setPackageSize] = useState<PackageSize>(defaultPackageSize(listing.category));
+  // Mission "ROUND 2" : "Modifier" reouvre cette modale sur une programmation
+  // existante -- si la ligne DB porte deja un package_size (toujours le cas
+  // pour une vraie ligne republish_schedules, colonne not null), on part de
+  // CETTE valeur plutot que de re-deviner via defaultPackageSize(), qui
+  // ecraserait silencieusement un choix deja explicitement fait.
+  const [packageSize, setPackageSize] = useState<PackageSize>(
+    initialSchedule?.mode === 'scheduled' && initialSchedule.packageSize
+      ? (initialSchedule.packageSize as PackageSize)
+      : defaultPackageSize(listing.category)
+  );
+  // Choix Maintenant/Programmer -- n'existe visuellement que pour une
+  // republication (voir showScheduleChoice ci-dessous). `initialSchedule`
+  // permet a "Modifier" (ListingsManagementSection) de reouvrir cette modale
+  // deja positionnee sur "Programmer" avec la date/heure existantes.
+  const [scheduleMode, setScheduleMode] = useState<'now' | 'scheduled'>(
+    initialSchedule?.mode === 'scheduled' ? 'scheduled' : 'now'
+  );
+  const [scheduleDate, setScheduleDate] = useState<string | null>(
+    initialSchedule?.mode === 'scheduled' ? initialSchedule.date : null
+  );
+  const [scheduleTime, setScheduleTime] = useState<string | null>(
+    initialSchedule?.mode === 'scheduled' ? initialSchedule.time : null
+  );
+  // Mission "ROUND 2" : etats explicites de la soumission Supabase --
+  // jamais de fermeture ni de badge avant une reponse REELLE. scheduleError
+  // porte le message deja traduit par le service (voir
+  // republishSchedules.ts::toActionError, ex. conflit 23505) tel quel,
+  // jamais reinterprete ici.
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+
+  const showScheduleChoice = isRepublish && !!onSchedule;
+  const now = new Date();
+  const scheduleValid = isScheduleValid(scheduleDate, scheduleTime, now);
+  // Message d'aide uniquement quand une date+heure COMPLETES sont deja
+  // choisies mais invalides (heure deja passee pour aujourd'hui) -- jamais
+  // affiche tant que le choix est simplement incomplet (pas encore une
+  // erreur, juste pas fini).
+  const scheduleTimeInPast =
+    !!scheduleDate && !!scheduleTime && !isDateInPast(scheduleDate, now) && isTimeInPastToday(scheduleDate, scheduleTime, now);
+
+  async function handleScheduleSubmit(): Promise<void> {
+    if (!scheduleValid || !scheduleDate || !scheduleTime || !onSchedule || scheduleSubmitting) return;
+    setScheduleSubmitting(true);
+    setScheduleError(null);
+    const result = await onSchedule(scheduleDate, scheduleTime, packageSize);
+    if (!result.ok) {
+      setScheduleSubmitting(false);
+      setScheduleError(result.error);
+      return;
+    }
+    // Succes : l'appelant (ListingsManagementSection) a deja ferme la
+    // modale (retire publishingItem) -- ce composant est sur le point
+    // d'etre demonte, rien de plus a faire ici (pas de setState apres coup).
+  }
 
   return (
     <Modal onClose={onCancel} size="md">
@@ -61,7 +138,7 @@ export default function PublishConfirmationModal({
           <h2 className="text-lg font-black">{isRepublish ? 'Republier sur Vinted' : 'Publier sur Vinted'}</h2>
           <p className="text-xs text-gray-500 mt-1">{listing.title}</p>
         </div>
-        <button onClick={onCancel} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onCancel} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -72,9 +149,9 @@ export default function PublishConfirmationModal({
             confirmation (voir PublishProgressModal pour l'etat des lieux reel,
             rapporte apres coup). Purement informatif, identique pour publier
             et republier. */}
-        <div className="flex items-start gap-3 bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3">
+        <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
           <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-gray-400 leading-relaxed">
+          <p className="text-xs text-gray-500 leading-relaxed">
             ResellOS ouvre Vinted et préremplit titre, description, prix et photos. La catégorie, l'état et les
             autres attributs restent à choisir toi-même sur Vinted (obligatoire côté Vinted), et c'est toi qui
             cliques sur le bouton final -- ResellOS ne publie jamais automatiquement à ta place.
@@ -85,7 +162,7 @@ export default function PublishConfirmationModal({
             <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-amber-300">
               Cette annonce a déjà été publiée mais n'est plus en ligne sur Vinted (masquée, supprimée ou introuvable).
-              Une <strong>nouvelle</strong> fiche Vinted va être créée avec ces informations -- l'ancienne n'est jamais
+              Une <strong>nouvelle</strong> fiche Vinted va être créée avec ces informations — l'ancienne n'est jamais
               modifiée ni supprimée.
             </p>
           </div>
@@ -97,13 +174,13 @@ export default function PublishConfirmationModal({
                 key={url}
                 src={url}
                 alt=""
-                className="w-16 h-16 rounded-xl object-cover border border-white/10 flex-shrink-0"
+                className="w-16 h-16 rounded-xl object-cover border border-gray-200 flex-shrink-0"
               />
             ))}
           </div>
         )}
 
-        <div className="bg-dark-400 border border-white/10 rounded-xl p-4 space-y-2 text-sm">
+        <div className="bg-dark-400 border border-gray-200 rounded-xl p-4 space-y-2 text-sm">
           <Row label="Prix" value={formatEUR(listing.price)} />
           <Row label="Catégorie" value={listing.category || '—'} />
           <Row label="Marque" value={listing.brand || '—'} />
@@ -111,7 +188,7 @@ export default function PublishConfirmationModal({
           <Row label="État" value={listing.condition || '—'} />
           <div className="flex items-center justify-between pt-1">
             <span className="text-gray-500">Compte Vinted</span>
-            <span className="flex items-center gap-2 font-semibold text-gray-200">
+            <span className="flex items-center gap-2 font-semibold text-gray-800">
               <AccountAvatar label={account.label} size="sm" />
               {account.label}
             </span>
@@ -132,7 +209,7 @@ export default function PublishConfirmationModal({
                 className={`text-xs font-semibold py-2.5 rounded-xl border transition-all ${
                   packageSize === option.value
                     ? 'bg-neon-600 text-white border-neon-500'
-                    : 'bg-dark-400 text-gray-400 border-white/10 hover:border-white/20'
+                    : 'bg-dark-400 text-gray-500 border-gray-200 hover:border-gray-200'
                 }`}
               >
                 {option.label}
@@ -141,12 +218,58 @@ export default function PublishConfirmationModal({
           </div>
         </div>
 
-        <button
-          onClick={() => onConfirm(packageSize)}
-          className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all"
-        >
-          {isRepublish ? 'Republier' : 'Publier'}
-        </button>
+        {showScheduleChoice && (
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center gap-1.5 mb-2">
+              <CalendarClock className="w-3 h-3" /> Quand ?
+            </label>
+            <SegmentedControl
+              options={[
+                { value: 'now' as const, label: 'Maintenant' },
+                { value: 'scheduled' as const, label: 'Programmer' },
+              ]}
+              value={scheduleMode}
+              onChange={setScheduleMode}
+              fullWidth
+            />
+          </div>
+        )}
+
+        {showScheduleChoice && scheduleMode === 'scheduled' ? (
+          <div className="space-y-3">
+            <DatePicker value={scheduleDate} onChange={setScheduleDate} />
+            {scheduleDate && <TimePicker value={scheduleTime} onChange={setScheduleTime} />}
+            {scheduleTimeInPast && (
+              <p className="text-xs text-amber-400">Choisis une heure à venir — celle-ci est déjà passée aujourd'hui.</p>
+            )}
+            {scheduleValid && scheduleDate && scheduleTime && (
+              <p className="text-xs text-gray-500">→ Republication programmée le {formatScheduleLabel(scheduleDate, scheduleTime)}</p>
+            )}
+            {scheduleError && (
+              <p className="text-xs text-red-700" role="alert">
+                {scheduleError}
+              </p>
+            )}
+            {/* Etat desactive : fond neutre + texte gris (6.87:1) au lieu de
+                `opacity-40` sur un bouton violet a texte blanc, qui delavait
+                les DEUX couches et tombait a 1.29:1 — le libelle etait
+                illisible au moment precis ou il explique quoi faire. */}
+            <button
+              disabled={!scheduleValid || scheduleSubmitting}
+              onClick={handleScheduleSubmit}
+              className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all disabled:bg-gray-100 disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+            >
+              {scheduleSubmitting ? 'Programmation...' : 'Programmer la republication'}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => onConfirm(packageSize)}
+            className="w-full bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all"
+          >
+            {isRepublish ? 'Republier' : 'Publier'}
+          </button>
+        )}
       </div>
     </Modal>
   );
@@ -156,7 +279,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-gray-500">{label}</span>
-      <span className="font-semibold text-gray-200">{value}</span>
+      <span className="font-semibold text-gray-800">{value}</span>
     </div>
   );
 }

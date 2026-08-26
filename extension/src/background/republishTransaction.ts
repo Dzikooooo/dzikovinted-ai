@@ -147,13 +147,35 @@ export async function performRepublishReplaceTransaction(
   }
 
   logger.info("REPUBLISH_OLD_DELETE_STARTED", { listingId, oldVintedItemId });
+  // INSTRUMENTATION TEMPORAIRE PHASE DELETE (2026-08-25) : seul endroit de la
+  // chaine ou l'ANCIEN et le NOUVEL id sont connus simultanement -- plus bas
+  // (deleteOldListing) le nouvel id n'est pas transmis. Permet de verifier
+  // qu'on ne s'apprete pas a supprimer la mauvaise annonce.
+  logger.warn("REPUBLISH_DELETE_TARGET", {
+    listingId,
+    oldItemId: oldVintedItemId,
+    newItemId: newVintedItemId,
+    expectedUrl: `https://www.vinted.fr/items/${oldVintedItemId}`,
+    sameId: oldVintedItemId === newVintedItemId,
+  });
   const deleteResult = await deleteOldListing(oldVintedItemId, onAwaitingOldListingDeletion);
   if (deleteResult.ok) {
+    logger.warn("REPUBLISH_DELETE_CONFIRMED", { listingId, oldItemId: oldVintedItemId, newItemId: newVintedItemId });
     logger.info("REPUBLISH_OLD_DELETE_CONFIRMED", { listingId, oldVintedItemId });
     logger.info("REPUBLISH_COMPLETED", { listingId, newVintedItemId, oldVintedItemId, deletedOld: true });
     return { ok: true, reason: "completed", mergedDuplicateListingId, cleanupError: null };
   }
 
+  logger.warn("REPUBLISH_DELETE_FAILED", {
+    listingId,
+    oldItemId: oldVintedItemId,
+    newItemId: newVintedItemId,
+    expectedUrl: `https://www.vinted.fr/items/${oldVintedItemId}`,
+    // Raison exacte remontee par deleteOldListing -- c'est elle qui dit a
+    // quelle etape (ouverture d'onglet / ACK / clic / verification ld+json)
+    // la chaine s'est arretee.
+    reason: deleteResult.error ?? "(aucune raison remontee)",
+  });
   logger.warn("REPUBLISH_CLEANUP_REQUIRED", { listingId, oldVintedItemId, newVintedItemId, error: deleteResult.error });
   return { ok: true, reason: "cleanup_required", mergedDuplicateListingId, cleanupError: deleteResult.error ?? null };
 }

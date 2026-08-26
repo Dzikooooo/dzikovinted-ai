@@ -69,7 +69,7 @@ export function Modal({ onClose, dismissible = true, size = 'sm', children, clas
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 modal-overlay-enter"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm px-4 modal-overlay-enter"
       onClick={() => dismissible && onClose()}
       role="presentation"
     >
@@ -78,7 +78,7 @@ export function Modal({ onClose, dismissible = true, size = 'sm', children, clas
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
-        className={`w-full ${SIZE_CLASSES[size]} max-h-[90vh] overflow-y-auto bg-surface border border-white/10 rounded-2xl p-5 shadow-[0_25px_70px_-10px_rgba(0,0,0,0.6)] modal-panel-enter ${className}`}
+        className={`w-full ${SIZE_CLASSES[size]} max-h-[90vh] overflow-y-auto bg-surface border border-gray-200 rounded-2xl p-5 shadow-[0_25px_70px_-10px_rgba(17,24,39,0.25)] modal-panel-enter ${className}`}
       >
         {children}
       </div>

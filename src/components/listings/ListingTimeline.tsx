@@ -39,7 +39,7 @@ function EngagementPeriodRow({ event }: { event: Extract<TimelineEvent, { type: 
   const isSingle = event.from === event.to;
   return (
     <div className="flex items-start gap-3">
-      <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0 mt-0.5">
+      <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
         <RefreshCw className="w-3.5 h-3.5 text-gray-500" />
       </div>
       <div>
@@ -47,7 +47,7 @@ function EngagementPeriodRow({ event }: { event: Extract<TimelineEvent, { type: 
           {isSingle ? `Synchronisation initiale — ${formatDay(event.to)}` : `${formatDay(event.from)} → ${formatDay(event.to)}`}
           {!isSingle && <span className="text-gray-700"> · {event.snapshotCount} synchro{event.snapshotCount > 1 ? 's' : ''}</span>}
         </p>
-        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-400">
+        <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500">
           <span className="flex items-center gap-1">
             <Eye className="w-3 h-3" /> {event.views.from ?? '—'} → {event.views.to ?? '—'}
           </span>
@@ -79,22 +79,22 @@ function ActionRow({ event }: { event: Extract<TimelineEvent, { type: 'action' }
         <Tag className="w-3.5 h-3.5 text-neon-500" />
       </div>
       <div className="flex-1">
-        <p className="text-sm text-gray-200">{label}</p>
+        <p className="text-sm text-gray-800">{label}</p>
         <p className="text-xs text-gray-500">{formatDayTime(event.at)}</p>
         {event.technicalDetail.length > 0 && (
           <>
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="flex items-center gap-1 text-[11px] text-gray-600 hover:text-gray-400 mt-1"
+              className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-500 mt-1"
             >
               {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               Détails techniques
             </button>
             {open && (
-              <ul className="mt-1.5 space-y-1 border-l border-white/5 pl-3">
+              <ul className="mt-1.5 space-y-1 border-l border-gray-200 pl-3">
                 {event.technicalDetail.map((entry, i) => (
-                  <li key={i} className="text-[11px] text-gray-600">
+                  <li key={i} className="text-[11px] text-gray-500">
                     {entry.message} <span className="text-gray-700">· {formatDayTime(entry.at)}</span>
                   </li>
                 ))}
@@ -114,9 +114,9 @@ function RecommendationOpenedRow({ event }: { event: Extract<TimelineEvent, { ty
         <Lightbulb className="w-3.5 h-3.5 text-neon-500" />
       </div>
       <div>
-        <p className="text-sm text-gray-200">Recommandation émise ({event.confidence === 'haute' ? 'confiance haute' : 'à confirmer'})</p>
+        <p className="text-sm text-gray-800">Recommandation émise ({event.confidence === 'haute' ? 'confiance haute' : 'à confirmer'})</p>
         <p className="text-xs text-gray-500">{formatDayTime(event.at)}</p>
-        <p className="text-xs text-gray-600 mt-0.5">{event.reason}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{event.reason}</p>
       </div>
     </div>
   );
@@ -133,7 +133,7 @@ function OutcomeSection({ outcome }: { outcome: NonNullable<Extract<TimelineEven
   return (
     <div className="mt-1 space-y-0.5">
       {measurableWindows.length === 0 ? (
-        <p className="text-xs text-gray-600">Résultat non mesurable (pas assez de synchronisations autour de cette action).</p>
+        <p className="text-xs text-gray-500">Résultat non mesurable (pas assez de synchronisations autour de cette action).</p>
       ) : (
         measurableWindows.map((w) => (
           <p key={w.days} className="text-xs text-gray-500">
@@ -152,11 +152,11 @@ function RecommendationResolvedRow({ event }: { event: Extract<TimelineEvent, { 
   const Icon = RESOLUTION_ICONS[event.resolution];
   return (
     <div className="flex items-start gap-3">
-      <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0 mt-0.5">
+      <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
         <Icon className="w-3.5 h-3.5 text-gray-500" />
       </div>
       <div>
-        <p className="text-sm text-gray-300">{RESOLUTION_LABELS[event.resolution]}</p>
+        <p className="text-sm text-gray-700">{RESOLUTION_LABELS[event.resolution]}</p>
         <p className="text-xs text-gray-500">{formatDayTime(event.at)}</p>
         {event.outcome && <OutcomeSection outcome={event.outcome} />}
       </div>
@@ -185,7 +185,7 @@ interface ListingTimelineProps {
 
 export function ListingTimeline({ timeline, loading }: ListingTimelineProps) {
   if (loading) {
-    return <p className="text-xs text-gray-600">Chargement de l'historique…</p>;
+    return <p className="text-xs text-gray-500">Chargement de l'historique…</p>;
   }
 
   if (!timeline || timeline.events.length === 0) {
@@ -201,7 +201,7 @@ export function ListingTimeline({ timeline, loading }: ListingTimelineProps) {
   return (
     <div>
       {timeline.earliestDataAt && (
-        <p className="text-[11px] text-gray-600 mb-3">Historique disponible depuis le {formatDay(timeline.earliestDataAt)}</p>
+        <p className="text-[11px] text-gray-500 mb-3">Historique disponible depuis le {formatDay(timeline.earliestDataAt)}</p>
       )}
       <div className="space-y-4">
         {timeline.events.map((event, i) => {

@@ -42,15 +42,15 @@ export function DzikoAiBubble() {
   return (
     <div className="fixed bottom-5 right-5 z-40">
       {open && (
-        <div className="absolute bottom-16 right-0 w-80 sm:w-96 h-[36rem] max-h-[80vh] bg-surface border border-white/10 rounded-2xl shadow-[0_25px_70px_-10px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5 flex-shrink-0">
+        <div className="absolute bottom-16 right-0 w-80 sm:w-96 h-[36rem] max-h-[80vh] bg-surface border border-gray-200 rounded-2xl shadow-[0_25px_70px_-10px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-neon-500/10 rounded-xl flex items-center justify-center">
                 <Bot className="w-4 h-4 text-neon-500" />
               </div>
               <p className="font-bold text-sm">Dziko IA</p>
             </div>
-            <button onClick={() => setOpen(false)} aria-label="Fermer" className="text-gray-500 hover:text-gray-300 transition-colors">
+            <button onClick={() => setOpen(false)} aria-label="Fermer" className="text-gray-500 hover:text-gray-700 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -63,10 +63,10 @@ export function DzikoAiBubble() {
             )}
             {messages.map((m, i) => (
               <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${m.role === 'user' ? 'bg-white/5' : 'bg-neon-500/10'}`}>
-                  {m.role === 'user' ? <User className="w-3 h-3 text-gray-400" /> : <Bot className="w-3 h-3 text-neon-500" />}
+                <div className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${m.role === 'user' ? 'bg-gray-100' : 'bg-neon-500/10'}`}>
+                  {m.role === 'user' ? <User className="w-3 h-3 text-gray-500" /> : <Bot className="w-3 h-3 text-neon-500" />}
                 </div>
-                <p className={`text-xs leading-relaxed rounded-xl px-3 py-2 max-w-[85%] whitespace-pre-wrap ${m.role === 'user' ? 'bg-neon-600 text-white' : 'bg-dark-400 text-gray-200'}`}>
+                <p className={`text-xs leading-relaxed rounded-xl px-3 py-2 max-w-[85%] whitespace-pre-wrap ${m.role === 'user' ? 'bg-neon-600 text-white' : 'bg-dark-400 text-gray-800'}`}>
                   {m.text}
                 </p>
               </div>
@@ -79,10 +79,10 @@ export function DzikoAiBubble() {
                 <p className="text-xs text-gray-500 rounded-xl px-3 py-2 bg-dark-400">Dziko IA réfléchit...</p>
               </div>
             )}
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && <p className="text-xs text-red-700">{error}</p>}
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-3 border-t border-white/5 flex-shrink-0">
+          <div className="flex items-center gap-2 px-3 py-3 border-t border-gray-200 flex-shrink-0">
             <input
               type="text"
               value={input}
@@ -90,7 +90,7 @@ export function DzikoAiBubble() {
               onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
               placeholder="Pose ta question..."
               disabled={sending}
-              className="flex-1 bg-dark-400 border border-white/10 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all disabled:opacity-60"
+              className="flex-1 bg-dark-400 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all disabled:opacity-60"
             />
             <button
               onClick={handleSend}

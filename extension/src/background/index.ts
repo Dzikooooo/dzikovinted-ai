@@ -32,6 +32,7 @@ import { logger, persistRelayedEntry } from "./logger";
 import { errorMessage } from "../lib/errorMessage";
 import { installDeleteRequestInstrumentation } from "./deleteRequestInstrumentation";
 import { installPublishMutationInstrumentation } from "./publishMutationInstrumentation";
+import { initRepublishScheduler } from "./republishScheduler";
 
 // Port de progression (Phase 3.1, publication) : l'app web l'ouvre juste
 // avant d'envoyer RUN_ACTION pour recevoir les etapes intermediaires d'une
@@ -406,5 +407,12 @@ installDeleteRequestInstrumentation();
 // AJOUTER" (2026-08-17) : meme principe, meme jour, pour la mutation de
 // creation/edition d'annonce -- voir publishMutationInstrumentation.ts.
 installPublishMutationInstrumentation();
+
+// Mission "ROUND 3 -- CHROME.ALARMS UNIQUEMENT" (2026-08-20) : enregistre
+// chrome.alarms.onAlarm/chrome.runtime.onStartup et lance une premiere
+// resynchronisation best-effort des programmations actives
+// (republish_schedules) -- voir republishScheduler.ts. Round 3 : detection/
+// log uniquement, aucune execution Vinted.
+initRepublishScheduler();
 
 logger.info("Background demarre");

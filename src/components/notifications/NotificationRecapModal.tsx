@@ -58,16 +58,16 @@ export function NotificationRecapModal({ onNavigate }: NotificationRecapModalPro
             <button
               key={n.id}
               onClick={() => handleView(n)}
-              className="w-full text-left bg-surface border border-white/5 rounded-xl p-3.5 hover:border-neon-500/30 transition-all flex items-start gap-3"
+              className="w-full text-left bg-surface border border-gray-200 rounded-xl p-3.5 hover:border-neon-500/30 transition-all flex items-start gap-3"
             >
               <div className={`w-8 h-8 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
                 <Icon className={`w-4 h-4 ${text}`} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-gray-200 truncate">{n.title}</p>
+                <p className="text-sm font-semibold text-gray-800 truncate">{n.title}</p>
                 {n.body && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>}
               </div>
-              {n.target_page && <ArrowRight className="w-3.5 h-3.5 text-gray-600 flex-shrink-0 mt-1" />}
+              {n.target_page && <ArrowRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 mt-1" />}
             </button>
           );
         })}
@@ -75,7 +75,7 @@ export function NotificationRecapModal({ onNavigate }: NotificationRecapModalPro
 
       <button
         onClick={handleCloseAll}
-        className="w-full text-sm text-gray-500 hover:text-gray-300 transition-colors py-2"
+        className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors py-2"
       >
         Tout marquer comme lu
       </button>

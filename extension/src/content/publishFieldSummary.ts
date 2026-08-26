@@ -55,12 +55,25 @@ function materialDisplayValue(payload: PublishListingPayload): string | null {
   return payload.material;
 }
 
-const PACKAGE_SIZE_LABELS: Record<PublishListingPayload["packageSize"], string> = {
+// Mission "ROUND PACKAGE SIZE -- implementation production" (2026-08-18) :
+// exporte desormais -- ce champ n'est plus un simple libelle manuel (voir
+// packageSizeSelection.ts, vinted-publish.ts::selectPackageSizeWithConfirmation),
+// la conversion small/medium/large -> Petit/Moyen/Grand reste utile pour les
+// messages confirmed/pending affiches quel que soit le resultat de la
+// selection automatique.
+export const PACKAGE_SIZE_LABELS: Record<PublishListingPayload["packageSize"], string> = {
   small: "Petit",
   medium: "Moyen",
   large: "Grand",
 };
 
+// "Taille du colis" n'est PLUS un champ purement manuel depuis la mission
+// "ROUND PACKAGE SIZE -- implementation production" (2026-08-18, preuve live
+// confirmee) -- retiree de cette liste, geree directement par
+// vinted-publish.ts::selectPackageSizeWithConfirmation qui pousse elle-meme
+// une entree confirmed/pending selon le resultat REEL de la selection
+// (jamais suppose reussi sur le seul fait que .click() n'a pas leve
+// d'exception -- voir packageSizeSelection.ts::clickPackageSizeRadio).
 export function computeManualFields(payload: PublishListingPayload): string[] {
   return [
     fieldLine("Catégorie", payload.category || null),
@@ -69,17 +82,6 @@ export function computeManualFields(payload: PublishListingPayload): string[] {
     fieldLine("Taille", payload.size),
     fieldLine("Couleur", payload.color),
     fieldLine("Matière", materialDisplayValue(payload)),
-    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT" (2026-08-16) : preuve live --
-    // Vinted affichait "Petit" (son propre choix par defaut) alors que le
-    // payload demandait "Moyen" -- ce champ n'a JAMAIS ete automatise (aucun
-    // code de ce fichier n'ecrit jamais sur PACKAGE_SIZE_CELL_SELECTOR,
-    // verifie par grep). L'ancien libelle ("Moyen : à sélectionner") pouvait
-    // laisser croire que "Moyen" etait deja applique ou en cours de
-    // traitement -- desormais explicite : ResellOS ne touche jamais ce
-    // champ, la valeur visible sur Vinted a l'instant T est TOUJOURS le
-    // choix de Vinted (par defaut ou deja modifie par l'utilisateur), jamais
-    // une confirmation de la valeur demandee.
-    `Taille du colis : ${PACKAGE_SIZE_LABELS[payload.packageSize]} demandé -- ResellOS ne sélectionne jamais ce champ, Vinted affiche son propre choix (vérifie/corrige-le toi-même avant de publier)`,
   ];
 }
 

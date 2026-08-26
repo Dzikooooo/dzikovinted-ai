@@ -237,7 +237,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
 
       if (updateError) throw new Error(updateError.message);
       if (!updatedRows || updatedRows.length === 0) {
-        throw new Error("La sauvegarde n'a modifié aucune ligne en base -- réessaie ou contacte le support si le problème persiste.");
+        throw new Error("La sauvegarde n'a modifié aucune ligne en base — réessaie ou contacte le support si le problème persiste.");
       }
 
       // "Un champ non modifie ne doit provoquer aucune attente DOM"
@@ -291,23 +291,23 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           <h2 className="text-lg font-black">Modifier l'annonce</h2>
           <p className="text-xs text-gray-500 mt-1">
             {listing.title}
-            {listing.sku !== null && <span className="text-gray-600 font-mono"> #{listing.sku}</span>}
+            {listing.sku !== null && <span className="text-gray-500 font-mono"> #{listing.sku}</span>}
           </p>
           {listing.last_edited_at && (
-            <p className="text-[10px] text-gray-600 mt-0.5">
+            <p className="text-[10px] text-gray-500 mt-0.5">
               Modifiée le {new Date(listing.last_edited_at).toLocaleDateString('fr-FR')}
             </p>
           )}
         </div>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-white/5">
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
 
       {error && (
         <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-5">
-          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-          <p className="text-sm text-red-400">{error}</p>
+          <AlertCircle className="w-4 h-4 text-red-700 flex-shrink-0" />
+          <p className="text-sm text-red-700">{error}</p>
         </div>
       )}
 
@@ -316,7 +316,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Photos</label>
           <div className="grid grid-cols-4 gap-2">
             {images.map((src, i) => (
-              <div key={`${src}-${i}`} className="relative aspect-square rounded-xl overflow-hidden bg-dark-400 border border-white/5 group">
+              <div key={`${src}-${i}`} className="relative aspect-square rounded-xl overflow-hidden bg-dark-400 border border-gray-200 group">
                 <img src={src} alt="" className="w-full h-full object-cover" />
                 <button
                   onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
@@ -329,12 +329,12 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
             ))}
             {images.length < photoLimit && (
               <label className="aspect-square rounded-xl border-2 border-dashed border-gray-700 flex flex-col items-center justify-center cursor-pointer hover:border-neon-500/40 hover:bg-neon-500/5 transition-all">
-                <ImageIcon className="w-4 h-4 text-gray-600" />
+                <ImageIcon className="w-4 h-4 text-gray-500" />
                 <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />
               </label>
             )}
           </div>
-          <p className="text-[11px] text-gray-600 mt-2">
+          <p className="text-[11px] text-gray-500 mt-2">
             Remplacement manuel uniquement -- aucune régénération IA de la photo n'est disponible pour l'instant.
           </p>
         </div>
@@ -343,7 +343,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Titre</label>
           <input
             type="text"
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
             value={form.title}
             onChange={(e) => updateField('title', e.target.value)}
           />
@@ -351,7 +351,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
         <div>
           <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Description</label>
           <textarea
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all min-h-[100px] resize-y"
             value={form.description}
             onChange={(e) => updateField('description', e.target.value)}
           />
@@ -372,7 +372,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
               <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
               <input
                 type="number"
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                 value={form[k]}
                 onChange={(e) => updateField(k, parseFloat(e.target.value) || 0)}
               />
@@ -386,7 +386,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
               <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
               <input
                 type="text"
-                className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                 value={form[k]}
                 onChange={(e) => updateField(k, e.target.value)}
               />
@@ -395,7 +395,7 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">État</label>
             <select
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
               value={form.condition}
               onChange={(e) => updateField('condition', e.target.value)}
             >
@@ -429,8 +429,8 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
           // modifications" en pensant avoir pousse la mise a jour vers
           // Vinted, ce qui n'est jamais le cas.
           <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-red-300">
+            <AlertCircle className="w-4 h-4 text-red-700 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700">
               Impossible de mettre à jour cette annonce sur Vinted pour l'instant : le compte sélectionné dans le
               filtre en haut de la page Mes annonces n'est pas celui auquel cette annonce appartient. Sélectionne le bon
               compte Vinted dans ce filtre, puis rouvre cette modale. En attendant, "Enregistrer les modifications"
@@ -448,12 +448,12 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
               titre, le prix, la description, la marque, la taille, l'état, la couleur et la matière vers la fiche
               Vinted -- tu valides toi-même l'enregistrement sur place. Les photos ne sont pas encore synchronisées
               par cette mise à jour (modifie-les directement sur Vinted si besoin), et un changement de catégorie
-              n'est pas garanti d'être pris en compte -- non testé en conditions réelles.
+              n'est pas garanti d'être pris en compte — non testé en conditions réelles.
             </p>
           </div>
         ) : (
           <p className="text-xs text-gray-500">
-            Cette annonce n'est pas encore publiee sur Vinted -- une fois enregistree, tu pourras la publier avec les
+            Cette annonce n'est pas encore publiee sur Vinted — une fois enregistree, tu pourras la publier avec les
             nouvelles informations.
           </p>
         )}

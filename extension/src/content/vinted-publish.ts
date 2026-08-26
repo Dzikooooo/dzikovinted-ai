@@ -51,20 +51,31 @@ import {
   describePriceValidationState,
   dispatchEscapeKey,
   dispatchFullClick,
+  parsePriceToNumber,
   setNativeValue,
   typeIntoBrandSearchInput,
   typeIntoPriceField,
   verifyLoggedInAccount,
   type PriceValidationState,
 } from "./formFill";
-import { isFormReallyReadyToSubmit, type SaveButtonState } from "./publishReadiness";
+import {
+  evaluateReadinessStability,
+  isFormReallyReadyToSubmit,
+  INITIAL_READINESS_STABILITY_STATE,
+  type ReadinessStabilityState,
+  type SaveButtonState,
+} from "./publishReadiness";
+import { watchAndHighlightSaveButton } from "./publishReadinessHighlight";
+import { initPublishSyntheticClickPoc } from "./publishSyntheticClickPoc";
+import { initAttributeCommitEventRecorder } from "./attributeCommitEventRecorder";
+import { attemptAutomaticRepublishSubmit, isRepublishPayload } from "./publishAutoSubmit";
 import {
   describeConditionTriggerAfterSelection,
   matchConditionOption,
   readConditionOptionCandidates,
 } from "./conditionOptionReader";
 import { readSizeOptionCandidates } from "./sizeOptionReader";
-import { readColorOptionCandidates } from "./colorOptionReader";
+import { readColorOptionCandidates, isColorCandidateChecked, resolveColorOptionByTestId } from "./colorOptionReader";
 import { matchMaterialOption, readMaterialOptionCandidates } from "./materialOptionReader";
 import { parseMaterials } from "./materials";
 import { readCategoryResultCells } from "./categoryOptionReader";
@@ -74,6 +85,7 @@ import {
   describeExactMatchCandidate,
   describeExactMatchStructure,
   diffDropdownDomElements,
+  isVisible,
   matchesHumanClick,
   snapshotDropdownDom,
   type DropdownDomSnapshot,
@@ -89,15 +101,18 @@ import {
   type CategoryDetectionMethod,
   type CategoryDetectionState,
 } from "./categoryDetection";
-import { computeManualFields, replaceManualPlaceholder } from "./publishFieldSummary";
+import { computeManualFields, PACKAGE_SIZE_LABELS, replaceManualPlaceholder } from "./publishFieldSummary";
 import { reconstructPhotoFiles } from "./photoReconstruction";
 import { describeAvailableFileInputs } from "./fileInputDiagnostics";
 import { importPhotosWithVerification, type PhotoImportOutcome } from "./photoImportVerification";
 import {
   PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED_ATTR,
   PUBLISH_CREATE_RESPONSE_EVENT_NAME,
-  type PublishCreateResponseCapture,
+  summarizePricePayload,
 } from "./publishCreateResponseCapture";
+import { PRICE_PAYLOAD_PATCHED_EVENT } from "./priceMainWorldWriter";
+import type { PublishCreateResponseCapture } from "./publishCreateResponseCapture";
+import { clickPackageSizeRadio, findAlreadyCheckedPackageSize, readPackageSizeCellSnapshots } from "./packageSizeSelection";
 import { isContentCommand } from "../lib/messages";
 import type { FetchedPhoto, PublishCommandResponse, PublishListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
 import { errorMessage } from "../lib/errorMessage";
@@ -183,6 +198,37 @@ let lastFilesBuiltCount: number | null = null;
 // `null` = import pas encore termine (etat initial) -- traite comme "pas
 // pret", jamais comme "pret par defaut" (voir publishReadiness.ts).
 let photoImportOutcome: PhotoImportOutcome | null = null;
+// Mission "REPUBLICATION 100% UNATTENDED -- COMMIT MARQUE/COULEUR" (2026-08-19) :
+// CAUSE CONFIRMEE en test live -- le POST reel /api/v2/item_upload/items
+// contenait brand_id:null/color_ids:[] malgre un DOM visuel correct (trigger
+// affichant "Polo Ralph Lauren", aria-checked="true" sur "Bleu") : la
+// confirmation DOM (valeur du trigger / aria-checked) ne prouve PAS a elle
+// seule que Vinted a reellement committe la valeur cote formulaire -- meme
+// classe de faux positif que le bug prix/photos deja corrige (memes missions
+// "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT"/"FIABILISER
+// L'IMPORT PHOTOS"). `null` = prefill Marque/Couleur pas encore termine (etat
+// initial) -- traite comme "pas pret", jamais suppose pret par defaut, meme
+// discipline exacte que photoImportOutcome ci-dessus. Mis a jour par
+// attemptBrandPrefill()/attemptColorPrefill(), consulte par
+// watchForPublishReadiness() (readiness ET auto-submit) ci-dessous.
+let brandCommitConfirmed: boolean | null = null;
+let colorCommitConfirmed: boolean | null = null;
+// Mission "ROUND PRIX + COLIS -- CORRECTIF NaN" (2026-08-19) : meme
+// discipline exacte que brandCommitConfirmed/colorCommitConfirmed ci-dessus
+// -- CAUSE CONFIRMEE en test live que rien ne bloquait PUBLISH_READY_TO_SUBMIT/
+// AUTO_SUBMIT_TRIGGERED quand la Taille du colis n'etait jamais reellement
+// confirmee (checkedAfterClick resté false, ou cellule jamais trouvee).
+// `null` = pas encore tentee, traite comme "pas pret". Mis a jour par
+// selectPackageSizeWithConfirmation(), consulte par watchForPublishReadiness()
+// ci-dessous.
+let packageSizeCommitConfirmed: boolean | null = null;
+// Mission "ROUND SUIVANT -- POC DIAGNOSTIQUE DIRECT DU BOUTON AJOUTER"
+// (2026-08-19) : consulte UNIQUEMENT par publishSyntheticClickPoc.ts (DEV
+// only, jamais par le flow normal) pour refuser toute tentative avant que la
+// readiness soit reellement CONFIRMEE STABLE -- reflete exactement le meme
+// instant que l'envoi de PUBLISH_READY_TO_SUBMIT ci-dessous, jamais une
+// nouvelle logique de lecture d'etat.
+let publishReadyToSubmitConfirmed = false;
 function checkForVintedErrorBanner(): void {
   vintedErrorCheckScheduled = false;
   if (vintedErrorBannerAlreadyLogged) return;
@@ -222,12 +268,139 @@ function reportPrefillSummary(confirmed: string[], pending: string[]): void {
   chrome.runtime.sendMessage({ type: "PUBLISH_PREFILL_SUMMARY", confirmed, pending });
 }
 
+// Mission "ROUND PACKAGE SIZE -- implementation production" (2026-08-18) :
+// selection REELLE de la "Taille du colis", activee apres validation live
+// exhaustive (voir packageSizeSelection.ts pour le detail des methodes
+// precedemment testees et rejetees). payload.packageSize est une valeur
+// EXPLICITEMENT confirmee par l'utilisateur avant chaque publication
+// (PublishConfirmationModal.tsx, jamais une valeur devinee cote extension --
+// voir l'audit de cette mission) -- ce n'est donc jamais un "mapping
+// invente", uniquement l'application d'une decision humaine deja actee.
+//
+// Mission "ROUND PRIX + COLIS -- DIAGNOSTIC" (2026-08-19) : timeout etendu
+// (PACKAGE_SIZE_CELLS_TIMEOUT_MS, ci-dessous) -- a l'epoque, hypothese non
+// prouvee que Chromium depriorise le rendu des onglets active:false. Mission
+// "ROUND PRIX + COLIS -- FIX ORDRE FLOW COLIS" (2026-08-20) : cette
+// hypothese est INVALIDEE par une preuve live directe (cellule reellement
+// presente dans le DOM apres rendu, alors que ResellOS timeoutait encore) --
+// la cause reelle est un bug d'ORDRE dans runPublishOnce() (le colis etait
+// attendu AVANT meme que la resolution categorie/attributs ne commence, voir
+// le commentaire au-dessus de l'appel a watchForCategorySelectionAndPrefillAttributes()
+// dans runPublishOnce()), desormais corrige. Ce timeout de 20000ms reste
+// neanmoins une tolerance raisonnable (rendu background toujours possiblement
+// plus lent) -- inchange, ne touche pas au flow d'onglets lui-meme.
+//
+// Mission "ROUND PRIX + COLIS -- COMPORTEMENT FINAL" (2026-08-19) : PREUVE
+// LIVE CONFIRMEE sur un polo reel -- index 1/Petit : checked:true ET
+// recommended:true ; index 2/Moyen et index 3/Grand : les deux false. Vinted
+// pre-selectionne donc REELLEMENT sa recommandation via le radio natif
+// (`checked`), pas seulement un badge visuel. Comportement final : lecture
+// d'un instantane DOM complet (readPackageSizeCellSnapshots(),
+// packageSizeSelection.ts) des que les cellules existent, TOUJOURS journalise
+// (PACKAGE_SIZE_DOM_SNAPSHOT), purement observationnel au sens ou il ne
+// declenche jamais de clic lui-meme. Si un radio est DEJA reellement coche
+// (findAlreadyCheckedPackageSize -- `.checked` structurel, jamais juste le
+// texte "Recommandé"), ResellOS NE CLIQUE RIEN et adopte cet etat comme seule
+// source de verite -- meme si `payload.packageSize` (heuristique app-side,
+// voir PublishConfirmationModal.tsx) demandait autre chose. Seulement si
+// AUCUN radio n'est deja coche, le comportement historique s'applique
+// (clickPackageSizeRadio sur la valeur demandee). Si rien n'est coche mais
+// qu'une option porte "Recommandé", cette info reste uniquement journalisee
+// (snapshot) -- ne declenche toujours aucun clic automatique cote ResellOS
+// dans ce cas precis, HORS PERIMETRE explicitement exclu de ce round.
+//
+// Ne considere JAMAIS la selection reussie sur le seul fait que .click() n'a
+// pas leve d'exception (voir clickPackageSizeRadio, packageSizeSelection.ts) :
+// seule la relecture de `radio.checked` juste apres l'appel fait foi. En cas
+// d'echec (radio introuvable, valeur invalide/absente, ou checked reste
+// false apres le clic), retombe sur le comportement securise historiquement
+// en place : un rappel manuel explicite dans `pending`, JAMAIS une selection
+// arbitraire (ex. jamais "Petit" par defaut).
+const PACKAGE_SIZE_CELLS_TIMEOUT_MS = 20000;
+
+// Libelle FR propre pour le message utilisateur quand Vinted a deja
+// selectionne -- jamais le texte DOM brut (qui peut concatener "Petit" et
+// "Recommandé" sans separateur selon la structure reelle de la cellule).
+// `actual.label` (texte DOM brut) reste journalise integralement dans
+// PACKAGE_SIZE_SELECT_RESULT pour le diagnostic, seul ce libelle controle
+// est utilise dans le message affiche a l'utilisateur.
+const PACKAGE_SIZE_INDEX_LABELS: Record<1 | 2 | 3, string> = {
+  1: PACKAGE_SIZE_LABELS.small,
+  2: PACKAGE_SIZE_LABELS.medium,
+  3: PACKAGE_SIZE_LABELS.large,
+};
+
+async function selectPackageSizeWithConfirmation(
+  payload: PublishListingPayload,
+  confirmed: string[],
+  pending: string[]
+): Promise<void> {
+  const label = PACKAGE_SIZE_LABELS[payload.packageSize] ?? String(payload.packageSize);
+  try {
+    await waitForElement(sel.PACKAGE_SIZE_CELL_SELECTOR(1), { timeoutMs: PACKAGE_SIZE_CELLS_TIMEOUT_MS });
+  } catch (err) {
+    docLog.warn("PACKAGE_SIZE_SELECT_CELLS_NOT_FOUND", { requestedLabel: label, error: errorMessage(err) });
+    pending.push(`Taille du colis : ${label} demandé -- ResellOS n'a pas trouvé ce champ, sélectionne-le toi-même sur Vinted`);
+    packageSizeCommitConfirmed = false;
+    return;
+  }
+
+  // Instantane DOM complet, purement observationnel -- log unique demande
+  // explicitement, TOUJOURS emis des que les cellules existent (avant toute
+  // decision), jamais conditionne au succes/echec de la suite.
+  const snapshots = readPackageSizeCellSnapshots();
+  docLog.info("PACKAGE_SIZE_DOM_SNAPSHOT", { requestedValue: payload.packageSize, requestedLabel: label, cells: snapshots });
+
+  // Vinted a-t-il DEJA reellement selectionne une taille lui-meme (etat
+  // structurel .checked, jamais un badge visuel seul) ? Si oui, ne jamais
+  // ecraser -- confirme cet etat reel tel quel, quelle que soit la valeur
+  // demandee par ResellOS.
+  const alreadyCheckedIndex = findAlreadyCheckedPackageSize(snapshots);
+  if (alreadyCheckedIndex !== null) {
+    const actual = snapshots.find((s) => s.index === alreadyCheckedIndex)!;
+    const actualCleanLabel = PACKAGE_SIZE_INDEX_LABELS[alreadyCheckedIndex];
+    docLog.info("PACKAGE_SIZE_SELECT_RESULT", {
+      requestedLabel: label,
+      requestedIndex: null,
+      radioFound: true,
+      checkedAfterClick: true,
+      outcome: "already_selected_by_vinted",
+      actualIndex: alreadyCheckedIndex,
+      actualLabel: actual.label, // texte DOM brut, diagnostic uniquement
+      actualCleanLabel,
+      recommended: actual.recommended,
+    });
+    // Message utilisateur : le libelle CONTROLE ("Petit"/"Moyen"/"Grand"),
+    // jamais "Moyen demandé" quand Vinted avait deja selectionne autre chose
+    // (demande explicite) -- et jamais le texte DOM brut potentiellement
+    // concatene avec "Recommandé".
+    confirmed.push(`Taille du colis : ${actualCleanLabel} (déjà sélectionné par Vinted)`);
+    packageSizeCommitConfirmed = true;
+    return;
+  }
+
+  const outcome = clickPackageSizeRadio(payload.packageSize);
+  docLog.info("PACKAGE_SIZE_SELECT_RESULT", { requestedLabel: label, ...outcome });
+  if (outcome.checkedAfterClick === true) {
+    confirmed.push(`Taille du colis : ${label}`);
+    packageSizeCommitConfirmed = true;
+  } else {
+    pending.push(`Taille du colis : ${label} demandé -- la sélection automatique a échoué, sélectionne-la toi-même sur Vinted`);
+    packageSizeCommitConfirmed = false;
+  }
+}
+
 // Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT" (2026-08-16) :
 // meme ordre de grandeur que les autres delais de confirmation de ce fichier
 // (ATTRIBUTE_CONFIRMATION_TIMEOUT_MS plus bas) -- laisse le temps a un
 // eventuel re-render/debounce de validation Vinted apres la frappe simulee,
 // sans jamais bloquer indefiniment.
 const PRICE_CONFIRMATION_TIMEOUT_MS = 5000;
+// Mission "STABILISATION ECRITURE PRIX" (2026-08-25) : delai de la
+// re-verification de stabilite. Volontairement plus long que le snapshot
+// `plus_200ms` de typeIntoPriceField (formFill.ts) qui avait revele le NaN --
+// on veut observer APRES le re-render, pas pendant.
+const PRICE_STABILITY_DELAY_MS = 600;
 
 // Remplit titre/description/prix et relit chacun dans le DOM juste apres
 // ecriture -- ne rapporte "confirme" que ce qui a reellement ete verifie,
@@ -296,6 +469,26 @@ async function fillTextFieldsWithConfirmation(
 
   try {
     const priceInput = await waitForElement<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+
+    // Mission "ROUND PRIX + COLIS -- CORRECTIF NaN" (2026-08-19) : CAUSE
+    // CONFIRMEE en test live -- "NaN €" affiche sur Vinted apres
+    // republication. payload.price.toString() etait appele SANS jamais
+    // verifier que payload.price est un nombre fini -- NaN.toString() reussit
+    // silencieusement ("NaN"), tape lettre par lettre par typeIntoPriceField(),
+    // que Vinted affiche ensuite tel quel ("NaN €"). parsePriceToNumber()
+    // (formFill.ts, deja source unique de verite pour LIRE l'etat DOM) est
+    // desormais reutilisee pour VALIDER payload.price AVANT toute frappe --
+    // jamais deux logiques de parsing divergentes. Rejette NaN/Infinity/
+    // null/undefined/vide : dans ce cas, AUCUNE frappe n'est jamais tentee
+    // (jamais de "NaN"/"Infinity" tape a l'aveugle), rappel manuel honnête.
+    const normalizedPrice = parsePriceToNumber(payload.price);
+    if (normalizedPrice === null) {
+      docLog.error("PREFILL_PRICE_INVALID_INPUT", { rawPrice: payload.price });
+      pending.push("Prix");
+      stepTimestamps.PREFILL_PRICE_DONE = Date.now();
+      return;
+    }
+
     // Mission "REPUBLICATION VINTED : BUG PRIX + FAUX READY_TO_SUBMIT"
     // (2026-08-16) : CAUSE CONFIRMEE -- setNativeValue() ecrit la valeur en UN
     // SEUL bloc (une seule paire setter+evenements), exactement le mecanisme
@@ -305,8 +498,9 @@ async function fillTextFieldsWithConfirmation(
     // -- Vinted semble exiger un flux de frappes incrementales pour que son
     // masque de devise recalcule correctement son etat interne, meme quand
     // l'affichage se reformate cosmetiquement en "24,00 €" apres un bloc
-    // unique. Helper deja eprouve reutilise tel quel, aucune duplication.
-    await typeIntoPriceField(priceInput, payload.price.toString());
+    // unique. Helper deja eprouve reutilise tel quel, aucune duplication --
+    // seul l'ARGUMENT change (normalizedPrice, jamais payload.price brut).
+    await typeIntoPriceField(priceInput, String(normalizedPrice), DOCUMENT_INSTANCE_ID);
 
     // La comparaison de VALEUR AFFICHEE seule ne prouve plus rien (preuve live
     // directe : "24,00 €" affiche ET rejete simultanement par Vinted --
@@ -314,7 +508,8 @@ async function fillTextFieldsWithConfirmation(
     // (formFill.ts) agrege la valeur ET l'etat de validation REEL du champ --
     // re-interroge a chaque evaluation (waitForCondition), jamais une lecture
     // synchrone unique juste apres l'ecriture (le re-render/la validation de
-    // Vinted peut etre asynchrone).
+    // Vinted peut etre asynchrone). Compare desormais a normalizedPrice
+    // (jamais payload.price brut) -- coherent avec la valeur reellement tapee.
     let lastPriceState: PriceValidationState = describePriceValidationState(priceInput);
     let priceAccepted = false;
     try {
@@ -322,7 +517,7 @@ async function fillTextFieldsWithConfirmation(
         () => {
           const freshInput = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
           lastPriceState = describePriceValidationState(freshInput);
-          return lastPriceState.parsedValue === payload.price && lastPriceState.valid;
+          return lastPriceState.parsedValue === normalizedPrice && lastPriceState.valid;
         },
         {
           timeoutMs: PRICE_CONFIRMATION_TIMEOUT_MS,
@@ -334,7 +529,35 @@ async function fillTextFieldsWithConfirmation(
       // lastPriceState porte deja le dernier etat reellement observe.
     }
 
-    docLog.info("PREFILL_PRICE", { payload: payload.price, elementFound: true, ...lastPriceState, confirmed: priceAccepted });
+    // Mission "STABILISATION ECRITURE PRIX" (2026-08-25) : waitForCondition
+    // RESOUT des que la condition est vraie -- un prix correct a l'instant du
+    // controle pouvait donc etre declare accepte, puis devenir "NaN €" au
+    // re-render React suivant (mecanisme demontre par la trace
+    // PRICE_INPUT_WRITE_STEP : DOM correct jusqu'apres blur, NaN a +200ms).
+    //
+    // On revalide donc APRES le re-render, une seule fois, sans jamais
+    // reecrire quoi que ce soit : ce n'est pas un retry qui lutte contre
+    // React, c'est une preuve de STABILITE. Un prix qui ne survit pas au
+    // re-render n'a jamais ete reellement accepte -- le declarer confirme
+    // produirait exactement le faux positif que ce round elimine.
+    if (priceAccepted) {
+      await new Promise((resolve) => setTimeout(resolve, PRICE_STABILITY_DELAY_MS));
+      const stableInput = document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR);
+      const stableState = describePriceValidationState(stableInput);
+      const stillCorrect = stableState.parsedValue === normalizedPrice && stableState.valid;
+      docLog.info("PREFILL_PRICE_STABILITY_CHECK", {
+        normalizedPrice,
+        delayMs: PRICE_STABILITY_DELAY_MS,
+        ...stableState,
+        stable: stillCorrect,
+      });
+      if (!stillCorrect) {
+        priceAccepted = false;
+        lastPriceState = stableState;
+      }
+    }
+
+    docLog.info("PREFILL_PRICE", { payload: payload.price, normalizedPrice, elementFound: true, ...lastPriceState, confirmed: priceAccepted });
     if (priceAccepted) confirmed.push("Prix");
     else pending.push("Prix");
   } catch (err) {
@@ -1221,8 +1444,243 @@ function attemptSizePrefill(spec: AttributePickerSpec, confirmed: string[], pend
   return attemptDedicatedPickerPrefill(spec, readSizeOptionCandidates, confirmed, pending);
 }
 
-function attemptColorPrefill(spec: AttributePickerSpec, confirmed: string[], pending: string[]): Promise<void> {
-  return attemptDedicatedPickerPrefill(spec, readColorOptionCandidates, confirmed, pending);
+// Mission "CAUSE COULEUR CONFIRMEE LIVE" (2026-08-19) : implementation DEDIEE
+// (n'appelle plus attemptDedicatedPickerPrefill -- Taille reste sur ce chemin
+// partage, inchange) car la preuve structurelle de selection differe
+// desormais fondamentalement : aria-checked==="true" sur le candidat
+// lui-meme, jamais la valeur du trigger (voir colorOptionReader.ts pour la
+// preuve live complete). "Ne considere jamais la couleur confirmee sur la
+// seule valeur du trigger" (demande explicite) -- confirmTriggerValue()
+// n'est plus jamais appelee ici.
+async function attemptColorPrefill(spec: AttributePickerSpec, confirmed: string[], pending: string[]): Promise<void> {
+  if (!spec.value) {
+    docLog.info(spec.logName, { label: spec.label, outcome: "no_value" });
+    replaceManualPlaceholder(pending, spec.label, `${spec.label} : donnée manquante (à choisir sur Vinted)`);
+    colorCommitConfirmed = true; // rien a prouver -- aucune valeur demandee
+    return;
+  }
+
+  let lastStep: DedicatedPickerStep = "not_started";
+
+  try {
+    const trigger = await waitForElement<HTMLElement>(spec.triggerSelector, { timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS });
+    lastStep = "trigger_found";
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep });
+
+    dispatchFullClick(trigger);
+    lastStep = "trigger_click_attempted";
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep });
+
+    // Signal reellement observe en live : au moins un checkbox d'option
+    // canonique (filter-grid-option-{id}) present dans le DOM.
+    await waitForCondition(() => readColorOptionCandidates().length > 0, {
+      timeoutMs: ATTRIBUTE_TRIGGER_TIMEOUT_MS,
+      description: `${spec.label} option checkboxes appear`,
+    });
+    lastStep = "options_found";
+    const candidates = readColorOptionCandidates();
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep, optionsCount: candidates.length });
+
+    // matchOption() INCHANGE -- exact-match-first, jamais de fuzzy dangereux.
+    const labels = candidates.map((c) => c.label);
+    const match = matchOption(spec.value, labels);
+    if (!match) {
+      const diagnostic = describeMatchAttempt(spec.value, labels);
+      docLog.warn(spec.logName, { label: spec.label, value: spec.value, optionsCount: labels.length, outcome: "no_reliable_match" });
+      docLog.warn("ATTRIBUTE_MATCH_DIAGNOSTIC", { field: spec.label, ...diagnostic });
+      document.body.click(); // ferme le picker sans rien selectionner (aucune valeur inventee)
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (aucune correspondance fiable sur Vinted -- à choisir toi-même)`
+      );
+      colorCommitConfirmed = false;
+      return;
+    }
+
+    const matchedCandidate = candidates.find((c) => c.label === match)!;
+    docLog.info(`${spec.logName}_STEP`, {
+      field: spec.label,
+      step: "option_match_found",
+      requestedValue: spec.value,
+      matchedTestId: matchedCandidate.containerTestId,
+    });
+
+    if (isColorCandidateChecked(matchedCandidate)) {
+      // Deja coche (etat par defaut Vinted, ou tentative precedente reussie)
+      // -- ne JAMAIS re-cliquer, un second clic decocherait (meme discipline
+      // que Matiere).
+      docLog.info(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
+        outcome: "already_checked",
+      });
+      replaceManualPlaceholder(pending, spec.label, null);
+      confirmed.push(spec.label);
+      colorCommitConfirmed = true;
+      return;
+    }
+
+    // Mission "CAUSE COULEUR CONFIRMEE LIVE -- doublon DOM" (2026-08-19) :
+    // re-resolution EXPLICITE par data-testid canonique juste avant le clic
+    // -- jamais matchedCandidate.container conserve depuis le matching (voir
+    // resolveColorOptionByTestId(), colorOptionReader.ts). Absence
+    // structurellement impossible ici (le candidat vient d'etre lu, aucun
+    // await entre les deux), mais traitee honnêtement comme un echec plutot
+    // que de risquer un crash sur .click() d'un null.
+    const freshClickTarget = resolveColorOptionByTestId(matchedCandidate.containerTestId);
+    if (!freshClickTarget) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
+        outcome: "click_target_not_found",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
+      );
+      colorCommitConfirmed = false;
+      return;
+    }
+    freshClickTarget.click();
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matchedTestId: matchedCandidate.containerTestId });
+
+    // Preuve de confirmation UNIQUE : aria-checked==="true" sur le candidat
+    // re-resolu FRAICHEMENT (jamais matchedCandidate.container conserve --
+    // un re-render React pourrait l'avoir remplace). Timeout dépassé => pas
+    // de fausse confirmation, jamais un succès inventé.
+    let ariaCheckedConfirmed = false;
+    try {
+      await waitForCondition(
+        () => {
+          const fresh = readColorOptionCandidates().find((c) => c.containerTestId === matchedCandidate.containerTestId);
+          return !!fresh && isColorCandidateChecked(fresh);
+        },
+        { timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS, description: `${spec.label} checkbox aria-checked becomes true` }
+      );
+      ariaCheckedConfirmed = true;
+    } catch {
+      // rien -- lastPriceState-style, l'echec est gere honnêtement ci-dessous.
+    }
+
+    if (!ariaCheckedConfirmed) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
+        outcome: "click_not_confirmed",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
+      );
+      colorCommitConfirmed = false;
+      return;
+    }
+
+    // Mission "REPUBLICATION 100% UNATTENDED -- COMMIT MARQUE/COULEUR"
+    // (2026-08-19) : CAUSE CONFIRMEE en test live -- meme apres ce correctif
+    // aria-checked, le POST reel contenait toujours color_ids:[]. Hypothese
+    // retenue (widget "filter-grid-option-*" -- vraisemblablement un
+    // composant de FILTRE reutilise, jamais concu pour un formulaire) :
+    // Escape est tres majoritairement une convention "annuler" pour ce type
+    // de composant, pas "appliquer" -- il a pu discretement invalider une
+    // selection encore locale/non committee. Remplace par un clic REEL en
+    // dehors du panneau (document.body.click(), deja la convention de
+    // fermeture utilisee ailleurs dans ce fichier pour un picker sans
+    // selection) -- geste le plus proche de ce qu'un humain fait
+    // naturellement en passant au champ suivant. Non prouve en direct (le
+    // diagnostic evenementiel A/B a ete interrompu avant d'obtenir la preuve
+    // definitive) -- c'est pourquoi la re-verification post-fermeture
+    // ci-dessous ne fait JAMAIS confiance a cette fermeture sans preuve.
+    const stillOpen = readColorOptionCandidates().length > 0;
+    let dropdownClosed: boolean | null = null;
+    if (stillOpen) {
+      document.body.click();
+      try {
+        await waitForCondition(() => readColorOptionCandidates().length === 0, {
+          timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS,
+          description: `${spec.label} option picker closes after clicking away`,
+        });
+        dropdownClosed = true;
+      } catch {
+        dropdownClosed = false;
+      }
+      docLog.info(`${spec.logName}_STEP`, {
+        field: spec.label,
+        step: "dropdown_closure_attempted",
+        wasStillOpen: stillOpen,
+        closedAfterClickAway: dropdownClosed,
+      });
+    }
+
+    // "Ne considere jamais le DOM visuel comme preuve suffisante" (demande
+    // explicite) : re-resout l'option APRES la fermeture et re-verifie
+    // aria-checked une SECONDE fois -- si le candidat existe encore mais que
+    // aria-checked est retombe a false, la fermeture a bien fait perdre la
+    // selection (meme classe de faux positif que l'ancien bug trigger.value)
+    // -- ne jamais declarer confirme dans ce cas. Si le candidat a disparu du
+    // DOM (picker reellement demonte), la preuve PRE-fermeture
+    // (ariaCheckedConfirmed, deja vraie) reste la seule source de verite
+    // disponible -- jamais re-exigee sur un noeud qui n'existe plus.
+    const afterCloseCandidate = readColorOptionCandidates().find((c) => c.containerTestId === matchedCandidate.containerTestId);
+    const ariaCheckedAfterClose = afterCloseCandidate ? isColorCandidateChecked(afterCloseCandidate) : null;
+    const lostAfterClose = afterCloseCandidate !== undefined && ariaCheckedAfterClose === false;
+
+    if (lostAfterClose) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
+        ariaCheckedConfirmed,
+        dropdownWasStillOpen: stillOpen,
+        dropdownClosedAfterClickAway: dropdownClosed,
+        ariaCheckedAfterClose,
+        outcome: "confirmed_before_close_but_lost_after_close",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection perdue après fermeture du panneau -- vérifie toi-même)`
+      );
+      colorCommitConfirmed = false;
+      return;
+    }
+
+    docLog.info(spec.logName, {
+      label: spec.label,
+      value: spec.value,
+      matchedTestId: matchedCandidate.containerTestId,
+      ariaCheckedConfirmed,
+      dropdownWasStillOpen: stillOpen,
+      dropdownClosedAfterClickAway: dropdownClosed,
+      candidateStillInDomAfterClose: !!afterCloseCandidate,
+      ariaCheckedAfterClose,
+      outcome: "confirmed",
+    });
+    replaceManualPlaceholder(pending, spec.label, null);
+    confirmed.push(spec.label);
+    colorCommitConfirmed = true;
+  } catch (err) {
+    const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
+    docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
+    docLog.warn("ATTRIBUTE_STEP_FAILURE_DIAGNOSTIC", {
+      field: spec.label,
+      lastStep,
+      searchedTriggerSelector: spec.triggerSelector,
+      searchedContentSelector: spec.contentSelector,
+      matchingTestIdsPresentInDom: describeAvailableTestIds(),
+    });
+    if (lastStep !== "not_started") {
+      watchForHumanClick(spec);
+    }
+    replaceManualPlaceholder(pending, spec.label, `${spec.label} : ${spec.value} (à sélectionner sur Vinted)`);
+    colorCommitConfirmed = false;
+  }
 }
 
 // Mission "BRAND SEARCH INPUT LOCATOR" (2026-08-16) : preuve live directe --
@@ -1267,6 +1725,7 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
   if (!spec.value) {
     docLog.info(spec.logName, { label: spec.label, outcome: "no_value" });
     replaceManualPlaceholder(pending, spec.label, `${spec.label} : donnée manquante (à choisir sur Vinted)`);
+    brandCommitConfirmed = true; // rien a prouver -- aucune valeur demandee
     return;
   }
 
@@ -1413,11 +1872,21 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
         spec.label,
         `${spec.label} : ${spec.value} (aucune correspondance fiable sur Vinted -- à choisir toi-même)`
       );
+      brandCommitConfirmed = false;
       return;
     }
 
     const index = labels.indexOf(match);
-    cells[index].click();
+    // Mission "REPUBLICATION 100% UNATTENDED -- COMMIT MARQUE/COULEUR"
+    // (2026-08-19) : dispatchFullClick() (sequence complete pointerdown->
+    // mousedown->pointerup->mouseup->click) remplace le .click() simple --
+    // essai a faible risque, jamais prouve necessaire en direct (le
+    // diagnostic evenementiel A/B a ete interrompu), mais deja la methode
+    // standard de ce projet pour un clic de selection reel. Le vrai
+    // correctif cible ci-dessous est la fermeture explicite du panneau,
+    // jusqu'ici totalement absente pour Marque (contrairement a Etat/Taille/
+    // Couleur/Matiere).
+    dispatchFullClick(cells[index]);
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matched: match });
 
     // Meme mecanisme de confirmation reelle que Taille/Couleur/Etat --
@@ -1441,11 +1910,7 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
       triggerTextAfterClick = confirmTriggerValue(spec.triggerSelector, match).observedValue;
     }
 
-    if (triggerConfirmed) {
-      docLog.info(spec.logName, { label: spec.label, value: spec.value, matched: match, triggerTextAfterClick, outcome: "confirmed" });
-      replaceManualPlaceholder(pending, spec.label, null);
-      confirmed.push(spec.label);
-    } else {
+    if (!triggerConfirmed) {
       docLog.warn(spec.logName, {
         label: spec.label,
         value: spec.value,
@@ -1458,7 +1923,81 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
         spec.label,
         `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
       );
+      brandCommitConfirmed = false;
+      return;
     }
+
+    // Mission "REPUBLICATION 100% UNATTENDED -- COMMIT MARQUE/COULEUR"
+    // (2026-08-19) : CAUSE CONFIRMEE en test live -- brand_id/brand
+    // restaient null dans le POST reel malgre EXACTEMENT cette confirmation
+    // (trigger affichant "Polo Ralph Lauren"). Audit : attemptBrandPrefill()
+    // ne fermait/ne quittait JAMAIS le panneau de recherche apres le clic --
+    // seule difference structurelle identifiee avec Etat/Taille (dont le
+    // MEME clic simple ferme ET committe). Ferme reellement le panneau
+    // (clic reel en dehors, meme convention que le cas "aucune correspondance"
+    // ci-dessus) puis RE-VERIFIE le trigger une seconde fois -- "ne considere
+    // jamais le DOM visuel comme preuve suffisante" (demande explicite) :
+    // si la fermeture fait elle-meme reverter la valeur (meme classe de faux
+    // positif que l'ancien bug Couleur), ne jamais declarer confirme.
+    const brandContent = document.querySelector<HTMLElement>(spec.contentSelector);
+    const stillOpen = !!brandContent && isVisible(brandContent);
+    let dropdownClosed: boolean | null = null;
+    if (stillOpen) {
+      document.body.click();
+      try {
+        await waitForCondition(
+          () => {
+            const current = document.querySelector<HTMLElement>(spec.contentSelector);
+            return !current || !isVisible(current);
+          },
+          { timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS, description: `${spec.label} search panel closes after clicking away` }
+        );
+        dropdownClosed = true;
+      } catch {
+        dropdownClosed = false;
+      }
+      docLog.info(`${spec.logName}_STEP`, {
+        field: spec.label,
+        step: "dropdown_closure_attempted",
+        wasStillOpen: stillOpen,
+        closedAfterClickAway: dropdownClosed,
+      });
+    }
+
+    const postCloseConfirmation = confirmTriggerValue(spec.triggerSelector, match);
+    if (!postCloseConfirmation.confirmed) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matched: match,
+        triggerTextAfterClick,
+        dropdownWasStillOpen: stillOpen,
+        dropdownClosedAfterClickAway: dropdownClosed,
+        triggerValueAfterClose: postCloseConfirmation.observedValue,
+        outcome: "confirmed_before_close_but_lost_after_close",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection perdue après fermeture du panneau -- vérifie toi-même)`
+      );
+      brandCommitConfirmed = false;
+      return;
+    }
+
+    docLog.info(spec.logName, {
+      label: spec.label,
+      value: spec.value,
+      matched: match,
+      triggerTextAfterClick,
+      dropdownWasStillOpen: stillOpen,
+      dropdownClosedAfterClickAway: dropdownClosed,
+      triggerValueAfterClose: postCloseConfirmation.observedValue,
+      outcome: "confirmed",
+    });
+    replaceManualPlaceholder(pending, spec.label, null);
+    confirmed.push(spec.label);
+    brandCommitConfirmed = true;
   } catch (err) {
     const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
     docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
@@ -1482,6 +2021,7 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
       watchForHumanClick(spec);
     }
     replaceManualPlaceholder(pending, spec.label, `${spec.label} : ${spec.value} (à sélectionner sur Vinted)`);
+    brandCommitConfirmed = false;
   }
 }
 
@@ -1971,9 +2511,32 @@ function checkPriceState(): PriceValidationState {
   return describePriceValidationState(document.querySelector<HTMLInputElement>(sel.PRICE_INPUT_SELECTOR));
 }
 
-async function watchForPublishReadiness(): Promise<void> {
+// Mission "ROUND READY UX" (2026-08-19) : intervalle de sondage utilise
+// pour verifier la STABILITE de isFormReallyReadyToSubmit() (voir
+// evaluateReadinessStability() dans publishReadiness.ts). Remplace l'ancien
+// waitForCondition()/MutationObserver -- celui-ci ne se re-declenche que sur
+// une mutation DOM, donc jamais capable a lui seul de detecter "rien n'a
+// bouge depuis 750ms" (l'absence de mutation, une fois l'etat pret atteint,
+// ne produirait plus aucune reevaluation). Un sondage periodique, largement
+// plus fin que la fenetre de 750ms visee, est necessaire pour mesurer le
+// temps ecoule independamment des mutations.
+const READINESS_POLL_INTERVAL_MS = 100;
+
+// Mission "SUBMIT AUTOMATIQUE -- REPUBLICATION" (2026-08-19) : isRepublish
+// decide en amont (isRepublishPayload(payload), voir runPublishOnce) si la
+// tentative automatique (publishAutoSubmit.ts) doit meme etre proposee --
+// publish_listing (isRepublish:false) reste 100% clic humain, sans aucune
+// exception, decision explicite de ce round.
+async function watchForPublishReadiness(isRepublish: boolean): Promise<void> {
   let lastLoggedStateKey: string | null = null;
-  function checkAndLogReadinessState(): { buttonState: SaveButtonState; priceState: PriceValidationState; photosImported: boolean | null } {
+  function checkAndLogReadinessState(): {
+    buttonState: SaveButtonState;
+    priceState: PriceValidationState;
+    photosImported: boolean | null;
+    brandCommitConfirmed: boolean | null;
+    colorCommitConfirmed: boolean | null;
+    packageSizeCommitConfirmed: boolean | null;
+  } {
     const buttonState = describeSaveButtonState();
     const priceState = checkPriceState();
     // Mission "FIABILISER L'IMPORT PHOTOS" (2026-08-17) : troisieme signal
@@ -1983,32 +2546,120 @@ async function watchForPublishReadiness(): Promise<void> {
     // termine) et un import echoue sont TOUS LES DEUX traites comme "pas
     // pret", jamais un succes suppose par defaut.
     const photosImported = photoImportOutcome === null ? null : photoImportOutcome.status === "confirmed";
-    const stateKey = JSON.stringify({ buttonState, priceState, photosImported });
+    const stateKey = JSON.stringify({
+      buttonState,
+      priceState,
+      photosImported,
+      brandCommitConfirmed,
+      colorCommitConfirmed,
+      packageSizeCommitConfirmed,
+    });
     if (stateKey !== lastLoggedStateKey) {
       lastLoggedStateKey = stateKey;
-      docLog.info("SAVE_READINESS_STATE", { selector: sel.SAVE_BUTTON_SELECTOR, buttonState, priceState, photosImported, photoImportOutcome });
+      docLog.info("SAVE_READINESS_STATE", {
+        selector: sel.SAVE_BUTTON_SELECTOR,
+        buttonState,
+        priceState,
+        photosImported,
+        photoImportOutcome,
+        brandCommitConfirmed,
+        colorCommitConfirmed,
+        packageSizeCommitConfirmed,
+      });
     }
-    return { buttonState, priceState, photosImported };
+    return { buttonState, priceState, photosImported, brandCommitConfirmed, colorCommitConfirmed, packageSizeCommitConfirmed };
   }
 
-  try {
-    checkAndLogReadinessState(); // etat initial, avant toute attente
-    await waitForCondition(
-      () => {
-        const { buttonState, priceState, photosImported } = checkAndLogReadinessState();
-        return isFormReallyReadyToSubmit(buttonState, priceState, photosImported);
-      },
-      {
-        timeoutMs: ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS,
-        description:
-          "bouton Ajouter cliquable ET aucune erreur de validation prix reellement affichee ET import photos reellement confirme complet (re-interroge a chaque evaluation) -- meme signal bouton deja live-valide sur le formulaire d'edition",
+  // Mission "ROUND READY UX" (2026-08-19) : isFormReallyReadyToSubmit()
+  // elle-meme reste totalement inchangee (aucune condition metier touchee).
+  // Ce qui change : PUBLISH_READY_TO_SUBMIT n'est plus envoye des la premiere
+  // evaluation vraie, mais seulement une fois cette meme evaluation restee
+  // vraie CONTINUELLEMENT pendant READINESS_STABILITY_WINDOW_MS (evaluateReadinessStability(),
+  // publishReadiness.ts, pure/testee -- toute reevaluation fausse remet la
+  // fenetre a zero). Objectif : rendre le highlight visuel qui suit (voir
+  // watchAndHighlightSaveButton()) fiable, sans jamais toucher au clic
+  // "Ajouter" lui-meme, qui reste et doit rester un vrai clic humain.
+  let stability: ReadinessStabilityState = INITIAL_READINESS_STABILITY_STATE;
+  const startedAt = Date.now();
+
+  await new Promise<void>((resolve) => {
+    function cleanup(): void {
+      clearInterval(intervalId);
+    }
+    function tick(): void {
+      const {
+        buttonState,
+        priceState,
+        photosImported,
+        brandCommitConfirmed: brandReady,
+        colorCommitConfirmed: colorReady,
+        packageSizeCommitConfirmed: packageSizeReady,
+      } = checkAndLogReadinessState();
+      // Mission "REPUBLICATION 100% UNATTENDED -- COMMIT MARQUE/COULEUR"
+      // (2026-08-19) : isFormReallyReadyToSubmit() elle-meme reste
+      // INCHANGEE (aucune condition metier retiree ni sa propre suite de
+      // tests touchee) -- Marque/Couleur sont ajoutes ICI, au point d'appel,
+      // exactement la meme discipline "signal supplementaire en couche" deja
+      // utilisee pour photosImported (mission "FIABILISER L'IMPORT PHOTOS").
+      // `null` (prefill Marque/Couleur pas encore termine) et `false`
+      // (tentative faite, jamais confirmee -- y compris apres re-verification
+      // post-fermeture) sont TOUS LES DEUX traites comme "pas pret" : seul
+      // `true` explicite laisse passer. CAUSE CONFIRMEE en test live -- le
+      // POST reel contenait brand_id:null/color_ids:[] malgre bouton+prix+
+      // photos deja tous valides, preuve que ces 3 signaux seuls ne
+      // suffisent structurellement pas.
+      //
+      // Mission "ROUND PRIX + COLIS -- CORRECTIF NaN" (2026-08-19) : meme
+      // discipline exacte pour packageSizeReady -- CAUSE CONFIRMEE en test
+      // live que la Taille du colis pouvait rester non confirmee
+      // (`checkedAfterClick` jamais vrai, ou cellule jamais trouvee) sans que
+      // rien ne bloque PUBLISH_READY_TO_SUBMIT/AUTO_SUBMIT_TRIGGERED.
+      const isReadyNow =
+        isFormReallyReadyToSubmit(buttonState, priceState, photosImported) &&
+        brandReady === true &&
+        colorReady === true &&
+        packageSizeReady === true;
+      const evaluation = evaluateReadinessStability(isReadyNow, Date.now(), stability);
+      stability = evaluation.nextState;
+      if (evaluation.isStable) {
+        cleanup();
+        publishReadyToSubmitConfirmed = true;
+        docLog.info("PUBLISH_READY_TO_SUBMIT", checkAndLogReadinessState());
+        chrome.runtime.sendMessage({ type: "PUBLISH_READY_TO_SUBMIT" });
+        // Fire-and-forget, purement DOM/cosmetique -- jamais de clic
+        // synthetique (voir en-tete de publishReadinessHighlight.ts). Reste
+        // actif meme quand la tentative automatique ci-dessous a lieu : sert
+        // de filet de secours si cette tentative echoue sa revalidation ou
+        // n'aboutit pas (voir publishAutoSubmit.ts).
+        watchAndHighlightSaveButton();
+        // Mission "SUBMIT AUTOMATIQUE -- REPUBLICATION" (2026-08-19) :
+        // republish_listing UNIQUEMENT (decision explicite de ce round,
+        // isRepublish decide par l'appelant de watchForPublishReadiness).
+        // Aucune nouvelle detection de succes/echec ici -- CAS A/B/C
+        // (handlers/publishListing.ts) restent inchanges, voir l'audit.
+        if (isRepublish) {
+          attemptAutomaticRepublishSubmit({
+            describeButtonState: describeSaveButtonState,
+            describePriceState: checkPriceState,
+            isPhotosImported: () => photoImportOutcome !== null && photoImportOutcome.status === "confirmed",
+            log: docLog,
+          });
+        }
+        resolve();
+        return;
       }
-    );
-    docLog.info("PUBLISH_READY_TO_SUBMIT", checkAndLogReadinessState());
-    chrome.runtime.sendMessage({ type: "PUBLISH_READY_TO_SUBMIT" });
-  } catch (err) {
-    docLog.warn("PUBLISH_READY_NOT_DETECTED", { error: errorMessage(err), lastObservedState: checkAndLogReadinessState() });
-  }
+      if (Date.now() - startedAt >= ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS) {
+        cleanup();
+        docLog.warn("PUBLISH_READY_NOT_DETECTED", {
+          error: `délai dépassé (${ATTRIBUTE_CONTROLS_WAIT_TIMEOUT_MS}ms)`,
+          lastObservedState: checkAndLogReadinessState(),
+        });
+        resolve();
+      }
+    }
+    const intervalId = setInterval(tick, READINESS_POLL_INTERVAL_MS);
+    tick(); // etat initial, avant toute attente
+  });
 }
 
 async function watchForCategorySelectionAndPrefillAttributes(
@@ -2345,33 +2996,57 @@ async function runPublishOnce(
     reportProgress("uploading_photos");
     await injectPhotosWithConfirmation(photos, confirmed, pending, stepTimestamps);
 
+    // Mission "ROUND PRIX + COLIS -- FIX ORDRE FLOW COLIS" (2026-08-20) :
+    // CAUSE CONFIRMEE en test live -- PACKAGE_SIZE_SELECT_CELLS_NOT_FOUND
+    // (timeout 20000ms) en mode background, alors que le DOM contenait
+    // reellement la cellule une fois la page rendue (preuve live directe :
+    // 1-package-size--cell present, package_type_selector_1--input
+    // checked:true, recommended:true). L'hypothese precedente ("Chromium
+    // depriorise le rendu des onglets background", voir l'ancien commentaire
+    // au-dessus de PACKAGE_SIZE_CELLS_TIMEOUT_MS) est donc INVALIDEE par
+    // cette preuve -- la vraie cause est un bug d'ORDRE : selectPackageSizeWithConfirmation()
+    // etait AWAITED ICI, AVANT MEME que watchForCategorySelectionAndPrefillAttributes()
+    // (qui pilote attemptCategoryPrefill() puis les 5 pickers d'attributs) ne
+    // soit invoquee -- elle vivait plus bas, en fire-and-forget ("void"),
+    // demarree SEULEMENT APRES le retour (succes ou timeout) du colis. Or le
+    // widget colis, exactement comme les 5 pickers d'attributs (voir l'en-tete
+    // de ce fichier), n'existe dans le DOM qu'apres qu'une categorie FEUILLE
+    // soit choisie -- attendre le colis avant meme que la resolution de
+    // categorie ait commence est structurellement voue a l'echec, quel que
+    // soit le timeout choisi. En foreground, cela passait probablement
+    // inapercu : l'utilisateur, en observant l'onglet, choisissait souvent la
+    // categorie a la main PENDANT l'import photos (qui peut prendre plusieurs
+    // secondes) -- aucune fenetre equivalente n'existe en mode background
+    // (personne ne regarde ni n'agit sur l'onglet). Desormais AWAITED ici,
+    // dans l'ordre demande explicitement : categorie/attributs resolus (auto
+    // ou manuel, y compris l'echec/timeout de cette resolution -- safe a
+    // attendre, chaque attempt*Prefill() interne catch deja ses propres
+    // erreurs et ne rejette jamais) AVANT toute tentative de lecture/
+    // selection du colis.
+    await watchForCategorySelectionAndPrefillAttributes(payload, confirmed, pending);
+
+    await selectPackageSizeWithConfirmation(payload, confirmed, pending);
+
     pending.push(...computeManualFields(payload));
     reportPrefillSummary(confirmed, pending);
 
-    // Mission "FINIR LES CHAMPS MANQUANTS" (2026-08-11) : jamais attendue ici
-    // (fire-and-forget, "void") -- runPublishOnce()/runPublish() se terminent
-    // normalement tout de suite apres, AUCUN changement au moment ou
-    // runPublishInFlight repasse a false ni a RUN_PUBLISH_FINISHED (document
-    // lifecycle deja valide, volontairement non touche). Cette reprise tourne
-    // en arriere-plan, potentiellement plusieurs minutes (le temps que
-    // l'utilisateur choisisse sa categorie), et rappelle reportPrefillSummary()
-    // elle-meme une fois terminee pour mettre a jour la modale dynamiquement.
-    void watchForCategorySelectionAndPrefillAttributes(payload, confirmed, pending);
     // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) :
-    // demarre INDEPENDAMMENT de watchForCategorySelectionAndPrefillAttributes
-    // (jamais imbriquee dans ses branches de sortie anticipee) -- se contente
-    // d'attendre que le bouton Vinted lui-meme devienne cliquable, quelle que
-    // soit la facon dont le formulaire y arrive (automatise ou entierement
-    // corrige a la main par l'utilisateur). Voir son en-tete pour le detail.
-    void watchForPublishReadiness();
+    // demarre en fire-and-forget ("void") -- se contente d'attendre que le
+    // bouton Vinted lui-meme devienne cliquable, quelle que soit la facon
+    // dont le formulaire y arrive (automatise ou entierement corrige a la
+    // main par l'utilisateur). Voir son en-tete pour le detail.
+    // isRepublishPayload() (publishAutoSubmit.ts) decide ICI, une seule fois,
+    // si la tentative de submit automatique doit meme etre proposee plus bas
+    // dans watchForPublishReadiness() -- publish_listing (false) en est
+    // exclu par construction.
+    void watchForPublishReadiness(isRepublishPayload(payload));
 
     // A partir d'ici, plus aucune ecriture DOM synchrone ni aucun clic
-    // automatique garanti -- l'utilisateur termine lui-meme la categorie (et,
-    // sauf correspondance fiable trouvee ci-dessus, les attributs restants),
-    // la taille du colis, puis clique reellement sur le bouton de soumission
-    // Vinted. handlePublishListing.ts (background) surveille la navigation
-    // reelle de l'onglet pour detecter une reussite authentique ; ce content
-    // script n'a rien d'autre a faire de bloquant.
+    // automatique garanti -- l'utilisateur termine lui-meme les eventuels
+    // champs restes en manuel, puis clique reellement sur le bouton de
+    // soumission Vinted. handlePublishListing.ts (background) surveille la
+    // navigation reelle de l'onglet pour detecter une reussite authentique ;
+    // ce content script n'a rien d'autre a faire de bloquant.
     reportProgress("publishing");
   } catch (err) {
     if (err instanceof WaitTimeoutError) {
@@ -2435,6 +3110,21 @@ function bootPublishContentScript(): void {
   // listener a reussi). Utile pour distinguer "le fichier ne s'est jamais
   // charge du tout" (aucun log ici) de "charge mais bloque avant l'envoi".
   docLog.info("PUBLISH_CONTENT_SCRIPT_BOOTING", { href: location.href, documentInstanceId: DOCUMENT_INSTANCE_ID });
+  // Mission "ROUND SUIVANT -- POC DIAGNOSTIQUE DIRECT DU BOUTON AJOUTER"
+  // (2026-08-19) : no-op en dehors d'un build DEV (voir en-tete de
+  // publishSyntheticClickPoc.ts) -- n'expose jamais rien dans un build
+  // production/beta reellement distribue.
+  initPublishSyntheticClickPoc({
+    isReadinessConfirmed: () => publishReadyToSubmitConfirmed,
+    describeButtonState: describeSaveButtonState,
+    describePriceState: checkPriceState,
+    log: docLog,
+  });
+  // Mission "ROUND DIAGNOSTIC MARQUE/COULEUR -- COMMIT REEL" (2026-08-19) :
+  // meme discipline d'isolation que le POC ci-dessus -- window.
+  // __resellosRecordAttributeCommitEvents("brand"|"color", windowMs?),
+  // jamais auto-declenche, purement observationnel.
+  initAttributeCommitEventRecorder({ log: docLog });
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     // Loggue TOUT message recu ICI, AVANT le filtre isContentCommand -- si
     // isContentCommand rejetait un message (structure inattendue, echec de
@@ -2507,14 +3197,52 @@ function bootPublishContentScript(): void {
   // ISOLATED, meme document) peut l'ecouter -- mecanisme standard de pont
   // MAIN<->ISOLATED. Relaye tel quel au background pour journalisation
   // uniquement, aucune decision metier ne depend encore de cet evenement.
+  // Mission "INJECTION DU PRIX DANS LE PAYLOAD" (2026-08-26) : toute
+  // substitution faite par le patch du monde MAIN est journalisee ICI, en
+  // clair. Une modification de requete sortante ne doit jamais etre
+  // silencieuse -- si ce log n'apparait pas, aucun payload n'a ete touche.
+  document.addEventListener(PRICE_PAYLOAD_PATCHED_EVENT, (event) => {
+    const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+    let inline: string;
+    try {
+      inline = JSON.stringify(detail);
+    } catch {
+      inline = String(detail);
+    }
+    docLog.warn(`PRICE_PAYLOAD_PATCHED ${inline}`, detail);
+  });
+
   document.addEventListener(PUBLISH_CREATE_RESPONSE_EVENT_NAME, (event) => {
     const detail = (event as CustomEvent<PublishCreateResponseCapture>).detail;
-    docLog.info("PUBLISH_CREATE_RESPONSE_EVENT_RECEIVED", {
+    // Mission "PAYLOAD DU PRIX" (2026-08-26) : deux manques rendaient ce log
+    // inexploitable pour diagnostiquer le 400.
+    //   1. `bodyText` (le corps de la REPONSE, donc le message d'erreur exact
+    //      du serveur) n'etait envoye qu'au background -- absent d'ici.
+    //   2. Le detail partait en second argument console, donc en objet
+    //      depliable dont la reference meurt avec l'onglet (meme probleme que
+    //      la sonde prix). Il est desormais serialise DANS le message.
+    // `pricePayload` extrait toutes les cles evoquant un prix du body envoye :
+    // c'est la preuve directe de ce que Vinted a recu, plutot qu'une deduction
+    // depuis l'erreur affichee.
+    const captureDetail = {
       url: detail.url,
       statusCode: detail.statusCode,
       ok: detail.ok,
       transport: detail.transport,
-    });
+      requestMethod: detail.requestMethod,
+      requestContentType: detail.requestContentType,
+      requestBodyType: detail.requestBodyType,
+      pricePayload: summarizePricePayload(detail.requestBodyText),
+      responseBodyText: detail.bodyText,
+      requestBodyText: detail.requestBodyText,
+    };
+    let captureInline: string;
+    try {
+      captureInline = JSON.stringify(captureDetail);
+    } catch {
+      captureInline = String(captureDetail);
+    }
+    docLog.info(`PUBLISH_CREATE_RESPONSE_EVENT_RECEIVED ${captureInline}`, captureDetail);
     chrome.runtime.sendMessage({
       type: "PUBLISH_CREATE_RESPONSE_CAPTURED",
       url: detail.url,
@@ -2522,6 +3250,10 @@ function bootPublishContentScript(): void {
       ok: detail.ok,
       bodyText: detail.bodyText,
       transport: detail.transport,
+      requestMethod: detail.requestMethod,
+      requestContentType: detail.requestContentType,
+      requestBodyText: detail.requestBodyText,
+      requestBodyType: detail.requestBodyType,
     });
   });
 
@@ -2536,8 +3268,22 @@ function bootPublishContentScript(): void {
   // ici -- contrairement a un CustomEvent, un attribut DOM persiste et peut
   // etre lu a tout moment sans destinataire deja enregistre au prealable.
   const createCaptureInstalled = document.documentElement.hasAttribute(PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED_ATTR);
-  docLog.info("PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS_CHECKED", { installed: createCaptureInstalled });
-  chrome.runtime.sendMessage({ type: "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS", installed: createCaptureInstalled });
+  // Mission "DIAGNOSTIC CAPTURE_MISSING" (2026-08-24) : url/documentInstanceId/
+  // readyState remontes AVEC le statut -- purement diagnostic, aucun
+  // changement de comportement. Permet au prochain test reel de savoir sur
+  // QUEL document l'attribut manquait (meme instance de document que le
+  // premier remplissage, ou une nouvelle ?).
+  const captureStatusContext = {
+    url: location.href,
+    documentInstanceId: DOCUMENT_INSTANCE_ID,
+    readyState: document.readyState,
+  };
+  docLog.info("PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS_CHECKED", { installed: createCaptureInstalled, ...captureStatusContext });
+  chrome.runtime.sendMessage({
+    type: "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS",
+    installed: createCaptureInstalled,
+    ...captureStatusContext,
+  });
 
   // Signal de disponibilite (voir commentaire ci-dessus) -- envoye juste
   // apres l'enregistrement du listener, pour que handlePublishListing.ts

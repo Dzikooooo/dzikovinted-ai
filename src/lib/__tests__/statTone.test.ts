@@ -14,7 +14,11 @@ describe('toneForValue', () => {
     expect(toneForValue(-999.5)).toBe('negative');
   });
 
-  it('returns undefined (neutral default) for exactly zero', () => {
-    expect(toneForValue(0)).toBeUndefined();
+  // MAJ 2026-08-26 : rendait `undefined`, qui retombait sur le ton 'brand'
+  // de StatCard -- soit un accent violet sur "Pertes : 0 €". Zero est
+  // desormais explicitement neutre.
+  it('returns "neutral" for exactly zero, never the brand accent', () => {
+    expect(toneForValue(0)).toBe('neutral');
+    expect(toneForValue(-0)).toBe('neutral');
   });
 });

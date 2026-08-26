@@ -32,12 +32,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <div className="min-h-screen bg-dark-400 text-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-dark-400 text-gray-900 flex items-center justify-center px-4">
         <div className="max-w-sm w-full text-center">
           <Logo variant="square" size={44} className="mx-auto mb-6" />
           <h1 className="text-xl font-black mb-3">Une erreur est survenue</h1>
-          <p className="text-sm text-gray-400 leading-relaxed mb-6">
-            Quelque chose s'est mal passé. Recharge la page pour continuer -- si le problème persiste, écris-nous à{' '}
+          <p className="text-sm text-gray-500 leading-relaxed mb-6">
+            Quelque chose s'est mal passé. Recharge la page pour continuer — si le problème persiste, écris-nous à{' '}
             <a href="mailto:resellosapp@gmail.com" className="text-neon-500 hover:underline">resellosapp@gmail.com</a>.
           </p>
           <button

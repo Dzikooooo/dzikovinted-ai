@@ -242,9 +242,9 @@ export default function AdminUsersPage() {
     return (
       <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto text-center">
         <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center mx-auto mb-4">
-          <ShieldAlert className="w-5 h-5 text-red-400" />
+          <ShieldAlert className="w-5 h-5 text-red-700" />
         </div>
-        <p className="text-sm text-gray-400">Cette page est réservée aux administrateurs.</p>
+        <p className="text-sm text-gray-500">Cette page est réservée aux administrateurs.</p>
       </div>
     );
   }
@@ -272,13 +272,13 @@ export default function AdminUsersPage() {
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} shape="block" className="h-16" />)}
           </div>
         ) : (
-          <div className="bg-surface border border-white/5 rounded-2xl divide-y divide-white/5">
+          <div className="bg-surface border border-gray-200 rounded-2xl divide-y divide-gray-200">
             {filtered.map((p) => (
               <div key={p.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4">
                 <AccountAvatar label={p.full_name || p.email} size="md" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-semibold text-gray-200 truncate">{p.full_name || p.email}</p>
+                    <p className="text-sm font-semibold text-gray-800 truncate">{p.full_name || p.email}</p>
                     <Badge label={p.plan.toUpperCase()} tone={p.plan === 'free' ? 'neutral' : p.plan === 'pro' ? 'brand' : 'positive'} />
                     {p.role === 'admin' && <Badge label="Admin" tone="attention" />}
                     {p.banned && <Badge label="Bloqué" tone="negative" />}
@@ -332,7 +332,7 @@ export default function AdminUsersPage() {
         )}
       </div>
 
-      <div className="bg-surface border border-white/5 rounded-2xl p-6 max-w-2xl">
+      <div className="bg-surface border border-gray-200 rounded-2xl p-6 max-w-2xl">
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-4 h-4 text-neon-500" />
           <h2 className="font-bold text-sm">Envoyer une notification</h2>
@@ -342,18 +342,18 @@ export default function AdminUsersPage() {
           <button
             onClick={() => setTarget('all')}
             className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${
-              target === 'all' ? 'bg-neon-500/10 text-neon-500 border-neon-500/30' : 'bg-dark-400 text-gray-400 border-white/10 hover:border-white/20'
+              target === 'all' ? 'bg-neon-500/10 text-neon-500 border-neon-500/30' : 'bg-dark-400 text-gray-500 border-gray-200 hover:border-gray-200'
             }`}
           >
             Envoyer à tout le monde
           </button>
           {target && target !== 'all' && (
-            <span className="text-xs text-gray-400">
-              Destinataire : <span className="text-gray-200 font-semibold">{target.full_name || target.email}</span>{' '}
-              <button onClick={() => setTarget(null)} className="text-gray-600 hover:text-gray-400 underline ml-1">retirer</button>
+            <span className="text-xs text-gray-500">
+              Destinataire : <span className="text-gray-800 font-semibold">{target.full_name || target.email}</span>{' '}
+              <button onClick={() => setTarget(null)} className="text-gray-500 hover:text-gray-500 underline ml-1">retirer</button>
             </span>
           )}
-          {!target && <span className="text-xs text-gray-600">Ou clique "Notifier" sur un compte ci-dessus pour le cibler.</span>}
+          {!target && <span className="text-xs text-gray-500">Ou clique "Notifier" sur un compte ci-dessus pour le cibler.</span>}
         </div>
 
         <div className="space-y-3">
@@ -362,14 +362,14 @@ export default function AdminUsersPage() {
             value={notifTitle}
             onChange={(e) => setNotifTitle(e.target.value)}
             placeholder="Titre de la notification"
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
           />
           <textarea
             value={notifBody}
             onChange={(e) => setNotifBody(e.target.value)}
             placeholder="Message (optionnel)"
             rows={3}
-            className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-y"
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 resize-y"
           />
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">
@@ -378,7 +378,7 @@ export default function AdminUsersPage() {
             <select
               value={notifPage}
               onChange={(e) => setNotifPage(e.target.value as DashboardPage)}
-              className="w-full bg-dark-400 border border-white/10 rounded-xl px-4 py-3 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
+              className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20"
             >
               {TARGET_PAGES.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
@@ -386,7 +386,7 @@ export default function AdminUsersPage() {
             </select>
           </div>
 
-          {sendError && <p className="text-sm text-red-400">{sendError}</p>}
+          {sendError && <p className="text-sm text-red-700">{sendError}</p>}
           {sent && <p className="text-sm text-neon-500">Notification envoyée.</p>}
 
           <Button
@@ -410,17 +410,17 @@ export default function AdminUsersPage() {
             <button
               onClick={() => setBanConfirmTarget(null)}
               aria-label="Fermer"
-              className="p-1.5 rounded-lg hover:bg-white/5"
+              className="p-1.5 rounded-lg hover:bg-gray-100"
             >
-              <X className="w-5 h-5 text-gray-400" />
+              <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
 
-          <div className="flex items-center gap-3 mb-4 bg-dark-400 border border-white/10 rounded-xl p-3">
+          <div className="flex items-center gap-3 mb-4 bg-dark-400 border border-gray-200 rounded-xl p-3">
             <AccountAvatar label={banConfirmTarget.full_name || banConfirmTarget.email} size="md" />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-sm font-semibold text-gray-200 truncate">
+                <p className="text-sm font-semibold text-gray-800 truncate">
                   {banConfirmTarget.full_name || banConfirmTarget.email}
                 </p>
                 <Badge
@@ -433,7 +433,7 @@ export default function AdminUsersPage() {
             </div>
           </div>
 
-          <p className="text-sm text-gray-400 mb-5">
+          <p className="text-sm text-gray-500 mb-5">
             {banConfirmTarget.banned
               ? 'Ce compte pourra à nouveau se connecter à ResellOS et retrouvera un accès normal immédiatement.'
               : 'Ce compte ne pourra plus se connecter à ResellOS tant qu\'il n\'est pas débloqué. Ses données (annonces, historique, comptabilité) ne sont pas supprimées.'}
@@ -462,34 +462,34 @@ export default function AdminUsersPage() {
             <button
               onClick={() => setDetailTarget(null)}
               aria-label="Fermer"
-              className="p-1.5 rounded-lg hover:bg-white/5"
+              className="p-1.5 rounded-lg hover:bg-gray-100"
             >
-              <X className="w-5 h-5 text-gray-400" />
+              <X className="w-5 h-5 text-gray-500" />
             </button>
           </div>
 
-          <div className="flex items-center gap-3 mb-5 bg-dark-400 border border-white/10 rounded-xl p-3">
+          <div className="flex items-center gap-3 mb-5 bg-dark-400 border border-gray-200 rounded-xl p-3">
             <AccountAvatar label={detailTarget.full_name || detailTarget.email} size="md" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-200 truncate">
+              <p className="text-sm font-semibold text-gray-800 truncate">
                 {detailTarget.full_name || detailTarget.email}
               </p>
               <p className="text-xs text-gray-500 mt-0.5 truncate">{detailTarget.email}</p>
             </div>
           </div>
 
-          {detailError && <p className="text-sm text-red-400 mb-4">{detailError}</p>}
+          {detailError && <p className="text-sm text-red-700 mb-4">{detailError}</p>}
 
           {/* Section 1/3 -- PROGRAMME : simple etiquette, n'accorde aucun
               privilege. Reste independante des deux sections ci-dessous. */}
           <div className="mb-5">
             <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Programme</p>
-            <div className="flex items-center justify-between bg-dark-400 border border-white/10 rounded-xl p-3">
+            <div className="flex items-center justify-between bg-dark-400 border border-gray-200 rounded-xl p-3">
               <div>
-                <p className="text-sm text-gray-300">
-                  Statut : <span className="font-semibold text-gray-100">{detailTarget.program_status === 'beta_tester' ? 'Bêta-testeur' : 'Standard'}</span>
+                <p className="text-sm text-gray-700">
+                  Statut : <span className="font-semibold text-gray-900">{detailTarget.program_status === 'beta_tester' ? 'Bêta-testeur' : 'Standard'}</span>
                 </p>
-                <p className="text-xs text-gray-600 mt-0.5">Étiquette seule — n'active aucun avantage.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Étiquette seule — n'active aucun avantage.</p>
               </div>
               <Button
                 variant="secondary"
@@ -506,12 +506,12 @@ export default function AdminUsersPage() {
               Le solde reel (credits) reste affiche tel quel, jamais modifie. */}
           <div className="mb-5">
             <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Crédits</p>
-            <div className="flex items-center justify-between bg-dark-400 border border-white/10 rounded-xl p-3">
+            <div className="flex items-center justify-between bg-dark-400 border border-gray-200 rounded-xl p-3">
               <div>
-                <p className="text-sm text-gray-300">
-                  Mode : <span className="font-semibold text-gray-100">{detailTarget.credits_mode === 'unlimited' ? 'Illimités' : 'Standard'}</span>
+                <p className="text-sm text-gray-700">
+                  Mode : <span className="font-semibold text-gray-900">{detailTarget.credits_mode === 'unlimited' ? 'Illimités' : 'Standard'}</span>
                 </p>
-                <p className="text-xs text-gray-600 mt-0.5">Solde réel : {detailTarget.credits} crédit{detailTarget.credits > 1 ? 's' : ''} (pour référence, jamais modifié par ce mode).</p>
+                <p className="text-xs text-gray-500 mt-0.5">Solde réel : {detailTarget.credits} crédit{detailTarget.credits > 1 ? 's' : ''} (pour référence, jamais modifié par ce mode).</p>
               </div>
               <Button
                 variant="secondary"
@@ -528,20 +528,20 @@ export default function AdminUsersPage() {
               Stripe, independante des deux sections ci-dessus. */}
           <div>
             <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Avantage commercial</p>
-            <div className="bg-dark-400 border border-white/10 rounded-xl p-3 space-y-3">
+            <div className="bg-dark-400 border border-gray-200 rounded-xl p-3 space-y-3">
               {offerLoading ? (
                 <Skeleton shape="block" className="h-10" />
               ) : offer ? (
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-300">
+                    <p className="text-sm text-gray-700">
                       Offre :{' '}
                       <Badge
                         label={offer.status === 'pending' ? 'En attente' : offer.status === 'applied' ? 'Appliquée' : 'Expirée'}
                         tone={offer.status === 'applied' ? 'positive' : offer.status === 'pending' ? 'attention' : 'neutral'}
                       />
                     </p>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                       {offer.trial_period_days} jour{offer.trial_period_days > 1 ? 's' : ''} d'essai
                       {offer.stripe_coupon_id ? ` + coupon ${offer.stripe_coupon_id}` : ''}
                     </p>
@@ -557,7 +557,7 @@ export default function AdminUsersPage() {
               )}
 
               {(!offer || offer.status === 'expired') && !offerLoading && (
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 pt-2 border-t border-white/5">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 pt-2 border-t border-gray-200">
                   <div className="flex-1">
                     <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-1">Jours d'essai</label>
                     <input
@@ -565,7 +565,7 @@ export default function AdminUsersPage() {
                       min={0}
                       value={offerTrialDays}
                       onChange={(e) => setOfferTrialDays(e.target.value)}
-                      className="w-full bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
+                      className="w-full bg-surface border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40"
                     />
                   </div>
                   <div className="flex-1">
@@ -575,7 +575,7 @@ export default function AdminUsersPage() {
                       value={offerCouponId}
                       onChange={(e) => setOfferCouponId(e.target.value)}
                       placeholder="ex. BETA50"
-                      className="w-full bg-surface border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-neon-500/40"
+                      className="w-full bg-surface border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40"
                     />
                   </div>
                   <Button size="sm" loading={detailWorking === 'offer'} onClick={() => prepareOffer(detailTarget)}>

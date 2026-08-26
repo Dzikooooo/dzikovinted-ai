@@ -209,23 +209,25 @@ export interface DeleteListingPayload {
 // DeleteStep : etapes de progression du flow de suppression, rapportees via
 // DELETE_PROGRESS -- distinct de PublishStep (vocabulaire propre a cette
 // action, jamais reutilise pour publish/edit).
-// "waiting_for_manual_confirm_click" : DECISION D'ARCHITECTURE, meme
-// raisonnement que submitEdit() (vinted-edit.ts, 2026-07-25) -- la
-// suppression reelle (clic sur "Confirmer et supprimer") declenche tres
-// probablement la meme classe de requete mutante protegee anti-bot que la
-// sauvegarde d'edition (deja prouvee exiger isTrusted:true sur ce meme
-// site) ; aucun nouveau test synthetique n'a ete tente ici (destructeur et
-// irreversible, jamais le bon moment pour verifier une hypothese) -- le
-// clic sur "Supprimer" (ouverture de la modale, purement cote client) reste
-// en revanche automatise, coherent avec la preuve deja etablie qu'un clic
-// synthetique atteint bien le DOM/les handlers JS, seule la requete reseau
-// finale exige un evenement de confiance.
+// "auto_confirm_click_attempted" (mission "AUTOMATISER LA SUPPRESSION --
+// DERNIER CLIC", 2026-08-19) : remplace l'ancienne etape
+// "waiting_for_manual_confirm_click". DECISION D'ARCHITECTURE REVISEE --
+// l'ancienne hypothese ("meme classe de protection anti-bot que
+// submitEdit()") n'avait jamais ete testee sur CE bouton precis ; ce meme
+// round a confirme en direct que le bouton "Ajouter" de creation
+// (/items/new, meme famille de bouton "soumettre") accepte deja un clic
+// synthetique sans exiger isTrusted:true. Le clic sur "Confirmer et
+// supprimer" est donc desormais lui aussi automatise (une seule tentative,
+// jamais de retry) -- mais JAMAIS considere comme une preuve de suppression
+// reussie a lui seul : verifyReallyDeleted() (deleteOldListing.ts,
+// INCHANGEE, onglet independant reload + lecture ld+json) reste seule
+// autoritaire sur deletedOld:true/false.
 export type DeleteStep =
   | "loading"
   | "trigger_found"
   | "trigger_clicked"
   | "modal_confirmed"
-  | "waiting_for_manual_confirm_click"
+  | "auto_confirm_click_attempted"
   | "confirm_clicked";
 
 export type DeleteFailureReason =
@@ -233,7 +235,13 @@ export type DeleteFailureReason =
   | "trigger_not_found"
   | "modal_not_found"
   | "confirm_button_not_found"
-  | "confirm_click_timeout";
+  // Mission "AUTOMATISER LA SUPPRESSION -- DERNIER CLIC" (2026-08-19) :
+  // remplace "confirm_click_timeout" (n'existe plus -- il n'y a plus
+  // d'attente d'un clic humain a faire expirer). Le bouton a bien ete trouve
+  // par waitForElementMatching() plus tot, mais sa RE-RESOLUTION juste avant
+  // le clic (jamais une reference perimee) l'a trouve absent, invisible, ou
+  // desactive -- echec honnete, jamais un clic tente a l'aveugle.
+  | "confirm_button_not_clickable";
 
 // `alreadyGone` (2026-08-17, cas "ancienne annonce deja absente") : l'annonce
 // ciblee n'affiche deja plus de donnee produit (ld+json) des le chargement --
@@ -430,14 +438,48 @@ export type ContentReport =
   // test live reel malgre une creation reussie -- XHR desormais couvert
   // aussi). Aucune decision metier ne depend encore de ce message --
   // uniquement de la preuve avant d'implementer l'identification reelle de B.
-  | { type: "PUBLISH_CREATE_RESPONSE_CAPTURED"; url: string; statusCode: number; ok: boolean; bodyText: string; transport: "fetch" | "xhr" }
+  //
+  // requestMethod/requestContentType/requestBodyText/requestBodyType
+  // (mission "DIAGNOSTIC REQUEST BODY COULEUR", 2026-08-19) : run live
+  // confirme -- Couleur reellement selectionnee en DOM, auto-submit
+  // declenche, mais Vinted repond 400 sur ce POST precis. Seul le corps de
+  // REPONSE etait capture jusqu'ici ; ces 4 champs ajoutent le corps de
+  // REQUETE exact envoye a Vinted (jamais aucun header sensible -- voir
+  // SAFE_REQUEST_HEADER_ALLOWLIST dans publishCreateResponseCapture.ts,
+  // Content-Type uniquement) pour determiner si le payload couleur est
+  // absent/incorrect ou si un autre champ est en cause.
+  | {
+      type: "PUBLISH_CREATE_RESPONSE_CAPTURED";
+      url: string;
+      statusCode: number;
+      ok: boolean;
+      bodyText: string;
+      transport: "fetch" | "xhr";
+      requestMethod: string;
+      requestContentType: string | null;
+      requestBodyText: string | null;
+      requestBodyType: string;
+    }
   // Envoye une seule fois au demarrage du content script (bootPublishContentScript,
   // document_idle) : confirme si l'attribut DOM pose par
   // publishCreateResponseCapture.ts (installe en document_start, monde MAIN)
   // est bien present -- seul moyen fiable de distinguer "instrumentation
   // jamais installee" de "installee mais transport non intercepte" au
   // prochain test live.
-  | { type: "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS"; installed: boolean };
+  // Mission "DIAGNOSTIC CAPTURE_MISSING" (2026-08-24), suite au test reel du
+  // 24/08 : `installed:false` seul ne permettait pas de savoir SUR QUEL
+  // document l'instrumentation MAIN manquait -- le log cote background ne
+  // portait que { tabId }. Les trois champs ajoutes ici servent uniquement au
+  // diagnostic (aucun changement de comportement) et doivent permettre, au
+  // prochain test reel, de distinguer un rechargement complet impose par
+  // Vinted d'un re-render SPA qui remplacerait documentElement.
+  | {
+      type: "PUBLISH_CREATE_RESPONSE_CAPTURE_STATUS";
+      installed: boolean;
+      url: string;
+      documentInstanceId: string;
+      readyState: string;
+    };
 
 export function isContentCommand(msg: unknown): msg is ContentCommand {
   if (typeof msg !== "object" || msg === null || !("type" in msg)) return false;

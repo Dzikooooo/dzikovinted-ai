@@ -170,7 +170,11 @@ function handleSubscriptionCreatedOrUpdated(
   subscription: MinimalSubscriptionEventObject
 ): Promise<StripeWebhookResult> {
   const priceId = subscription.items.data[0]?.price?.id ?? null;
-  const mappedPlan = priceId ? resolvePlanFromPriceId(priceId) : null;
+  // resolvePlanFromPriceId rend desormais { plan, interval } (facturation
+  // annuelle, 2026-08-26). Seul le PLAN determine les droits : un abonne
+  // annuel Pro a exactement les droits d'un abonne mensuel Pro.
+  const resolved = priceId ? resolvePlanFromPriceId(priceId) : null;
+  const mappedPlan = resolved?.plan ?? null;
 
   return applySubscriptionEvent(
     deps,
