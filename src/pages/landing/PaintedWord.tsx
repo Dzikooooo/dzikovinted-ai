@@ -106,7 +106,32 @@ export function PaintedWord() {
   // (~270 px) sur la ligne la plus etroite visee (288 px dispo a 320 px de
   // viewport) apres coupure au trait d'union conditionnel. `break-words` reste
   // en dernier filet pour ne JAMAIS laisser la page defiler horizontalement.
-  const lineClasses = 'block break-words text-5xl sm:text-6xl md:text-7xl lg:text-8xl';
+  // TAILLES RECALIBREES le 2026-08-26, apres passage de "Multiplateforme" a
+  // "Bientot multiplateforme" (+50 % de caracteres). Largeurs MESUREES en
+  // direct pour le mot le plus long, police et graisse reelles :
+  //
+  //     48px -> 535   60px -> 684   72px -> 832   96px -> 1128
+  //
+  // Place disponible (conteneur max-w-5xl moins padding) :
+  //     375px -> 343    640px -> 592    768px -> 720    >=1024px -> 976
+  //
+  // D'ou un cran de moins qu'avant a chaque palier : 72px tient dans 976,
+  // 60px dans 720, 48px dans 592. L'ancien lg:text-8xl donnait 1128 pour 976
+  // disponibles -- le mot passait sur DEUX lignes, et le fantome reservait
+  // donc une ligne vide sous "Vinted." et "Debutant ou Pro." sur desktop.
+  //
+  // EN DESSOUS DE sm, le repli sur deux lignes reste assume : tenir sur une
+  // ligne a 375px exigerait ~32px, et a 320px ~27px -- le titre du hero
+  // deviendrait minuscule sur mobile pour resoudre un defaut qui ne se voit
+  // que sur grand ecran. Le trait d'union conditionnel donne la une coupure
+  // propre ("Bientot multi- / plateforme.").
+  //
+  // TOUJOURS PAS de `whitespace-nowrap`, malgre l'apparence de solution :
+  // il ne redimensionne rien, il interdit juste le repli -- sur mobile le mot
+  // deborderait alors du conteneur et ferait defiler la page horizontalement,
+  // exactement le bug pour lequel cette classe avait deja ete retiree.
+  // `break-words` reste le dernier filet.
+  const lineClasses = 'block break-words text-4xl sm:text-5xl md:text-6xl lg:text-7xl';
   const animated = reduceMotion ? (
     <span className={lineClasses} style={gradientStyle}>
       {WORDS[0]}.
