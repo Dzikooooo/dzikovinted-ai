@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import {
+  clearDiscordOAuthParamsFromLocation,
   fetchGuildActivity,
+  readDiscordOAuthErrorFromLocation,
   requestDiscordRoleSync,
   startDiscordLink,
   syncDiscordIdentity,
+  translateDiscordOAuthError,
   unlinkDiscordAccount,
   type GuildActivity,
   type RoleSyncOutcome,
@@ -43,24 +47,88 @@ export function useDiscordAccount() {
 
   // Retour du flux OAuth : Supabase a rattache l'identite Discord a la
   // session, mais le PROFIL ne la connait pas encore -- c'est cette recopie
-  // qui la rend exploitable (roles, affichage). On ne la declenche que si une
-  // identite Discord existe reellement dans la session ET que le profil ne la
-  // porte pas encore : sans cette double condition, la RPC serait appelee a
-  // chaque montage et leverait une erreur inutile.
+  // qui la rend exploitable (roles, affichage).
+  //
+  // ECHEC LIVE 2026-08-27 : le retour de linkIdentity() laissait la page sur
+  // "Lier mon compte Discord", sans la moindre erreur visible. Deux causes
+  // distinctes, corrigees ensemble :
+  //
+  //   1. `user.identities` (objet React ci-dessous) vient de la session mise
+  //      en cache par getSession() au demarrage de AuthContext -- PAS d'un
+  //      appel reseau. Rien ne garantit qu'elle reflete une identite qui
+  //      vient d'etre liee cote serveur a l'instant. On ne se fie donc plus a
+  //      ce cache seul pour decider qu'il n'y a rien a faire : un appel
+  //      reseau reel (supabase.auth.getUser()) tranche en dernier recours.
+  //   2. Quand GoTrue echoue a lier avec l'un de ces 3 codes precis --
+  //      "identity_already_exists" au premier chef -- le SDK cote client
+  //      (auth-js, _initialize()) AVALE l'erreur en interne : elle n'atteint
+  //      JAMAIS onAuthStateChange ni aucun evenement observable. Seule une
+  //      lecture manuelle de l'URL de retour la revele (voir
+  //      readDiscordOAuthErrorFromLocation, services/discordAccount.ts).
+  //      "identity_already_exists" signifie ici, le plus souvent, que
+  //      Discord n'a pas redemande d'autorisation (deja accordee) : l'identite
+  //      existe deja cote Supabase, seule la synchro vers `profiles` manque --
+  //      on retente donc sync_discord_identity() plutot que d'abandonner.
+  //      Sans risque d'attribution croisee : cette RPC ne lit jamais que
+  //      auth.identities filtre sur auth.uid().
   const { user } = useAuth();
   const syncAttempted = useRef(false);
   useEffect(() => {
     if (!user || !profile || isLinked || syncAttempted.current) return;
-    const hasDiscordIdentity = (user.identities ?? []).some((i) => i.provider === 'discord');
-    if (!hasDiscordIdentity) return;
-    syncAttempted.current = true;
-    setState('syncing');
-    syncDiscordIdentity()
-      .then(async (res) => {
-        if (!res.ok) setError(res.message);
-        else await refreshProfile();
-      })
-      .finally(() => setState('idle'));
+    let cancelled = false;
+
+    async function attemptSync(): Promise<void> {
+      const urlError = readDiscordOAuthErrorFromLocation();
+      const cachedIdentities = (user!.identities ?? []).map((i) => i.provider);
+      console.info('[DISCORD_AUTH] verification', {
+        userId: user!.id,
+        cachedIdentities,
+        urlError,
+      });
+
+      let hasDiscordIdentity = cachedIdentities.includes('discord');
+
+      // Le cache dit "non" : avant de conclure, un appel reseau REEL (pas
+      // getSession(), qui ne fait que relire le stockage local) tranche.
+      if (!hasDiscordIdentity) {
+        const { data, error: getUserError } = await supabase.auth.getUser();
+        const liveIdentities = (data.user?.identities ?? []).map((i) => i.provider);
+        console.info('[DISCORD_AUTH] getUser (verification reseau)', {
+          error: getUserError?.message ?? null,
+          liveIdentities,
+        });
+        hasDiscordIdentity = liveIdentities.includes('discord');
+      }
+
+      if (urlError) clearDiscordOAuthParamsFromLocation();
+
+      const shouldAttempt = hasDiscordIdentity || urlError?.errorCode === 'identity_already_exists';
+      if (!shouldAttempt) {
+        if (urlError) {
+          console.warn('[DISCORD_AUTH] erreur OAuth non recuperable', urlError);
+          setError(translateDiscordOAuthError(urlError));
+        }
+        return;
+      }
+
+      if (cancelled) return;
+      syncAttempted.current = true;
+      setState('syncing');
+      console.info('[DISCORD_AUTH] sync_discord_identity: appel', {
+        raison: hasDiscordIdentity ? 'identite_detectee' : 'identity_already_exists_dans_url',
+      });
+      const res = await syncDiscordIdentity();
+      console.info('[DISCORD_AUTH] sync_discord_identity: resultat', res.ok ? { ok: true } : { ok: false, message: res.message });
+      if (cancelled) return;
+      if (!res.ok) setError(res.message);
+      else await refreshProfile();
+      setState('idle');
+    }
+
+    void attemptSync();
+    return () => {
+      cancelled = true;
+    };
   }, [user, profile, isLinked, refreshProfile]);
 
   // Declenchement de la synchro de role a CHAQUE changement de plan -- c'est

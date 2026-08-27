@@ -132,3 +132,75 @@ export async function requestDiscordRoleSync(profile: Profile | null): Promise<R
     return { status: 'error', message: err instanceof Error ? err.message : 'Erreur inconnue' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Erreurs OAuth deposees dans l'URL de retour
+// ---------------------------------------------------------------------------
+// Echec live 2026-08-27 : le retour du flux linkIdentity() laissait la page
+// sur "Lier mon compte Discord" sans aucun signal. Cause identifiee en
+// lisant le SDK (node_modules/@supabase/auth-js/dist/main/GoTrueClient.js,
+// _initialize()) : GoTrue redirige avec un code PKCE en cas de succes, mais
+// avec ?error=...&error_code=...&error_description=... en cas d'echec -- et
+// pour EXACTEMENT trois codes ("identity_already_exists",
+// "identity_not_found", "single_identity_not_deletable"), le SDK avale
+// l'erreur en interne : _initialize() la renvoie a son appelant direct, mais
+// RIEN ne la propage a onAuthStateChange ni a aucun evenement observable
+// depuis notre code. Sans lecture manuelle de l'URL, ces echecs sont
+// invisibles a l'application -- silence total, exactement le symptome
+// rapporte.
+//
+// "identity_already_exists" est le cas reel le plus probable ici : Discord
+// n'a pas re-demande d'autorisation (deja accordee lors d'une tentative
+// precedente), l'identite existe donc deja cote Supabase pour CET
+// utilisateur, mais n'avait jamais ete synchronisee vers `profiles`
+// (discord_user_id/discord_username) -- exactement ce que
+// sync_discord_identity() sait faire. On retente donc la synchro plutot que
+// d'afficher un echec.
+export interface DiscordOAuthUrlError {
+  errorCode: string;
+  errorDescription: string | null;
+}
+
+// Purement synchrone, aucun effet de bord -- ne modifie jamais l'URL (voir
+// clearDiscordOAuthParamsFromLocation pour ca). GoTrue pose ces parametres
+// indifferemment en query string ou en fragment selon le type de callback
+// (PKCE vs implicite) ; on lit les deux, query string en priorite.
+export function readDiscordOAuthErrorFromLocation(
+  location: Pick<Location, 'search' | 'hash'> = window.location
+): DiscordOAuthUrlError | null {
+  const search = new URLSearchParams(location.search);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const errorCode = search.get('error_code') ?? hash.get('error_code') ?? search.get('error') ?? hash.get('error');
+  if (!errorCode) return null;
+  return {
+    errorCode,
+    errorDescription: search.get('error_description') ?? hash.get('error_description') ?? null,
+  };
+}
+
+// Retire les parametres d'erreur de l'URL affichee (history.replaceState,
+// aucun rechargement) -- sinon un simple F5 relirait le meme #error=... et
+// redeclencherait indefiniment le meme traitement.
+export function clearDiscordOAuthParamsFromLocation(): void {
+  const url = new URL(window.location.href);
+  for (const key of ['error', 'error_code', 'error_description']) url.searchParams.delete(key);
+  // Le fragment peut porter les memes cles (callback implicite) -- efface-le
+  // entierement plutot que de le re-parser, aucune donnee utile n'y survit
+  // une fois l'erreur traitee.
+  url.hash = '';
+  window.history.replaceState({}, '', url.toString());
+}
+
+// "identity_already_exists" n'atteint jamais ce traducteur : il declenche une
+// NOUVELLE tentative de synchro (voir useDiscordAccount.ts), jamais un
+// message d'echec direct -- si cette tentative echoue a son tour,
+// syncDiscordIdentity() fournit deja son propre message reel (ex. "Ce compte
+// Discord est deja relie a un autre compte ResellOS").
+const DISCORD_OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Autorisation Discord refusée. Réessaie si c'était une erreur.",
+};
+const DISCORD_OAUTH_ERROR_FALLBACK = 'La liaison Discord a échoué. Réessaie dans un instant.';
+
+export function translateDiscordOAuthError(err: DiscordOAuthUrlError): string {
+  return DISCORD_OAUTH_ERROR_MESSAGES[err.errorCode] ?? DISCORD_OAUTH_ERROR_FALLBACK;
+}

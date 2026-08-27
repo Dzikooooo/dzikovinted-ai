@@ -146,3 +146,63 @@ describe('syncDiscordIdentity / unlinkDiscordAccount', () => {
     expect(rpcMock).toHaveBeenCalledWith('unlink_discord_account');
   });
 });
+
+// ===========================================================================
+// ECHEC LIVE 2026-08-27 : le retour du flux linkIdentity() laissait la page
+// sur "Lier mon compte Discord", sans erreur visible. GoTrue avale en
+// interne 3 codes d'erreur precis (auth-js GoTrueClient.js::_initialize()),
+// dont "identity_already_exists" -- jamais remontes a onAuthStateChange.
+// Seule une lecture manuelle de l'URL de retour les revele.
+// ===========================================================================
+describe('readDiscordOAuthErrorFromLocation', () => {
+  it('lit error_code/error_description en query string', async () => {
+    const { readDiscordOAuthErrorFromLocation } = await loadService({});
+    expect(
+      readDiscordOAuthErrorFromLocation({
+        search: '?error=server_error&error_code=identity_already_exists&error_description=already+linked',
+        hash: '',
+      })
+    ).toEqual({ errorCode: 'identity_already_exists', errorDescription: 'already linked' });
+  });
+
+  it('lit les memes cles dans le FRAGMENT (callback implicite)', async () => {
+    const { readDiscordOAuthErrorFromLocation } = await loadService({});
+    expect(
+      readDiscordOAuthErrorFromLocation({ search: '', hash: '#error=access_denied&error_description=user+cancelled' })
+    ).toEqual({ errorCode: 'access_denied', errorDescription: 'user cancelled' });
+  });
+
+  it("retombe sur 'error' quand 'error_code' est absent", async () => {
+    const { readDiscordOAuthErrorFromLocation } = await loadService({});
+    expect(readDiscordOAuthErrorFromLocation({ search: '?error=access_denied', hash: '' })).toEqual({
+      errorCode: 'access_denied',
+      errorDescription: null,
+    });
+  });
+
+  it('rend null sur une URL de retour propre (cas nominal)', async () => {
+    const { readDiscordOAuthErrorFromLocation } = await loadService({});
+    expect(readDiscordOAuthErrorFromLocation({ search: '', hash: '' })).toBeNull();
+  });
+
+  it('la query string a priorite sur le fragment', async () => {
+    const { readDiscordOAuthErrorFromLocation } = await loadService({});
+    expect(
+      readDiscordOAuthErrorFromLocation({ search: '?error_code=identity_already_exists', hash: '#error_code=access_denied' })
+    ).toEqual({ errorCode: 'identity_already_exists', errorDescription: null });
+  });
+});
+
+describe('translateDiscordOAuthError', () => {
+  it('traduit access_denied explicitement', async () => {
+    const { translateDiscordOAuthError } = await loadService({});
+    expect(translateDiscordOAuthError({ errorCode: 'access_denied', errorDescription: null })).toMatch(/refusée/i);
+  });
+
+  it('retombe sur un message generique pour un code inconnu -- jamais le code technique brut', async () => {
+    const { translateDiscordOAuthError } = await loadService({});
+    const message = translateDiscordOAuthError({ errorCode: 'server_error', errorDescription: 'boom' });
+    expect(message).not.toContain('server_error');
+    expect(message.length).toBeGreaterThan(0);
+  });
+});
