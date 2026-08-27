@@ -820,7 +820,21 @@ function OpportunityDetailModal({ item, highlights, verdictLabel, verdictClassNa
 
   return (
     <Modal onClose={onClose} size="lg">
-      <div className="flex items-start justify-between gap-4 mb-4">
+      {/* Retour beta (2026-08-28) : la croix de fermeture defilait avec le
+          contenu (galerie, score, highlights...), devenant inaccessible en
+          bas d'une fiche longue. Le panneau de Modal.tsx (overflow-y-auto)
+          est le VRAI conteneur de defilement -- `sticky top-0` sur ce
+          conteneur direct suffit donc a l'ancrer en haut de LA ZONE VISIBLE
+          pendant le scroll, sans toucher Modal.tsx (partagee par toutes les
+          autres modales de l'app, hors perimetre de ce retour). Marges
+          negatives (-mx-5 -mt-5) + padding egal en compensation : le panneau
+          parent a p-5, sans ce "bleed" l'en-tete stickait 20px sous le vrai
+          bord du panneau, laissant le fond defiler visible sur les cotes.
+          rounded-t-2xl reprend l'arrondi du panneau (meme rayon) puisque cet
+          en-tete en couvre desormais exactement le bord superieur. Fond
+          opaque (meme bg-surface que le panneau) + z-index : le contenu qui
+          defile en dessous ne doit jamais transparaitre a travers. */}
+      <div className="sticky top-0 z-10 -mx-5 -mt-5 px-5 pt-5 pb-4 mb-4 rounded-t-2xl bg-surface flex items-start justify-between gap-4 border-b border-gray-200">
         <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${verdictClassName}`}>
           <span className="w-1.5 h-1.5 rounded-full bg-current flex-shrink-0" />
           {verdictLabel}
