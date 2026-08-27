@@ -14,6 +14,7 @@ import type { ScrapedItem } from "./types";
 import { dedupeWatchlist, type WatchlistRow } from "./watchlistDedup";
 import { waitForCardsToSettle } from "./cardSettle";
 import { mapWithConcurrency, planGalleryFetches, PHOTO_FETCH_CONCURRENCY } from "./photoPlan";
+import { extractItemsFromDocument } from "./itemExtraction";
 
 // Present uniquement quand ce script est declenche via workflow_dispatch
 // depuis "Scanner maintenant" (voir supabase/functions/scan-market et
@@ -229,39 +230,14 @@ async function gotoWithRetry(page: Page, url: string): Promise<void> {
   throw lastError;
 }
 
+// Extraction deleguee a itemExtraction.ts (2026-08-27, correctif du bug
+// "Voir sur Vinted reouvre ResellOS" -- voir l'en-tete de ce fichier pour la
+// cause complete). `page.evaluate(fn)` accepte une reference de fonction
+// nommee aussi bien qu'une arrow function inline, tant qu'elle ne capture
+// aucune closure externe -- c'est le cas ici (elle ne lit que le `document`
+// global de la page).
 async function extractItemsFromPage(page: Page): Promise<ScrapedItem[]> {
-  return page.evaluate(() => {
-    const titleEls = document.querySelectorAll('[data-testid$="--description-title"]');
-    const results: ScrapedItem[] = [];
-
-    titleEls.forEach((titleEl) => {
-      const testid = titleEl.getAttribute("data-testid") || "";
-      const prefix = testid.replace(/--description-title$/, "");
-      if (!prefix) return;
-
-      const priceEl = document.querySelector(`[data-testid="${prefix}--price-text"]`);
-      const linkEl = document.querySelector(`[data-testid="${prefix}--overlay-link"]`);
-      const imageEl = document.querySelector(`[data-testid="${prefix}--image--img"]`);
-      const container = document.querySelector(`[data-testid="${prefix}"]`);
-      const favEl = container?.querySelector('[data-testid="favourite-count-text"]');
-
-      const href = linkEl?.getAttribute("href") || "";
-      const priceText = priceEl?.textContent || "";
-      const price = Number(priceText.replace(/[^\d,]/g, "").replace(",", "."));
-      const slugMatch = href.match(/\/items\/\d+-([^?]+)/);
-      const title = slugMatch ? slugMatch[1].replace(/-/g, " ") : "";
-
-      results.push({
-        title,
-        price,
-        image: imageEl?.getAttribute("src") || "",
-        url: href,
-        favourites: favEl ? parseInt(favEl.textContent || "0", 10) || 0 : 0,
-      });
-    });
-
-    return results;
-  });
+  return page.evaluate(extractItemsFromDocument);
 }
 
 // Galerie photo complete d'une opportunite retenue (demande produit
