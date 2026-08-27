@@ -148,13 +148,23 @@ export default function PublishConfirmationModal({
             n'est qu'une annonce de ce que ResellOS VA TENTER, pas encore une
             confirmation (voir PublishProgressModal pour l'etat des lieux reel,
             rapporte apres coup). Purement informatif, identique pour publier
-            et republier. */}
+            et republier.
+            Texte corrige le 2026-08-27 (retour beta) : l'ancienne version
+            annoncait categorie/etat/attributs "a choisir toi-meme sur
+            Vinted" alors que vinted-publish.ts tente reellement de les
+            preremplir (categorie, marque, taille, couleur, matiere, etat --
+            voir attemptCategoryPrefill/attemptColorPrefill/etc.) depuis
+            plusieurs semaines. Ce texte est une promesse GENERALE avant
+            tentative (ecran de confirmation, pas de resultat encore connu) --
+            le vrai bilan champ par champ (confirme/a completer) arrive apres
+            coup dans PublishProgressModal, jamais ici. */}
         <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
           <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-gray-500 leading-relaxed">
-            ResellOS ouvre Vinted et préremplit titre, description, prix et photos. La catégorie, l'état et les
-            autres attributs restent à choisir toi-même sur Vinted (obligatoire côté Vinted), et c'est toi qui
-            cliques sur le bouton final -- ResellOS ne publie jamais automatiquement à ta place.
+            ResellOS ouvre Vinted et tente de préremplir titre, description, prix, photos, catégorie, marque, taille,
+            couleur et état. Si un champ ne peut pas être prérempli automatiquement, tu devras le compléter
+            toi-même sur Vinted -- et c'est toujours toi qui cliques sur le bouton final, ResellOS ne publie jamais
+            automatiquement à ta place.
           </p>
         </div>
         {isRepublish && (

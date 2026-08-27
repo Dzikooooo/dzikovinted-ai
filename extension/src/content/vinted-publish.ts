@@ -109,11 +109,12 @@ import { importPhotosWithVerification, type PhotoImportOutcome } from "./photoIm
 import {
   PUBLISH_CREATE_RESPONSE_CAPTURE_INSTALLED_ATTR,
   PUBLISH_CREATE_RESPONSE_EVENT_NAME,
+  summarizeAttributePayload,
   summarizePricePayload,
 } from "./publishCreateResponseCapture";
 import { PRICE_PAYLOAD_PATCHED_EVENT } from "./priceMainWorldWriter";
 import type { PublishCreateResponseCapture } from "./publishCreateResponseCapture";
-import { clickPackageSizeRadio, findAlreadyCheckedPackageSize, readPackageSizeCellSnapshots } from "./packageSizeSelection";
+import { clickPackageSizeRadio, findAlreadyCheckedPackageSize, packageSizeRadioIndex, readPackageSizeCellSnapshots } from "./packageSizeSelection";
 import { isContentCommand } from "../lib/messages";
 import type { FetchedPhoto, PublishCommandResponse, PublishListingPayload, PublishStep, RunActionOutcome } from "../lib/messages";
 import { errorMessage } from "../lib/errorMessage";
@@ -319,18 +320,6 @@ function reportPrefillSummary(confirmed: string[], pending: string[]): void {
 // arbitraire (ex. jamais "Petit" par defaut).
 const PACKAGE_SIZE_CELLS_TIMEOUT_MS = 20000;
 
-// Libelle FR propre pour le message utilisateur quand Vinted a deja
-// selectionne -- jamais le texte DOM brut (qui peut concatener "Petit" et
-// "Recommandé" sans separateur selon la structure reelle de la cellule).
-// `actual.label` (texte DOM brut) reste journalise integralement dans
-// PACKAGE_SIZE_SELECT_RESULT pour le diagnostic, seul ce libelle controle
-// est utilise dans le message affiche a l'utilisateur.
-const PACKAGE_SIZE_INDEX_LABELS: Record<1 | 2 | 3, string> = {
-  1: PACKAGE_SIZE_LABELS.small,
-  2: PACKAGE_SIZE_LABELS.medium,
-  3: PACKAGE_SIZE_LABELS.large,
-};
-
 async function selectPackageSizeWithConfirmation(
   payload: PublishListingPayload,
   confirmed: string[],
@@ -352,36 +341,39 @@ async function selectPackageSizeWithConfirmation(
   const snapshots = readPackageSizeCellSnapshots();
   docLog.info("PACKAGE_SIZE_DOM_SNAPSHOT", { requestedValue: payload.packageSize, requestedLabel: label, cells: snapshots });
 
-  // Vinted a-t-il DEJA reellement selectionne une taille lui-meme (etat
-  // structurel .checked, jamais un badge visuel seul) ? Si oui, ne jamais
-  // ecraser -- confirme cet etat reel tel quel, quelle que soit la valeur
-  // demandee par ResellOS.
+  // Vinted peut deja avoir SA PROPRE taille pre-cochee (etat initial du
+  // widget -- sa recommandation, pas un choix de l'utilisateur) -- mais la
+  // valeur choisie dans la modale ResellOS (PublishConfirmationModal.tsx)
+  // est une decision UTILISATEUR deja explicitement validee avant chaque
+  // publication : elle doit toujours l'emporter sur une preselection Vinted
+  // differente, jamais l'inverse. Retour beta confirme le 2026-08-27 :
+  // "Petit" demande cote ResellOS, "Moyen" publie reellement sur Vinted --
+  // le comportement precedent (mission "ROUND PRIX + COLIS -- COMPORTEMENT
+  // FINAL", 2026-08-19) adoptait SANS CONDITION l'etat deja coche, quelle
+  // que soit la valeur demandee. N'adopte plus l'etat deja coche que s'il
+  // correspond DEJA a la valeur demandee (evite un clic inutile) ; sinon,
+  // clique toujours la valeur demandee -- un second clic sur un autre radio
+  // du meme groupe le decoche et coche le nouveau, comportement natif
+  // standard, aucun risque de double-selection.
+  const requestedIndex = packageSizeRadioIndex(payload.packageSize);
   const alreadyCheckedIndex = findAlreadyCheckedPackageSize(snapshots);
-  if (alreadyCheckedIndex !== null) {
+  if (alreadyCheckedIndex !== null && alreadyCheckedIndex === requestedIndex) {
     const actual = snapshots.find((s) => s.index === alreadyCheckedIndex)!;
-    const actualCleanLabel = PACKAGE_SIZE_INDEX_LABELS[alreadyCheckedIndex];
     docLog.info("PACKAGE_SIZE_SELECT_RESULT", {
       requestedLabel: label,
-      requestedIndex: null,
+      requestedIndex,
       radioFound: true,
       checkedAfterClick: true,
-      outcome: "already_selected_by_vinted",
-      actualIndex: alreadyCheckedIndex,
-      actualLabel: actual.label, // texte DOM brut, diagnostic uniquement
-      actualCleanLabel,
+      outcome: "already_matches_requested_value",
       recommended: actual.recommended,
     });
-    // Message utilisateur : le libelle CONTROLE ("Petit"/"Moyen"/"Grand"),
-    // jamais "Moyen demandé" quand Vinted avait deja selectionne autre chose
-    // (demande explicite) -- et jamais le texte DOM brut potentiellement
-    // concatene avec "Recommandé".
-    confirmed.push(`Taille du colis : ${actualCleanLabel} (déjà sélectionné par Vinted)`);
+    confirmed.push(`Taille du colis : ${label}`);
     packageSizeCommitConfirmed = true;
     return;
   }
 
   const outcome = clickPackageSizeRadio(payload.packageSize);
-  docLog.info("PACKAGE_SIZE_SELECT_RESULT", { requestedLabel: label, ...outcome });
+  docLog.info("PACKAGE_SIZE_SELECT_RESULT", { requestedLabel: label, alreadyCheckedIndexBeforeClick: alreadyCheckedIndex, ...outcome });
   if (outcome.checkedAfterClick === true) {
     confirmed.push(`Taille du colis : ${label}`);
     packageSizeCommitConfirmed = true;
@@ -3290,7 +3282,12 @@ function bootPublishContentScript(): void {
     //      la sonde prix). Il est desormais serialise DANS le message.
     // `pricePayload` extrait toutes les cles evoquant un prix du body envoye :
     // c'est la preuve directe de ce que Vinted a recu, plutot qu'une deduction
-    // depuis l'erreur affichee.
+    // depuis l'erreur affichee. Mission "BUG COULEUR -- PAYLOAD REEL"
+    // (2026-08-27) : `attributePayload` applique la meme discipline aux cles
+    // couleur/marque/taille/categorie/etat/matiere -- retour beta direct,
+    // "La couleur doit être renseignée" au clic final malgre
+    // colorCommitConfirmed===true (aria-checked confirme en DOM, jamais
+    // prouve committe cote formulaire reel, voir publishCreateResponseCapture.ts).
     const captureDetail = {
       url: detail.url,
       statusCode: detail.statusCode,
@@ -3300,6 +3297,9 @@ function bootPublishContentScript(): void {
       requestContentType: detail.requestContentType,
       requestBodyType: detail.requestBodyType,
       pricePayload: summarizePricePayload(detail.requestBodyText),
+      attributePayload: summarizeAttributePayload(detail.requestBodyText),
+      colorCommitConfirmedByDom: colorCommitConfirmed,
+      brandCommitConfirmedByDom: brandCommitConfirmed,
       responseBodyText: detail.bodyText,
       requestBodyText: detail.requestBodyText,
     };

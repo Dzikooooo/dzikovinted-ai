@@ -5,6 +5,8 @@ import {
   installPublishCreateResponseCapture,
   describeRequestBody,
   extractContentTypeFromHeadersInit,
+  summarizeAttributePayload,
+  summarizePricePayload,
 } from "../publishCreateResponseCapture";
 
 // Mission "AUTOMATISER ENTIEREMENT LA REPUBLICATION" (2026-08-17) : dernier
@@ -394,5 +396,84 @@ describe("extractContentTypeFromHeadersInit", () => {
 
   it("retourne null quand content-type est absent des headers fournis", () => {
     expect(extractContentTypeFromHeadersInit({ Authorization: "Bearer secret" })).toBeNull();
+  });
+});
+
+// Mission "PAYLOAD DU PRIX" (2026-08-26) puis "BUG COULEUR -- PAYLOAD REEL"
+// (2026-08-27) : les deux fonctions partagent desormais la meme traversee
+// JSON generique (summarizeJsonPayloadKeys, non exportee) -- ces tests
+// couvrent les deux comportements observables separement pour prouver que le
+// partage n'a rien change au resultat de summarizePricePayload (deja en
+// production) tout en validant le nouveau summarizeAttributePayload.
+describe("summarizePricePayload", () => {
+  it("rapporte parsed:false, reason:'body absent' quand aucun corps n'a ete capture", () => {
+    expect(summarizePricePayload(null)).toEqual({ parsed: false, reason: "body absent" });
+  });
+
+  it("rapporte parsed:false, reason:'body non-JSON' avec la longueur pour un corps illisible", () => {
+    expect(summarizePricePayload("not-json")).toEqual({ parsed: false, reason: "body non-JSON", length: 8 });
+  });
+
+  it("extrait toutes les cles evoquant un prix, y compris imbriquees, valeur telle quelle (meme null)", () => {
+    const body = JSON.stringify({ item: { price: null, currency_code: "EUR" }, unrelated: "x" });
+    const result = summarizePricePayload(body);
+    expect(result.parsed).toBe(true);
+    expect(result.pricePathCount).toBe(2);
+    // typeof null === "object" en JS -- null est donc rapporte "[object]" au
+    // meme titre qu'un vrai objet (meme discipline que le code : jamais de
+    // cas particulier invente pour null, la fonction ne fait pas de distinction).
+    expect(result.pricePaths).toEqual(
+      expect.arrayContaining([
+        { path: "item.price", value: "[object]", type: "object" },
+        { path: "item.currency_code", value: "EUR", type: "string" },
+      ])
+    );
+  });
+
+  it("ne rapporte aucune cle attribut (couleur/marque/etc.) -- chaque fonction reste scopee a son domaine", () => {
+    const body = JSON.stringify({ price: 24, color_ids: [9] });
+    const result = summarizePricePayload(body);
+    expect(result.pricePathCount).toBe(1);
+  });
+});
+
+describe("summarizeAttributePayload", () => {
+  it("rapporte parsed:false, reason:'body absent' quand aucun corps n'a ete capture", () => {
+    expect(summarizeAttributePayload(null)).toEqual({ parsed: false, reason: "body absent" });
+  });
+
+  it("rapporte parsed:false, reason:'body non-JSON' avec la longueur pour un corps illisible", () => {
+    expect(summarizeAttributePayload("not-json")).toEqual({ parsed: false, reason: "body non-JSON", length: 8 });
+  });
+
+  // Scenario exact du retour beta 2026-08-27 : ResellOS affiche la couleur
+  // comme confirmee (aria-checked, cote DOM), mais le VRAI corps envoye a
+  // Vinted ne porte aucun color_ids -- c'est precisement ce que ce test fige :
+  // la cle est bien detectee et sa valeur reelle (ici vide) rapportee telle
+  // quelle, jamais deduite/masquee.
+  it("revele un color_ids vide malgre une confirmation DOM -- le scenario beta exact", () => {
+    const body = JSON.stringify({ item: { color_ids: [], brand_id: 4273, size_id: null }, price: { amount: "24.00" } });
+    const result = summarizeAttributePayload(body);
+    expect(result.parsed).toBe(true);
+    expect(result.attributePathCount).toBe(3);
+    expect(result.attributePaths).toEqual(
+      expect.arrayContaining([
+        { path: "item.color_ids", value: "[object]", type: "object" },
+        { path: "item.brand_id", value: 4273, type: "number" },
+        { path: "item.size_id", value: "[object]", type: "object" }, // typeof null === "object"
+      ])
+    );
+  });
+
+  it("ignore les cles prix -- chaque fonction reste scopee a son domaine", () => {
+    const body = JSON.stringify({ price: 24, currency: "EUR", color_ids: [9] });
+    const result = summarizeAttributePayload(body);
+    expect(result.attributePathCount).toBe(1);
+  });
+
+  it("detecte categorie/etat/matiere en plus de couleur/marque/taille", () => {
+    const body = JSON.stringify({ category_id: 12, status_id: 2, material_ids: [3] });
+    const result = summarizeAttributePayload(body);
+    expect(result.attributePathCount).toBe(3);
   });
 });

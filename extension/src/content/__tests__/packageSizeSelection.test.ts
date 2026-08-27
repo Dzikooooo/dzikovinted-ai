@@ -7,6 +7,16 @@ import {
   type PackageSizeCellSnapshot,
 } from "../packageSizeSelection";
 
+// Mission "ROUND 2 -- LE CHOIX UTILISATEUR PRIME" (2026-08-27) : retour beta
+// direct -- "Petit" choisi dans la modale ResellOS, "Moyen" reellement
+// publie sur Vinted. Cause confirmee par lecture de code : le comportement
+// mis en place le 2026-08-19 (voir plus bas dans ce fichier) adoptait SANS
+// CONDITION la taille deja cochee par Vinted (sa propre recommandation),
+// quelle que soit la valeur demandee -- exactement le scenario remonte.
+// Corrige : l'etat deja coche n'est desormais adopte que s'il correspond
+// DEJA a la valeur demandee ; sinon, le clic sur la valeur demandee est
+// toujours tente.
+
 // Mission "ROUND PACKAGE SIZE -- implementation production" (2026-08-18) :
 // couvre le mapping 1/2/3 (jamais devine sur une valeur inconnue) et
 // l'activation reelle du radio via .click() natif, avec verification
@@ -201,52 +211,49 @@ describe("findAlreadyCheckedPackageSize", () => {
   });
 });
 
-// Mission "ROUND PRIX + COLIS -- COMPORTEMENT FINAL" (2026-08-19) : preuve
-// live confirmee sur un polo reel (index 1/Petit : checked:true ET
-// recommended:true ; index 2/3 : les deux false). Ces tests composent les
-// MEMES briques exportees que selectPackageSizeWithConfirmation()
+// Mission "ROUND 2 -- LE CHOIX UTILISATEUR PRIME" (2026-08-27) : ces tests
+// composent les MEMES briques exportees que selectPackageSizeWithConfirmation()
 // (vinted-publish.ts, non exportee -- meme discipline de test que
 // brandCommitConfirmed/colorCommitConfirmed, dont l'orchestration privee
 // n'est jamais testee directement non plus, uniquement ses briques pures)
-// pour prouver le comportement final de bout en bout : si Vinted a deja
-// reellement selectionne une taille, ResellOS ne clique RIEN et adopte cet
-// etat, meme si la valeur demandee differe.
+// pour prouver le comportement final de bout en bout : la valeur demandee
+// par ResellOS l'emporte toujours, sauf quand elle correspond deja a ce que
+// Vinted a coche lui-meme (aucun clic necessaire dans ce seul cas).
 function simulatePackageSizeDecision(requestedValue: unknown): { clicked: boolean; alreadySelectedIndex: 1 | 2 | 3 | null } {
   const snapshots = readPackageSizeCellSnapshots();
+  const requestedIndex = packageSizeRadioIndex(requestedValue);
   const alreadyCheckedIndex = findAlreadyCheckedPackageSize(snapshots);
-  if (alreadyCheckedIndex !== null) {
+  if (alreadyCheckedIndex !== null && alreadyCheckedIndex === requestedIndex) {
     return { clicked: false, alreadySelectedIndex: alreadyCheckedIndex };
   }
   clickPackageSizeRadio(requestedValue);
   return { clicked: true, alreadySelectedIndex: null };
 }
 
-describe("comportement final -- Vinted deja selectionne vs fallback (composition des briques exportees)", () => {
-  it("1. Petit deja checked + recommended -> aucun clic, Petit gagne (scenario live exact)", () => {
+describe("comportement final -- le choix ResellOS prime sur la preselection Vinted", () => {
+  it("1. Petit deja checked par Vinted, mais 'medium' demande -> clic reel sur Moyen, jamais ecrase par Vinted (scenario beta exact)", () => {
     makeCell(1, { label: "Petit", checked: true, recommended: true });
     makeCell(2, { label: "Moyen" });
     makeCell(3, { label: "Grand" });
 
-    const result = simulatePackageSizeDecision("medium"); // payload demande "medium"
-    expect(result.clicked).toBe(false);
-    expect(result.alreadySelectedIndex).toBe(1);
-    expect(document.getElementById("package_type_selector_1")).toHaveProperty("checked", true);
-    expect(document.getElementById("package_type_selector_2")).toHaveProperty("checked", false);
-  });
-
-  it("2. Moyen deja checked (sans badge recommended) -> aucun clic, Moyen gagne", () => {
-    makeCell(1, { label: "Petit" });
-    makeCell(2, { label: "Moyen", checked: true });
-    makeCell(3, { label: "Grand" });
-
-    const result = simulatePackageSizeDecision("small"); // payload demande "small"
-    expect(result.clicked).toBe(false);
-    expect(result.alreadySelectedIndex).toBe(2);
+    const result = simulatePackageSizeDecision("medium");
+    expect(result.clicked).toBe(true);
     expect(document.getElementById("package_type_selector_2")).toHaveProperty("checked", true);
     expect(document.getElementById("package_type_selector_1")).toHaveProperty("checked", false);
   });
 
-  it("3. aucun radio deja checked -> comportement de fallback actuel (clic sur la valeur demandee)", () => {
+  it("2. Moyen deja checked (sans badge recommended), 'small' demande -> clic reel sur Petit", () => {
+    makeCell(1, { label: "Petit" });
+    makeCell(2, { label: "Moyen", checked: true });
+    makeCell(3, { label: "Grand" });
+
+    const result = simulatePackageSizeDecision("small");
+    expect(result.clicked).toBe(true);
+    expect(document.getElementById("package_type_selector_1")).toHaveProperty("checked", true);
+    expect(document.getElementById("package_type_selector_2")).toHaveProperty("checked", false);
+  });
+
+  it("3. aucun radio deja checked -> clic sur la valeur demandee (comportement inchange)", () => {
     makeCell(1, { label: "Petit" });
     makeCell(2, { label: "Moyen" });
     makeCell(3, { label: "Grand" });
@@ -257,11 +264,11 @@ describe("comportement final -- Vinted deja selectionne vs fallback (composition
     expect(document.getElementById("package_type_selector_2")).toHaveProperty("checked", true);
   });
 
-  it("4. payload 'medium' mais Vinted a deja coche Petit -> Petit gagne, jamais ecrase par la demande", () => {
+  it("4. la valeur deja cochee par Vinted correspond DEJA a la valeur demandee -> aucun clic necessaire", () => {
     makeCell(1, { label: "Petit", checked: true, recommended: true });
     makeCell(2, { label: "Moyen" });
 
-    const result = simulatePackageSizeDecision("medium");
+    const result = simulatePackageSizeDecision("small");
     expect(result.clicked).toBe(false);
     expect(result.alreadySelectedIndex).toBe(1);
     expect(document.getElementById("package_type_selector_1")).toHaveProperty("checked", true);

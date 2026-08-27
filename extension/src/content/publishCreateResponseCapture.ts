@@ -287,10 +287,18 @@ function attachXhrLoadCapture(xhr: TaggedXhr, url: string, request: RequestDiagn
 // -- il rapporte la valeur telle quelle, y compris `null`/absente.
 //
 // Best-effort et strictement descriptif : jamais d'exception propagee, jamais
-// de valeur inventee. `pricePaths` liste toutes les cles dont le nom evoque un
-// prix, ou qu'elles soient dans l'arbre -- on ne suppose pas la forme du
-// payload Vinted.
-export function summarizePricePayload(requestBodyText: string | null): Record<string, unknown> {
+// de valeur inventee. Extraite en fonction generique (summarizeJsonPayloadKeys)
+// pour la mission "BUG COULEUR -- PAYLOAD REEL" (2026-08-27, voir plus bas) :
+// meme besoin exact que pour le prix (aria-checked confirme en DOM cote
+// colorOptionReader.ts, mais Vinted rejette quand meme -- retour beta direct,
+// "La couleur doit être renseignée" au clic final), jamais deux logiques de
+// parcours JSON divergentes a maintenir.
+function summarizeJsonPayloadKeys(
+  requestBodyText: string | null,
+  keyPattern: RegExp,
+  pathsKey: string,
+  pathCountKey: string
+): Record<string, unknown> {
   if (!requestBodyText) return { parsed: false, reason: "body absent" };
   let parsed: unknown;
   try {
@@ -298,13 +306,13 @@ export function summarizePricePayload(requestBodyText: string | null): Record<st
   } catch {
     return { parsed: false, reason: "body non-JSON", length: requestBodyText.length };
   }
-  const pricePaths: Array<{ path: string; value: unknown; type: string }> = [];
+  const paths: Array<{ path: string; value: unknown; type: string }> = [];
   const visit = (node: unknown, path: string, depth: number): void => {
     if (depth > 6 || node === null || typeof node !== "object") return;
     for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
       const nextPath = path ? `${path}.${key}` : key;
-      if (/price|currency|amount/i.test(key)) {
-        pricePaths.push({ path: nextPath, value: typeof value === "object" ? "[object]" : value, type: typeof value });
+      if (keyPattern.test(key)) {
+        paths.push({ path: nextPath, value: typeof value === "object" ? "[object]" : value, type: typeof value });
       }
       visit(value, nextPath, depth + 1);
     }
@@ -314,5 +322,37 @@ export function summarizePricePayload(requestBodyText: string | null): Record<st
   } catch {
     return { parsed: false, reason: "parcours interrompu" };
   }
-  return { parsed: true, pricePaths, pricePathCount: pricePaths.length };
+  return { parsed: true, [pathsKey]: paths, [pathCountKey]: paths.length };
+}
+
+// `pricePaths` liste toutes les cles dont le nom evoque un prix, ou qu'elles
+// soient dans l'arbre -- on ne suppose pas la forme du payload Vinted.
+export function summarizePricePayload(requestBodyText: string | null): Record<string, unknown> {
+  return summarizeJsonPayloadKeys(requestBodyText, /price|currency|amount/i, "pricePaths", "pricePathCount");
+}
+
+// Mission "BUG COULEUR -- PAYLOAD REEL" (2026-08-27) : retour beta direct --
+// "l'extension indique que la couleur est pré-remplie" (colorCommitConfirmed
+// devient true, aria-checked="true" confirme AVANT et APRES fermeture du
+// panneau, voir colorOptionReader.ts/attemptColorPrefill), pourtant Vinted
+// affiche "La couleur doit être renseignée" au clic humain final sur
+// "Publier". Ce n'est PAS une nouvelle hypothese en l'air : le diagnostic du
+// 2026-08-19 (mission "DIAGNOSTIC REQUEST BODY COULEUR") avait deja capture
+// UNE FOIS un POST 400 avec Couleur confirmee en DOM -- mais sans jamais
+// isoler les cles couleur/marque/taille dans le corps de requete (seul le
+// prix a recu ce traitement le 2026-08-26). La preuve DOM (aria-checked) ne
+// prouve donc PAS a elle seule que Vinted a reellement committe la valeur
+// cote formulaire -- exactement la meme classe de faux positif que le bug
+// prix deja resolu. Rapporte desormais, cote a cote avec pricePayload, toutes
+// les cles evoquant couleur/marque/taille/categorie/etat/matiere presentes
+// dans le VRAI corps envoye -- preuve directe plutot qu'une nouvelle
+// deduction, exploitable des le prochain test live reel (clic humain final
+// sur "Publier", pas seulement AUTO_SUBMIT_TRIGGERED).
+export function summarizeAttributePayload(requestBodyText: string | null): Record<string, unknown> {
+  return summarizeJsonPayloadKeys(
+    requestBodyText,
+    /color|colour|brand|size|categor|condition|material|status/i,
+    "attributePaths",
+    "attributePathCount"
+  );
 }
