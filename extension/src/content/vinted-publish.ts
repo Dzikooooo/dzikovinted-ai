@@ -78,7 +78,8 @@ import { readSizeOptionCandidates } from "./sizeOptionReader";
 import { readColorOptionCandidates, isColorCandidateChecked, resolveColorOptionByTestId } from "./colorOptionReader";
 import { matchMaterialOption, readMaterialOptionCandidates } from "./materialOptionReader";
 import { parseMaterials } from "./materials";
-import { readCategoryResultCells } from "./categoryOptionReader";
+import { readCategoryResultCells, readCategoryResultCellsDetailed, describeCategoryContainer } from "./categoryOptionReader";
+import { readLabeledOptionCells, readLabeledOptionCellsDetailed, describePickerContainer } from "./pickerCellReader";
 import { deriveCategorySearchTerm, describeCategoryMatchAttempt, matchCategoryResult } from "./categoryMatch";
 import { describeMatchAttempt, matchOption, normalize } from "./matchOption";
 import {
@@ -1703,9 +1704,14 @@ async function attemptColorPrefill(spec: AttributePickerSpec, confirmed: string[
 //
 // Le resultat filtre n'est pas selectionne via le <li> (verifie en direct,
 // li.click() ne selectionne rien) mais via la Cell interactive qu'il
-// contient (role="button", aria-label=<nom exact>) -- BRAND_RESULT_CELL_SELECTOR.
+// contient. Lu via readLabeledOptionCellsDetailed() (pickerCellReader.ts,
+// partage avec la Categorie) et non plus un selecteur en dur : le contrat
+// initial '[role="button"][aria-label]' a disparu du DOM Vinted le
+// 2026-08-27 (meme panne, memes dix jours d'ecart, que la Categorie), et le
+// champ etait silencieusement saute -- optionsCount:0 sans jamais atteindre
+// MANUAL_REQUIRED, puisqu'aucune valeur n'etait meme lue.
 // L'id numerique de cette Cell (ex. "brand-4273") N'EST PAS stable d'une
-// marque a l'autre : le matching se fait exclusivement sur aria-label, via
+// marque a l'autre : le matching se fait exclusivement sur le libelle, via
 // matchOption() (normalize() = trim+lowercase+sans diacritiques, inchange),
 // jamais sur l'id ni sur une position/index. Comme avant : aucune
 // correspondance fiable => MANUAL_REQUIRED, jamais de selection approximative.
@@ -1749,7 +1755,7 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
       throw new Error(`Brand dropdown never opened after ${BRAND_OPEN_MAX_ATTEMPTS} attempts`);
     }
     lastStep = "options_found";
-    const baselineCount = content.querySelectorAll(sel.BRAND_RESULT_CELL_SELECTOR).length;
+    const baselineCount = readLabeledOptionCells(content).length;
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: lastStep, optionsCount: baselineCount });
 
     // Localise le VRAI champ de recherche (distinct du trigger readonly) --
@@ -1813,8 +1819,8 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
           () => {
             const currentContent = document.querySelector<HTMLElement>(spec.contentSelector);
             if (!currentContent) return false;
-            const currentCells = Array.from(currentContent.querySelectorAll<HTMLElement>(sel.BRAND_RESULT_CELL_SELECTOR));
-            return currentCells.some((cell) => normalize(cell.getAttribute("aria-label") ?? "") === normalize(spec.value as string));
+            const currentCells = readLabeledOptionCells(currentContent);
+            return currentCells.some((cell) => normalize(cell.label) === normalize(spec.value as string));
           },
           {
             timeoutMs: BRAND_SEARCH_FILTER_TIMEOUT_MS,
@@ -1833,7 +1839,7 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
         docLog.warn("BRAND_SEARCH_FILTER_NOT_CONFIRMED", {
           field: spec.label,
           baselineCount,
-          currentCount: content.querySelectorAll(sel.BRAND_RESULT_CELL_SELECTOR).length,
+          currentCount: readLabeledOptionCells(content).length,
         });
       }
     }
@@ -1846,9 +1852,31 @@ async function attemptBrandPrefill(spec: AttributePickerSpec, confirmed: string[
     // `content` si le selecteur ne matche plus rien (jamais pire que l'ancien
     // comportement).
     const matchingContent = document.querySelector<HTMLElement>(spec.contentSelector) ?? content;
-    const cells = Array.from(matchingContent.querySelectorAll<HTMLElement>(sel.BRAND_RESULT_CELL_SELECTOR));
-    const labels = cells.map((cell) => (cell.getAttribute("aria-label") ?? "").trim());
-    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "options_read_after_filter_attempt", optionsCount: labels.length });
+    // Lecteur resilient partage avec la Categorie (pickerCellReader.ts) : le
+    // selecteur '[role="button"][aria-label]' a disparu des Cells le
+    // 2026-08-27 (meme panne exactement que la Categorie dix jours plus tot),
+    // laissant ce champ silencieusement saute (optionsCount:0, jamais atteint
+    // le MANUAL_REQUIRED car aucune valeur n'etait meme lue).
+    const read = readLabeledOptionCellsDetailed(matchingContent);
+    const cells = read.options.map((option) => option.element);
+    const labels = read.options.map((option) => option.label);
+    docLog.info(`${spec.logName}_STEP`, {
+      field: spec.label,
+      step: "options_read_after_filter_attempt",
+      strategy: read.strategy,
+      optionsCount: labels.length,
+    });
+
+    if (labels.length === 0) {
+      // Photographie structurelle : sans elle, on ne peut qu'essayer un
+      // selecteur de plus a l'aveugle au prochain changement de balisage.
+      docLog.warn("BRAND_CONTAINER_SHAPE", {
+        field: spec.label,
+        containerSelector: spec.contentSelector,
+        usedFallbackContainer: matchingContent === content,
+        ...describePickerContainer(matchingContent),
+      });
+    }
 
     const match = matchOption(spec.value, labels);
     if (!match) {
@@ -2362,11 +2390,19 @@ async function attemptCategoryPrefill(
         () => {
           const currentContent = document.querySelector<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR);
           if (!currentContent) return false;
-          return readCategoryResultCells(currentContent).some((cell) => normalize(cell.title) === normalize(searchTerm));
+          // Deux sorties acceptables (2026-08-26). Avant, l'attente n'admettait
+          // QUE la correspondance exacte du titre : quand le lecteur ne voyait
+          // rien du tout, elle expirait puis on relisait dans le vide, et le
+          // diagnostic accusait le matching alors que le probleme etait la
+          // LECTURE. Repartir des que des candidats sont lisibles laisse le
+          // matching (et son diagnostic) juger sur des donnees reelles.
+          const cells = readCategoryResultCells(currentContent);
+          if (cells.length === 0) return false;
+          return cells.some((cell) => normalize(cell.title) === normalize(searchTerm)) || cells.length > 0;
         },
         {
           timeoutMs: CATEGORY_SEARCH_FILTER_TIMEOUT_MS,
-          description: "exact category title match appears after typed search text",
+          description: "readable category result cells appear after typed search text",
         }
       );
     } catch {
@@ -2377,13 +2413,31 @@ async function attemptCategoryPrefill(
     }
 
     const matchingContent = document.querySelector<HTMLElement>(sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR) ?? content;
-    const cells = readCategoryResultCells(matchingContent);
+    const read = readCategoryResultCellsDetailed(matchingContent);
+    const cells = read.cells;
     docLog.info("PREFILL_CATEGORY_STEP", {
       field: CATEGORY_LABEL,
       step: "options_read_after_filter_attempt",
+      // Quelle strategie a repondu : "cell_role_button" = le DOM est celui
+      // documente ; toute autre valeur signale que Vinted a change son
+      // balisage et que le selecteur de reference doit etre mis a jour.
+      strategy: read.strategy,
       optionsCount: cells.length,
       titles: cells.map((cell) => cell.title),
+      breadcrumbs: cells.map((cell) => cell.breadcrumb),
     });
+
+    if (cells.length === 0) {
+      // Photographie structurelle du conteneur reellement inspecte : sans
+      // elle, on ne peut qu'essayer un selecteur de plus a l'aveugle. Emise
+      // uniquement dans ce cas precis, jamais en fonctionnement normal.
+      docLog.warn("CATEGORY_CONTAINER_SHAPE", {
+        field: CATEGORY_LABEL,
+        containerSelector: sel.CATEGORY_DROPDOWN_CONTENT_SELECTOR,
+        usedFallbackContainer: matchingContent === content,
+        ...describeCategoryContainer(matchingContent),
+      });
+    }
 
     const matchIndex = matchCategoryResult(cells, payload.category);
     if (matchIndex === null) {
@@ -2399,10 +2453,23 @@ async function attemptCategoryPrefill(
     }
 
     const matched = cells[matchIndex];
-    matched.element.click();
+    // dispatchFullClick et NON element.click() (2026-08-26, echec live sur la
+    // republication : le panneau s'ouvrait, la recherche filtrait bien, mais
+    // aucune sous-categorie ne se selectionnait).
+    //
+    // element.click() natif ne dispatch QUE "click" -- jamais pointerdown/
+    // mousedown/pointerup/mouseup. C'est EXACTEMENT la panne deja diagnostiquee
+    // et corrigee le 2026-07-25 sur le champ Marque (voir formFill.ts::
+    // dispatchFullClick) : les composants du design system "core" de Vinted
+    // ouvrent/valident frequemment sur mousedown, pas sur click. La Cell de
+    // resultat categorie est un <div role="button"> du MEME design system, mais
+    // etait restee sur le clic natif -- seul appel de ce genre encore en place
+    // dans ce fichier.
+    dispatchFullClick(matched.element);
     docLog.info("PREFILL_CATEGORY_STEP", {
       field: CATEGORY_LABEL,
       step: "option_clicked",
+      clickMethod: "dispatchFullClick",
       matched: { title: matched.title, breadcrumb: matched.breadcrumb },
     });
 

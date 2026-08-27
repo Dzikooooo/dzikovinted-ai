@@ -112,22 +112,110 @@ describe("describeCategoryMatchAttempt", () => {
     expect(diag.genderHint).toBe("Hommes");
   });
 
-  it("reports 'multiple_title_matches_no_gender_hint' when ambiguous without a gender hint", () => {
+  it("reports 'multiple_title_matches_no_context_token' when nothing beyond the leaf name is stored", () => {
     const candidates: CategoryResultCandidate[] = [
       { title: "Polos", breadcrumb: "Enfants > Garçons > Polos" },
       { title: "Polos", breadcrumb: "Hommes > Polos" },
     ];
     const diag = describeCategoryMatchAttempt(candidates, "Polos");
-    expect(diag.reason).toBe("multiple_title_matches_no_gender_hint");
+    expect(diag.reason).toBe("multiple_title_matches_no_context_token");
     expect(diag.titleMatchCount).toBe(2);
   });
 
-  it("reports 'multiple_title_matches_gender_hint_matches_none' when the gender hint matches no breadcrumb", () => {
+  it("reports 'multiple_title_matches_context_matches_no_breadcrumb' when no breadcrumb echoes the stored context", () => {
     const candidates: CategoryResultCandidate[] = [
       { title: "Polos", breadcrumb: "Enfants > Garçons > Polos" },
       { title: "Polos", breadcrumb: "Femmes > Polos" },
     ];
     const diag = describeCategoryMatchAttempt(candidates, "Hommes Polos");
-    expect(diag.reason).toBe("multiple_title_matches_gender_hint_matches_none");
+    expect(diag.reason).toBe("multiple_title_matches_context_matches_no_breadcrumb");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ECHEC LIVE du 2026-08-26 -- republication reelle bloquee sur la categorie
+// ---------------------------------------------------------------------------
+// Constate en direct : pour "Polos", Vinted renvoie TROIS Cells au titre
+// identique, distinguees uniquement par leur chemin. Aucune n'etait cliquee.
+const POLOS_LIVE: CategoryResultCandidate[] = [
+  { title: "Polos", breadcrumb: "Enfants > Garçons" },
+  { title: "Polos", breadcrumb: "Hommes > Vêtements" },
+  { title: "Polos", breadcrumb: "Enfants > Filles" },
+];
+
+describe("cas live : trois 'Polos' homonymes", () => {
+  it("choisit la branche Hommes a partir du contexte stocke", () => {
+    expect(matchCategoryResult(POLOS_LIVE, "Hommes Polos")).toBe(1);
+  });
+
+  it("choisit aussi quand le contexte est un chemin complet", () => {
+    // Format que l'ancienne version ne savait pas lire du tout : elle tapait
+    // "> Vetements > Polos" dans la recherche.
+    expect(matchCategoryResult(POLOS_LIVE, "Hommes > Vêtements > Polos")).toBe(1);
+  });
+
+  // ------------------------------------------------------------------
+  // LIMITE CONNUE, documentee plutot que masquee.
+  // ------------------------------------------------------------------
+  // Le terme tape dans la recherche Vinted doit etre le nom EXACT de la
+  // feuille, et il est derive de la chaine stockee avant d'avoir vu le
+  // moindre candidat. deriveCategorySearchTerm() ne sait le faire que pour
+  // les deux formats reellement observes : "{Genre} {Feuille}" et "{Feuille}"
+  // seule (plus les chemins a separateurs, ajoutes ce jour).
+  //
+  // Generaliser demanderait de deviner ou s'arrete le contexte et ou commence
+  // la feuille -- or une feuille peut compter plusieurs mots ("Hauts et
+  // t-shirts"). Prendre "le dernier mot" casserait ces categories-la. On
+  // prefere echouer proprement en MANUAL_REQUIRED plutot que taper un terme
+  // de recherche faux et selectionner une categorie voisine.
+  it("ne sait PAS lire un genre place apres la feuille (limite assumee)", () => {
+    expect(matchCategoryResult(POLOS_LIVE, "Polos Hommes")).toBeNull();
+  });
+
+  it("ne sait PAS lire un contexte de plusieurs mots sans separateur (limite assumee)", () => {
+    // "Enfants Filles Polos" -> le prefixe de genre est retire, il reste
+    // "Filles Polos" comme terme de recherche, qui ne correspond a aucun
+    // titre. Avec des separateurs ("Enfants > Filles > Polos"), ca marche --
+    // voir le test suivant.
+    expect(matchCategoryResult(POLOS_LIVE, "Enfants Filles Polos")).toBeNull();
+  });
+
+  it("mais y arrive des que le chemin porte des separateurs", () => {
+    expect(matchCategoryResult(POLOS_LIVE, "Enfants > Filles > Polos")).toBe(2);
+  });
+
+  it("REFUSE de choisir quand seul le nom de la feuille est stocke", () => {
+    // Trois candidats, aucune information pour trancher. Choisir mettrait un
+    // vetement homme dans une categorie fille -- exactement ce qu'on refuse.
+    expect(matchCategoryResult(POLOS_LIVE, "Polos")).toBeNull();
+  });
+
+  it("REFUSE de choisir quand le contexte designe deux branches a egalite", () => {
+    // "Enfants" colle autant a Garçons qu'a Filles.
+    expect(matchCategoryResult(POLOS_LIVE, "Enfants Polos")).toBeNull();
+  });
+
+  it("explique precisement pourquoi il a refuse", () => {
+    expect(describeCategoryMatchAttempt(POLOS_LIVE, "Polos").reason).toBe("multiple_title_matches_no_context_token");
+    expect(describeCategoryMatchAttempt(POLOS_LIVE, "Enfants Polos").reason).toBe(
+      "multiple_title_matches_breadcrumb_still_ambiguous"
+    );
+  });
+
+  it("expose les jetons de contexte dans le diagnostic", () => {
+    expect(describeCategoryMatchAttempt(POLOS_LIVE, "Hommes Polos").contextTokens).toEqual(["hommes"]);
+    expect(describeCategoryMatchAttempt(POLOS_LIVE, "Polos").contextTokens).toEqual([]);
+  });
+});
+
+describe("deriveCategorySearchTerm sur un chemin complet", () => {
+  it("ne tape que la feuille dans la recherche", () => {
+    expect(deriveCategorySearchTerm("Hommes > Vêtements > Polos").searchTerm).toBe("Polos");
+    expect(deriveCategorySearchTerm("Hommes / Vêtements / Polos").searchTerm).toBe("Polos");
+  });
+
+  it("laisse le format sans separateur strictement inchange", () => {
+    expect(deriveCategorySearchTerm("Hommes Polos")).toEqual({ searchTerm: "Polos", genderHint: "Hommes" });
+    expect(deriveCategorySearchTerm("Pulls")).toEqual({ searchTerm: "Pulls", genderHint: null });
   });
 });
