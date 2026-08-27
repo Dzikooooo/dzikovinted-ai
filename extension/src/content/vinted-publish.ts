@@ -3082,11 +3082,27 @@ async function runPublishOnce(
     // attendre, chaque attempt*Prefill() interne catch deja ses propres
     // erreurs et ne rejette jamais) AVANT toute tentative de lecture/
     // selection du colis.
+    // BUG CONFIRME (retour beta 2026-08-27, Zoe) : la liste "A confirmer sur
+    // Vinted" affichait Categorie/Etat/Marque/Taille/Couleur/Matiere comme
+    // non remplis meme quand ResellOS les avait reellement preremplis avec
+    // succes. Cause -- ce seed etait pousse ICI, APRES
+    // watchForCategorySelectionAndPrefillAttributes() : replaceManualPlaceholder()
+    // (appelee par chaque attempt*Prefill() ci-dessous des qu'un champ est
+    // confirme) cherche un placeholder DEJA present dans `pending` pour le
+    // retirer (voir son en-tete : "retire le placeholder statique pose par
+    // computeManualFields() ci-dessus") -- avec l'ancien ordre, ce placeholder
+    // n'existait pas encore au moment de l'appel (index introuvable, no-op
+    // silencieux), puis computeManualFields() le repoussait quand meme juste
+    // apres, sans jamais tenir compte du succes reel qui venait d'avoir lieu.
+    // Deplace ICI, AVANT toute tentative automatique, pour que chaque champ
+    // confirme retire reellement son propre placeholder au lieu de le voir
+    // reapparaitre en fin de sequence.
+    pending.push(...computeManualFields(payload));
+
     await watchForCategorySelectionAndPrefillAttributes(payload, confirmed, pending);
 
     await selectPackageSizeWithConfirmation(payload, confirmed, pending);
 
-    pending.push(...computeManualFields(payload));
     reportPrefillSummary(confirmed, pending);
 
     // Mission "CLIC FINAL + CONFIRMATION POST-PUBLICATION" (2026-08-16) :

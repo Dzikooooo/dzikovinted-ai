@@ -153,3 +153,75 @@ describe("replaceManualPlaceholder", () => {
     expect(pending).toEqual(["Marque : Zara (à sélectionner sur Vinted)"]);
   });
 });
+
+// BUG CONFIRME (retour beta 2026-08-27, Zoe) : "À confirmer sur Vinted"
+// listait des champs deja reellement preremplis avec succes. Cause reelle --
+// runPublishOnce() (vinted-publish.ts) appelait computeManualFields() APRES
+// watchForCategorySelectionAndPrefillAttributes() : chaque attempt*Prefill()
+// appelle replaceManualPlaceholder() des qu'un champ est confirme, mais a ce
+// moment-la `pending` ne contenait pas encore le placeholder a retirer (pas
+// encore seede) -- l'appel etait donc un no-op silencieux, puis
+// computeManualFields() repoussait quand meme le placeholder generique juste
+// apres, sans jamais savoir qu'un succes venait d'avoir lieu. Corrige en
+// deplacant le seed AVANT les tentatives. Ces tests figent la sequence
+// CORRECTE (seed -> tentatives -> etat final), exactement l'ordre reel dans
+// runPublishOnce -- computeManualFields()/replaceManualPlaceholder() restent
+// chacune inchangees, seule la COMPOSITION est nouvelle ici.
+describe("sequence complete (seed avant tentatives, comme dans runPublishOnce)", () => {
+  it("un champ confirme APRES le seed ne reapparait plus jamais dans pending -- le bug exact du retour beta", () => {
+    const payload = makePayload({ category: "Hommes Polos" });
+    const confirmed: string[] = [];
+    const pending: string[] = computeManualFields(payload);
+    expect(pending).toContain("Catégorie : Hommes Polos (à sélectionner sur Vinted)");
+
+    // Simule attemptCategoryPrefill() reussissant reellement (meme sequence
+    // exacte que son propre code : replaceManualPlaceholder puis confirmed.push).
+    replaceManualPlaceholder(pending, "Catégorie", null);
+    confirmed.push("Catégorie");
+
+    expect(pending.some((p) => p.startsWith("Catégorie"))).toBe(false);
+    expect(confirmed).toEqual(["Catégorie"]);
+  });
+
+  it("un champ SANS correspondance fiable garde un message specifique, jamais un doublon avec le placeholder generique", () => {
+    const payload = makePayload({ color: "Bleu marine profond" });
+    const pending: string[] = computeManualFields(payload);
+    expect(pending).toContain("Couleur : Bleu marine profond (à sélectionner sur Vinted)");
+
+    // Simule attemptColorPrefill() echouant sur "no_reliable_match" (meme
+    // sequence exacte que son propre code).
+    replaceManualPlaceholder(
+      pending,
+      "Couleur",
+      "Couleur : Bleu marine profond (aucune correspondance fiable sur Vinted -- à choisir toi-même)"
+    );
+
+    expect(pending.filter((p) => p.startsWith("Couleur :"))).toEqual([
+      "Couleur : Bleu marine profond (aucune correspondance fiable sur Vinted -- à choisir toi-même)",
+    ]);
+  });
+
+  it("un champ jamais tente (trigger introuvable, aucun replaceManualPlaceholder appele) garde son placeholder generique tel quel", () => {
+    const payload = makePayload({ brand: "Ralph Lauren" });
+    const pending: string[] = computeManualFields(payload);
+    // Aucune mutation -- simule un timeout/trigger introuvable en amont,
+    // avant meme le premier replaceManualPlaceholder() de attemptBrandPrefill().
+    expect(pending).toContain("Marque : Ralph Lauren (à sélectionner sur Vinted)");
+    expect(pending.filter((p) => p.startsWith("Marque :"))).toHaveLength(1);
+  });
+
+  it("sur un scenario ou TOUS les champs sont confirmes, pending est entierement vide -- plus jamais de faux 'a confirmer'", () => {
+    const payload = makePayload();
+    const confirmed: string[] = [];
+    const pending: string[] = computeManualFields(payload);
+    expect(pending).toHaveLength(6);
+
+    for (const label of ["Catégorie", "État", "Marque", "Taille", "Couleur", "Matière"]) {
+      replaceManualPlaceholder(pending, label, null);
+      confirmed.push(label);
+    }
+
+    expect(pending).toEqual([]);
+    expect(confirmed).toHaveLength(6);
+  });
+});
