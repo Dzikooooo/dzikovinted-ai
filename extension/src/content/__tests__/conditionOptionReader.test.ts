@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { describeConditionTriggerAfterSelection, matchConditionOption, readConditionOptionCandidates } from "../conditionOptionReader";
+import {
+  describeConditionTriggerAfterSelection,
+  isConditionCandidateChecked,
+  matchConditionOption,
+  readConditionOptionCandidates,
+  resolveConditionOptionByTestId,
+} from "../conditionOptionReader";
 
 // Mission "FIX FINAL ETAT : MATCHER LE CONTAINER REEL" (2026-08-13) : preuve
 // live directe dans la console Vinted sur les candidats reels (condition-1
@@ -354,5 +360,71 @@ describe("describeConditionTriggerAfterSelection", () => {
 
     const diagnostic = describeConditionTriggerAfterSelection(TRIGGER_SELECTOR);
     expect(diagnostic.valueProperty).toBeNull();
+  });
+});
+
+// Mission "TAILLE + ETAT -- FAUX POSITIF DE CONFIRMATION" (2026-08-27) :
+// retour beta direct -- "Le champ fixé doit être renseigné" cote Vinted
+// malgre État marque confirme cote ResellOS (via confirmTriggerValue(), la
+// valeur AFFICHEE par le trigger). condition-{id} porte role="radio"
+// (confirme live, voir plus haut) -- une semantique ARIA qui EXIGE
+// aria-checked sur l'element selectionne, exactement la meme famille que
+// role="checkbox" pour Couleur (deja corrigee le 2026-08-19, voir
+// colorOptionReader.test.ts::isColorCandidateChecked, meme discipline de
+// test ici).
+describe("isConditionCandidateChecked -- source de verite structurelle (aria-checked, jamais le trigger)", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("returns false when aria-checked is absent (etat avant clic)", () => {
+    makeConditionOption(2, "Très bon étatTrès peu porté", "radio");
+    const [candidate] = readConditionOptionCandidates();
+    expect(isConditionCandidateChecked(candidate)).toBe(false);
+  });
+
+  it("returns true when aria-checked='true' (etat apres clic)", () => {
+    const container = makeConditionOption(2, "Très bon étatTrès peu porté", "radio");
+    container.setAttribute("aria-checked", "true");
+    const [candidate] = readConditionOptionCandidates();
+    expect(isConditionCandidateChecked(candidate)).toBe(true);
+  });
+
+  it("re-reads the attribute FRESH (never a cached value) -- reflects a mutation on the live container", () => {
+    const container = makeConditionOption(2, "Très bon étatTrès peu porté", "radio");
+    const [candidate] = readConditionOptionCandidates();
+    expect(isConditionCandidateChecked(candidate)).toBe(false);
+    container.setAttribute("aria-checked", "true");
+    expect(isConditionCandidateChecked(candidate)).toBe(true);
+  });
+
+  it("treats aria-checked='false' as not checked, never a false positive", () => {
+    const container = makeConditionOption(2, "Très bon étatTrès peu porté", "radio");
+    container.setAttribute("aria-checked", "false");
+    const [candidate] = readConditionOptionCandidates();
+    expect(isConditionCandidateChecked(candidate)).toBe(false);
+  });
+});
+
+describe("resolveConditionOptionByTestId -- re-resolution fraiche juste avant le clic", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("finds the exact live DOM node for a known containerTestId", () => {
+    const container = makeConditionOption(2, "Très bon étatTrès peu porté", "radio");
+    expect(resolveConditionOptionByTestId("condition-2")).toBe(container);
+  });
+
+  it("returns null when no element carries this data-testid", () => {
+    expect(resolveConditionOptionByTestId("condition-999")).toBeNull();
   });
 });

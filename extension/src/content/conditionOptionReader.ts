@@ -91,6 +91,29 @@ export function readConditionOptionCandidates(): ConditionOptionCandidate[] {
   }));
 }
 
+// Mission "TAILLE + ETAT -- FAUX POSITIF DE CONFIRMATION" (2026-08-27) :
+// retour beta direct -- "Le champ fixé doit être renseigné" cote Vinted au
+// clic final malgre État marqué confirmé cote ResellOS. Cause structurelle :
+// jusqu'ici, la seule preuve de selection etait confirmTriggerValue() (la
+// valeur AFFICHEE par le trigger) -- exactement le mecanisme deja prouve
+// FAUX POSITIF pour Couleur le 2026-08-19 (aria-checked reel different de ce
+// que le trigger affiche), jamais backporte a État malgre un role identique
+// en substance : condition-{id} porte role="radio" (confirme live,
+// 2026-08-19, voir CONDITION_OPTION_CONTAINER_VALID_ROLES ci-dessus) -- une
+// semantique ARIA qui EXIGE aria-checked sur l'element selectionne, au meme
+// titre que role="checkbox" pour Couleur/Taille. isConditionCandidateChecked()
+// et resolveConditionOptionByTestId() appliquent donc a État exactement le
+// meme correctif deja valide pour Couleur (colorOptionReader.ts) : la seule
+// preuve retenue desormais est aria-checked==="true" sur le CANDIDAT
+// lui-meme, relu FRAICHEMENT, jamais la valeur du trigger.
+export function isConditionCandidateChecked(candidate: ConditionOptionCandidate): boolean {
+  return candidate.container.getAttribute("aria-checked") === "true";
+}
+
+export function resolveConditionOptionByTestId(testId: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+}
+
 export type ConditionMatchReason = "unique_match" | "no_match" | "ambiguous_match";
 
 export interface ConditionMatchResult {

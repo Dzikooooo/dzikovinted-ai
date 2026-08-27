@@ -71,8 +71,10 @@ import { initAttributeCommitEventRecorder } from "./attributeCommitEventRecorder
 import { attemptAutomaticRepublishSubmit, isRepublishPayload } from "./publishAutoSubmit";
 import {
   describeConditionTriggerAfterSelection,
+  isConditionCandidateChecked,
   matchConditionOption,
   readConditionOptionCandidates,
+  resolveConditionOptionByTestId,
 } from "./conditionOptionReader";
 import { readSizeOptionCandidates } from "./sizeOptionReader";
 import { readColorOptionCandidates, isColorCandidateChecked, resolveColorOptionByTestId } from "./colorOptionReader";
@@ -1122,53 +1124,58 @@ async function attemptConditionPrefill(spec: AttributePickerSpec, confirmed: str
       matchedTestId: matchedCandidate.containerTestId,
     });
 
-    matchedCandidate.container.click();
+    // Mission "TAILLE + ETAT -- FAUX POSITIF DE CONFIRMATION" (2026-08-27) :
+    // retour beta direct -- "Le champ fixé doit être renseigné" cote Vinted
+    // au clic final malgre État marqué confirmé cote ResellOS. confirmTriggerValue()
+    // (la valeur AFFICHEE par le trigger, utilisee ici depuis le 2026-08-16)
+    // est retiree : c'est exactement le mecanisme deja prouve FAUX POSITIF
+    // pour Couleur le 2026-08-19 (aria-checked reel different de ce que le
+    // trigger affiche), jamais backporte a État malgre un role ARIA de la
+    // meme famille -- condition-{id} porte role="radio" (confirme live,
+    // conditionOptionReader.ts), qui EXIGE semantiquement aria-checked sur
+    // l'element selectionne, au meme titre que role="checkbox" pour Couleur.
+    // Preuve retenue desormais : aria-checked==="true" sur le CANDIDAT
+    // lui-meme, relu FRAICHEMENT -- meme discipline exacte que
+    // attemptColorPrefill (colorOptionReader.ts). Re-resolution EXPLICITE
+    // par data-testid canonique juste avant le clic, jamais matchedCandidate.container
+    // conserve depuis le matching.
+    const freshClickTarget = resolveConditionOptionByTestId(matchedCandidate.containerTestId);
+    if (!freshClickTarget) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
+        outcome: "click_target_not_found",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
+      );
+      return;
+    }
+    freshClickTarget.click();
     docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matchedTestId: matchedCandidate.containerTestId });
 
-    // Mission "AUDIT DIVERGENCE READY_TO_SUBMIT", volet Etat (2026-08-16) :
-    // CAUSE CONFIRMEE EN LIVE via CONDITION_TRIGGER_AFTER_SELECTION_DIAGNOSTIC
-    // (desormais retire, son role est termine) -- immediately_after_click
-    // montrait valueProperty/valueAttribute vides ("") mais click_plus_100ms
-    // et click_plus_500ms montraient tous deux "Très bon état" : le clic
-    // fonctionne bel et bien, Vinted ecrit reellement la valeur dans le
-    // trigger, mais seulement APRES un re-render asynchrone -- l'ancienne
-    // lecture immediate de readTriggerText() (textContent, de toute facon
-    // documente comme toujours vide pour ce trigger precis) ne pouvait donc
-    // jamais confirmer, quelle que soit sa duree d'attente. Remplace par
-    // confirmTriggerValue() (categoryDetection.ts, pure/testee) -- MEME
-    // mecanisme deja utilise et prouve pour Marque/Taille/Couleur (voir
-    // attemptDedicatedPickerPrefill ci-dessous) : re-interroge le trigger
-    // DEPUIS document a CHAQUE evaluation de waitForCondition (jamais une
-    // reference figee), lit .value en egalite stricte normalisee si le
-    // trigger est reellement un <input> (confirme en live ci-dessus),
-    // sinon repli sur textContent -- reutilise a l'identique, aucune
-    // duplication de logique.
-    const requestedValue = spec.value;
-    let triggerTextAfterClick: string | null = null;
-    let triggerConfirmed = false;
+    let ariaCheckedConfirmed = false;
     try {
       await waitForCondition(
         () => {
-          const result = confirmTriggerValue(spec.triggerSelector, requestedValue);
-          triggerTextAfterClick = result.observedValue;
-          return result.confirmed;
+          const fresh = readConditionOptionCandidates().find((c) => c.containerTestId === matchedCandidate.containerTestId);
+          return !!fresh && isConditionCandidateChecked(fresh);
         },
-        {
-          timeoutMs: CONDITION_CONFIRMATION_TIMEOUT_MS,
-          description: "trigger displays the selected condition (re-queried each check, .value then textContent fallback)",
-        }
+        { timeoutMs: CONDITION_CONFIRMATION_TIMEOUT_MS, description: `${spec.label} option aria-checked becomes true` }
       );
-      triggerConfirmed = true;
+      ariaCheckedConfirmed = true;
     } catch {
-      triggerTextAfterClick = confirmTriggerValue(spec.triggerSelector, requestedValue).observedValue;
+      // echec gere honnetement ci-dessous, jamais une confirmation inventee.
     }
 
-    if (triggerConfirmed) {
+    if (ariaCheckedConfirmed) {
       docLog.info(spec.logName, {
         label: spec.label,
         value: spec.value,
         matchedTestId: matchedCandidate.containerTestId,
-        triggerTextAfterClick,
         outcome: "confirmed",
       });
       replaceManualPlaceholder(pending, spec.label, null);
@@ -1178,8 +1185,11 @@ async function attemptConditionPrefill(spec: AttributePickerSpec, confirmed: str
         label: spec.label,
         value: spec.value,
         matchedTestId: matchedCandidate.containerTestId,
-        triggerTextAfterClick,
         outcome: "click_not_confirmed_in_trigger",
+      });
+      docLog.warn("CONDITION_TRIGGER_AFTER_SELECTION_DIAGNOSTIC", {
+        field: spec.label,
+        ...describeConditionTriggerAfterSelection(spec.triggerSelector),
       });
       replaceManualPlaceholder(
         pending,
@@ -1233,6 +1243,16 @@ interface DedicatedPickerCandidate {
   containerTestId: string;
   container: HTMLElement;
   label: string;
+}
+
+// Mission "TAILLE + ETAT -- FAUX POSITIF DE CONFIRMATION" (2026-08-27) :
+// meme discipline exacte que isColorCandidateChecked (colorOptionReader.ts) --
+// source UNIQUE de verite pour "cette option est reellement selectionnee",
+// jamais la valeur du trigger. Generique ici (pas dans un reader dedie) car
+// DedicatedPickerCandidate.container suffit, quel que soit le picker
+// (actuellement Taille uniquement, Couleur ayant sa propre implementation).
+function isDedicatedPickerCandidateChecked(candidate: DedicatedPickerCandidate): boolean {
+  return candidate.container.getAttribute("aria-checked") === "true";
 }
 
 async function attemptDedicatedPickerPrefill(
@@ -1305,96 +1325,63 @@ async function attemptDedicatedPickerPrefill(
       matchedTestId: matchedCandidate.containerTestId,
     });
 
-    matchedCandidate.container.click();
-    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matchedTestId: matchedCandidate.containerTestId });
-
-    // Mission "LIVE RETEST RESULTS -- FIX SIZE/COLOR CONFIRMATION + COLOR
-    // DROPDOWN CLOSURE" (2026-08-13) : preuve live directe -- pour Taille et
-    // Couleur, le trigger est un <input> dont readTriggerText() (textContent)
-    // est structurellement TOUJOURS vide, alors que le diagnostic
-    // field-specific montre valueProperty correctement rempli ("L"/"Bleu").
-    // Le clic/matching fonctionnaient deja -- seule la source de lecture de
-    // confirmation etait fausse. confirmTriggerValue() (categoryDetection.ts,
-    // pure/testable) encode l'ordre de preuve DOM-grounded minimal demande :
-    // .value en EGALITE STRICTE si le trigger est un <input> (jamais
-    // .includes() -- "XL".includes("L") confirmerait faussement "L" depuis
-    // "XL", regression explicitement interdite), sinon repli EXISTANT
-    // INCHANGE (readTriggerText(), egal-ou-contient -- comportement deja
-    // utilise par Etat/le chemin generique, jamais touche).
-    let triggerTextAfterClick: string | null = null;
-    let triggerConfirmed = false;
-    try {
-      await waitForCondition(
-        () => {
-          const result = confirmTriggerValue(spec.triggerSelector, match);
-          triggerTextAfterClick = result.observedValue;
-          return result.confirmed;
-        },
-        { timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS, description: `trigger displays the selected ${spec.label}` }
-      );
-      triggerConfirmed = true;
-    } catch {
-      triggerTextAfterClick = confirmTriggerValue(spec.triggerSelector, match).observedValue;
-    }
-
-    if (triggerConfirmed) {
-      // Mission item 4 : preuve live -- apres une selection Couleur reussie,
-      // le dropdown restait ouvert ; un Echap manuel l'a ferme SANS
-      // deselectionner. Fermeture UNIQUEMENT apres confirmation reelle
-      // (jamais avant), et UNIQUEMENT si le picker est reellement encore
-      // ouvert (readCandidates() reutilise le MEME reader dedie deja
-      // valide -- aucun nouveau diagnostic, aucun delai arbitraire). Si le
-      // picker s'est deja referme seul (ex. Taille, non observe en live
-      // comme restant ouvert), readCandidates().length === 0 et cette etape
-      // est un no-op silencieux -- jamais un Echap "au cas ou".
-      const stillOpen = readCandidates().length > 0;
-      let dropdownClosed: boolean | null = null;
-      if (stillOpen) {
-        dispatchEscapeKey(trigger);
-        try {
-          await waitForCondition(() => readCandidates().length === 0, {
-            timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS,
-            description: `${spec.label} option picker closes after Escape`,
-          });
-          dropdownClosed = true;
-        } catch {
-          dropdownClosed = false;
-        }
-        docLog.info(`${spec.logName}_STEP`, {
-          field: spec.label,
-          step: "dropdown_closure_attempted",
-          wasStillOpen: stillOpen,
-          closedAfterEscape: dropdownClosed,
-        });
-      }
-
-      docLog.info(spec.logName, {
-        label: spec.label,
-        value: spec.value,
-        matchedTestId: matchedCandidate.containerTestId,
-        triggerTextAfterClick,
-        dropdownWasStillOpen: stillOpen,
-        dropdownClosedAfterEscape: dropdownClosed,
-        outcome: "confirmed",
-      });
-      replaceManualPlaceholder(pending, spec.label, null);
-      confirmed.push(spec.label);
-    } else {
-      // Mission item 6 : ne fabrique pas une confirmation -- readTriggerText()
-      // n'est PAS prouve fiable pour ce trigger precis. Diagnostic
-      // field-specific minimal, reutilise TEL QUEL depuis le module Etat
-      // (fonction deja generique, parametree par triggerSelector -- aucune
-      // modification de son code ni de son usage pour Etat) pour determiner
-      // au prochain test live QUELLE propriete porte reellement la valeur
-      // selectionnee sur ce trigger. outcome reste honnetement
-      // "click_not_confirmed_in_trigger" -- la selection Vinted a peut-etre
-      // reussi visuellement, mais ce n'est pas mensonger de le dire tant que
-      // ce n'est pas prouve.
+    // Mission "TAILLE + ETAT -- FAUX POSITIF DE CONFIRMATION" (2026-08-27) :
+    // retour beta direct -- "Le champ fixé doit être renseigné" cote Vinted
+    // au clic final malgre Taille marquee confirmee cote ResellOS.
+    // confirmTriggerValue() (la valeur AFFICHEE par le trigger, utilisee ici
+    // depuis le 2026-08-13) est retiree : exactement le mecanisme deja
+    // prouve FAUX POSITIF pour Couleur le 2026-08-19, jamais backporte a
+    // Taille malgre un widget structurellement IDENTIQUE (role="checkbox",
+    // meme famille de composant "grid" -- voir sizeOptionReader.ts/
+    // colorOptionReader.ts, qui documentent explicitement ce lien). Preuve
+    // retenue desormais : aria-checked==="true" sur le CANDIDAT lui-meme,
+    // relu FRAICHEMENT -- meme discipline exacte que attemptColorPrefill,
+    // y compris la re-verification APRES fermeture du panneau (une
+    // selection confirmee avant fermeture peut se perdre pendant la
+    // fermeture, deja observe en direct pour Couleur). Fermeture par clic
+    // REEL en dehors du panneau (document.body.click()) plutot que Echap --
+    // meme raisonnement que Couleur : Echap est majoritairement une
+    // convention "annuler" pour ce type de composant de FILTRE reutilise en
+    // formulaire, jamais prouve fiable pour valider une selection encore
+    // locale. Re-resolution EXPLICITE par data-testid canonique juste avant
+    // le clic, jamais matchedCandidate.container conserve depuis le matching.
+    const freshClickTarget = document.querySelector<HTMLElement>(`[data-testid="${matchedCandidate.containerTestId}"]`);
+    if (!freshClickTarget) {
       docLog.warn(spec.logName, {
         label: spec.label,
         value: spec.value,
         matchedTestId: matchedCandidate.containerTestId,
-        triggerTextAfterClick,
+        outcome: "click_target_not_found",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
+      );
+      return;
+    }
+    freshClickTarget.click();
+    docLog.info(`${spec.logName}_STEP`, { field: spec.label, step: "option_clicked", matchedTestId: matchedCandidate.containerTestId });
+
+    let ariaCheckedConfirmed = false;
+    try {
+      await waitForCondition(
+        () => {
+          const fresh = readCandidates().find((c) => c.containerTestId === matchedCandidate.containerTestId);
+          return !!fresh && isDedicatedPickerCandidateChecked(fresh);
+        },
+        { timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS, description: `${spec.label} option aria-checked becomes true` }
+      );
+      ariaCheckedConfirmed = true;
+    } catch {
+      // echec gere honnetement ci-dessous, jamais une confirmation inventee.
+    }
+
+    if (!ariaCheckedConfirmed) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
         outcome: "click_not_confirmed_in_trigger",
       });
       docLog.warn(`${spec.logName}_TRIGGER_AFTER_SELECTION_DIAGNOSTIC`, {
@@ -1406,7 +1393,66 @@ async function attemptDedicatedPickerPrefill(
         spec.label,
         `${spec.label} : ${spec.value} (sélection tentée mais non confirmée sur Vinted -- vérifie toi-même)`
       );
+      return;
     }
+
+    const stillOpen = readCandidates().length > 0;
+    let dropdownClosed: boolean | null = null;
+    if (stillOpen) {
+      document.body.click();
+      try {
+        await waitForCondition(() => readCandidates().length === 0, {
+          timeoutMs: ATTRIBUTE_CONFIRMATION_TIMEOUT_MS,
+          description: `${spec.label} option picker closes after clicking away`,
+        });
+        dropdownClosed = true;
+      } catch {
+        dropdownClosed = false;
+      }
+      docLog.info(`${spec.logName}_STEP`, {
+        field: spec.label,
+        step: "dropdown_closure_attempted",
+        wasStillOpen: stillOpen,
+        closedAfterClickAway: dropdownClosed,
+      });
+    }
+
+    const afterCloseCandidate = readCandidates().find((c) => c.containerTestId === matchedCandidate.containerTestId);
+    const ariaCheckedAfterClose = afterCloseCandidate ? isDedicatedPickerCandidateChecked(afterCloseCandidate) : null;
+    const lostAfterClose = afterCloseCandidate !== undefined && ariaCheckedAfterClose === false;
+
+    if (lostAfterClose) {
+      docLog.warn(spec.logName, {
+        label: spec.label,
+        value: spec.value,
+        matchedTestId: matchedCandidate.containerTestId,
+        ariaCheckedConfirmed,
+        dropdownWasStillOpen: stillOpen,
+        dropdownClosedAfterClickAway: dropdownClosed,
+        ariaCheckedAfterClose,
+        outcome: "confirmed_before_close_but_lost_after_close",
+      });
+      replaceManualPlaceholder(
+        pending,
+        spec.label,
+        `${spec.label} : ${spec.value} (sélection perdue après fermeture du panneau -- vérifie toi-même)`
+      );
+      return;
+    }
+
+    docLog.info(spec.logName, {
+      label: spec.label,
+      value: spec.value,
+      matchedTestId: matchedCandidate.containerTestId,
+      ariaCheckedConfirmed,
+      dropdownWasStillOpen: stillOpen,
+      dropdownClosedAfterClickAway: dropdownClosed,
+      candidateStillInDomAfterClose: !!afterCloseCandidate,
+      ariaCheckedAfterClose,
+      outcome: "confirmed",
+    });
+    replaceManualPlaceholder(pending, spec.label, null);
+    confirmed.push(spec.label);
   } catch (err) {
     const outcome = lastStep === "not_started" ? "trigger_not_found" : `failed_after_${lastStep}`;
     docLog.warn(spec.logName, { label: spec.label, value: spec.value, outcome, lastStep, error: errorMessage(err) });
