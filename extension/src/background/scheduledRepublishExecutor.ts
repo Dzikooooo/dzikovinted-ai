@@ -268,6 +268,14 @@ async function finalizeScheduleOutcome(client: ReturnType<typeof supabaseWithTok
 }
 
 async function runScheduledExecution(scheduleId: string): Promise<void> {
+  // Point de cycle de vie demande explicitement (2026-08-27), INCONDITIONNEL
+  // -- avant meme la verification de session. Complete SCHEDULE_ALARM_FIRED
+  // (republishScheduler.ts) : ce log prouve que l'alarme a bien mene jusqu'a
+  // une TENTATIVE d'execution reelle, distincte d'un simple constat "job du"
+  // qui n'aurait jamais declenche executeClaimedSchedule() (ex. filtre
+  // scheduleIdsInFlight, job deja plus 'scheduled' entre-temps).
+  logger.info("SCHEDULE_EXECUTION_START", { scheduleId, startedAt: new Date().toISOString() });
+
   const valid = await getValidAccessToken();
   if (!valid) {
     logger.debug("REPUBLISH_SCHEDULER_EXECUTE_NO_SESSION", { scheduleId });

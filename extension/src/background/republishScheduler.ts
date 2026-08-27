@@ -212,13 +212,43 @@ async function fetchSingleJob(scheduleId: string): Promise<RepublishScheduleJob 
   return (data as RepublishScheduleJob | null) ?? null;
 }
 
-// Cree/ecrase l'alarme sweep -- chrome.alarms.create() avec un nom deja
-// utilise REMPLACE silencieusement l'alarme existante (comportement natif
-// documente), jamais besoin de la clear() explicitement avant. Appelee au
-// demarrage (init) ET a chaque onStartup -- idempotent, aucun effet de bord
-// a etre appelee plusieurs fois.
-function ensureSweepAlarm(): void {
+// CORRECTIF (2026-08-27) du "POINT DE VIGILANCE NON RESOLU" documente plus
+// bas dans initRepublishScheduler() -- devenu le suspect principal d'un echec
+// REEL rapporte en direct : une republication programmee qui ne se declenche
+// jamais.
+//
+// AVANT : chrome.alarms.create() avec un nom deja utilise REMPLACE
+// silencieusement l'alarme existante -- ce comportement natif est utile pour
+// les alarmes de JOB (reprogrammer = ecraser volontairement), mais destructeur
+// ici. ensureSweepAlarm() tourne au chargement du module, c'est-a-dire a
+// CHAQUE reveil du service worker (pas seulement au premier demarrage) --
+// chaque reveil reappelait donc create({ delayInMinutes: 5 }), qui repousse
+// le PROCHAIN declenchement a 5 min a partir de CE reveil precis. Un service
+// worker reveille plus frequemment que toutes les 5 minutes (frequent en
+// usage reel : n'importe quel message content-script<->background, ouverture
+// du popup, activite sur un onglet Vinted...) repoussait donc indefiniment
+// le sweep sans jamais le laisser atteindre son echeance -- filet de secours
+// qui ne se refermait jamais.
+//
+// Consequence concrete sur la panne rapportee : une programmation creee
+// depuis l'app pendant que le service worker est deja actif (ne provoque
+// aucun reveil, donc aucun resyncAlarms() immediat -- voir le commentaire de
+// runSweep() plus bas) ne recoit son alarme INDIVIDUELLE qu'au prochain
+// resyncAlarms(), lui-meme declenche par... le sweep. Si le sweep est
+// perpetuellement repousse, cette programmation n'obtient JAMAIS d'alarme et
+// n'est JAMAIS executee -- ni a l'heure dite, ni en retard.
+//
+// APRES : on verifie D'ABORD si l'alarme existe deja (chrome.alarms.get) et on
+// ne la (re)cree que si elle est absente -- une alarme chrome.alarms
+// PERSISTE deja a travers les reveils/redemarrages du service worker, c'est
+// exactement sa raison d'etre (contrairement a setInterval) ; il n'y a donc
+// aucune raison de la reprogrammer a chaque reveil, seulement de garantir
+// qu'elle existe.
+async function ensureSweepAlarm(): Promise<void> {
+  const existing = await chrome.alarms.get(REPUBLISH_SWEEP_ALARM_NAME);
+  if (existing) return;
   chrome.alarms.create(REPUBLISH_SWEEP_ALARM_NAME, { periodInMinutes: SWEEP_INTERVAL_MINUTES, delayInMinutes: SWEEP_INTERVAL_MINUTES });
+  logger.info("SCHEDULE_SWEEP_ALARM_CREATED", { intervalMinutes: SWEEP_INTERVAL_MINUTES });
 }
 
 // Coeur de la resynchronisation -- appelee au chargement du module (chaque
@@ -254,9 +284,22 @@ export async function resyncAlarms(prefetchedJobs?: RepublishScheduleJob[]): Pro
       continue;
     }
     chrome.alarms.create(alarmNameForSchedule(job.id), { when });
+    // Point de cycle de vie demande explicitement (2026-08-27) : preuve que
+    // l'extension a bien enregistre une alarme chrome.alarms pour ce job,
+    // distincte de sa creation cote app (republish_schedules) -- sans cette
+    // ligne, une programmation qui ne se declenche jamais est indiscernable
+    // entre "l'alarme n'a jamais ete creee" et "l'alarme a ete creee mais n'a
+    // jamais fire".
+    logger.info("SCHEDULE_REGISTERED", {
+      scheduleId: job.id,
+      listingId: job.listing_id,
+      scheduledFor: job.scheduled_for,
+      whenEpochMs: when,
+      registeredAt: new Date().toISOString(),
+    });
   }
 
-  ensureSweepAlarm();
+  await ensureSweepAlarm();
 }
 
 // onStartup (redemarrage reel de Chrome, jamais un simple reveil du service
@@ -387,11 +430,29 @@ async function runSweep(): Promise<void> {
 // en arriere-plan -- exporter ce point d'entree evite toute course entre
 // les deux dans un test cible sur UNE seule alarme).
 export async function handleAlarmFired(alarm: chrome.alarms.Alarm): Promise<void> {
-  if (alarm.name === REPUBLISH_SWEEP_ALARM_NAME) {
+  const scheduleId = scheduleIdFromAlarmName(alarm.name);
+  const isSweep = alarm.name === REPUBLISH_SWEEP_ALARM_NAME;
+
+  if (isSweep || scheduleId !== null) {
+    // Point de cycle de vie demande explicitement (2026-08-27), INCONDITIONNEL
+    // -- avant tout traitement, avant tout early-return. Distingue "l'alarme
+    // n'a jamais fire" de "l'alarme a fire mais le traitement a ete
+    // interrompu tot" (job introuvable / plus 'scheduled' / pas encore du,
+    // voir les logs debug de handleJobAlarmFired plus bas) : sans ce log
+    // inconditionnel, ces deux causes tres differentes produisaient le meme
+    // silence observable de l'exterieur.
+    logger.info("SCHEDULE_ALARM_FIRED", {
+      alarmName: alarm.name,
+      alarmType: isSweep ? "sweep" : "job",
+      scheduleId,
+      firedAt: new Date().toISOString(),
+    });
+  }
+
+  if (isSweep) {
     await runSweep();
     return;
   }
-  const scheduleId = scheduleIdFromAlarmName(alarm.name);
   if (scheduleId === null) {
     // Alarme hors de ce planificateur (prefixe non reconnu) -- ignoree
     // silencieusement, jamais une erreur : pourrait appartenir a une future
@@ -414,18 +475,15 @@ export function initRepublishScheduler(): void {
   chrome.runtime.onStartup.addListener(() => {
     void handleExtensionStartup();
   });
-  ensureSweepAlarm();
+  void ensureSweepAlarm();
   void resyncAlarms();
 
-  // POINT DE VIGILANCE NON RESOLU (2026-08-25, laisse volontairement en
-  // commentaire) : chrome.alarms.create() avec un nom deja utilise EFFACE
-  // l'alarme existante. ensureSweepAlarm() tourne a CHAQUE reveil du service
-  // worker avec delayInMinutes:5 -- chaque reveil repousse donc le premier
-  // declenchement du sweep de 5 minutes. Un service worker reveille tres
-  // frequemment pourrait voir son sweep retarde, voire jamais declenche.
-  //
-  // Non confirme : le sweep a bien fini par tourner lors du test du 25/08
-  // (la recuperation d'un job orphelin a fonctionne), donc la famine n'est
-  // au minimum pas systematique. A instrumenter si un retard de sweep est
-  // reobserve -- ne pas "corriger" a l'aveugle.
+  // POINT DE VIGILANCE DU 2026-08-25 -- RESOLU le 2026-08-27 (voir
+  // ensureSweepAlarm() plus haut) : c'etait le suspect principal d'un echec
+  // reel de republication programmee (le job ne se declenchait jamais). La
+  // creation inconditionnelle de l'alarme sweep a CHAQUE reveil du service
+  // worker repoussait indefiniment son echeance des que les reveils etaient
+  // plus frequents que l'intervalle de 5 min -- desormais l'alarme n'est
+  // (re)creee que si elle est absente, elle ne peut plus etre repoussee par
+  // un reveil sans rapport.
 }

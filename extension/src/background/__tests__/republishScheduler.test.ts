@@ -73,12 +73,18 @@ function makeChromeMock() {
     return Promise.resolve(existed);
   });
   const getAll = vi.fn(() => Promise.resolve(Array.from(alarmsStore.values())));
+  // ensureSweepAlarm() interroge desormais chrome.alarms.get() AVANT de
+  // (re)creer l'alarme sweep, pour ne plus la reprogrammer a chaque reveil
+  // (2026-08-27 -- voir le commentaire de ensureSweepAlarm()). Meme source
+  // de verite que getAll() : alarmsStore.
+  const get = vi.fn((name: string) => Promise.resolve(alarmsStore.get(name)));
 
   const chromeMock = {
     alarms: {
       create,
       clear,
       getAll,
+      get,
       onAlarm: {
         addListener: vi.fn((fn: (alarm: chrome.alarms.Alarm) => void) => {
           alarmListener = fn;
@@ -100,6 +106,7 @@ function makeChromeMock() {
     create,
     clear,
     getAll,
+    get,
     // Appelle directement handleAlarmFired() exporte (jamais via le listener
     // capture ici) -- evite toute course avec la resynchronisation
     // fire-and-forget que initRepublishScheduler() declenche en parallele
@@ -180,6 +187,19 @@ describe("resyncAlarms", () => {
     expect(chromeHelpers.create).toHaveBeenCalledWith(alarmNameForSchedule(job.id), { when: new Date(job.scheduled_for).getTime() });
   });
 
+  it("logue SCHEDULE_REGISTERED a chaque alarme de job (re)creee", async () => {
+    mockSession();
+    const job = futureJob();
+    mockScheduledList([job]);
+
+    await resyncAlarms();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "SCHEDULE_REGISTERED",
+      expect.objectContaining({ scheduleId: job.id, listingId: job.listing_id, scheduledFor: job.scheduled_for })
+    );
+  });
+
   it("job annule (plus dans la liste scheduled) -> l'alarme existante est supprimee", async () => {
     // Alarme deja presente pour un job qui n'apparait plus dans le resultat
     // Supabase (annule/termine) -- simule l'etat "avant" resync.
@@ -211,13 +231,32 @@ describe("resyncAlarms", () => {
     expect(chromeHelpers.alarmsStore.get(alarmNameForSchedule("sched-1"))?.scheduledTime).toBe(new Date(newScheduledFor).getTime());
   });
 
-  it("cree/rafraichit systematiquement l'alarme de sweep", async () => {
+  it("cree l'alarme de sweep si elle est absente", async () => {
     mockSession();
     mockScheduledList([]);
 
     await resyncAlarms();
 
     expect(chromeHelpers.create).toHaveBeenCalledWith(REPUBLISH_SWEEP_ALARM_NAME, { periodInMinutes: 5, delayInMinutes: 5 });
+  });
+
+  it("ne recree PAS l'alarme de sweep si elle existe deja (2026-08-27, correctif famine)", async () => {
+    // AVANT le correctif : chrome.alarms.create() avec le meme nom ECRASAIT
+    // l'alarme existante, repoussant son echeance de 5 min a chaque appel --
+    // un service worker reveille plus souvent que toutes les 5 min ne
+    // laissait donc jamais le sweep atteindre son terme (suspect principal
+    // d'un echec reel de republication programmee, 2026-08-27).
+    chromeHelpers.alarmsStore.set(REPUBLISH_SWEEP_ALARM_NAME, {
+      name: REPUBLISH_SWEEP_ALARM_NAME,
+      scheduledTime: NOW + 3 * 60 * 1000,
+      periodInMinutes: 5,
+    } as chrome.alarms.Alarm);
+    mockSession();
+    mockScheduledList([]);
+
+    await resyncAlarms();
+
+    expect(chromeHelpers.create).not.toHaveBeenCalledWith(REPUBLISH_SWEEP_ALARM_NAME, expect.anything());
   });
 });
 
@@ -243,6 +282,10 @@ describe("declenchement d'une alarme de job (JOB_DUE)", () => {
     // ne verifie que le CABLAGE (le bon scheduleId est bien transmis),
     // jamais la logique de claim/execution elle-meme.
     expect(executeClaimedSchedule).toHaveBeenCalledWith(job.id);
+    expect(logger.info).toHaveBeenCalledWith(
+      "SCHEDULE_ALARM_FIRED",
+      expect.objectContaining({ alarmName: alarmNameForSchedule(job.id), alarmType: "job", scheduleId: job.id })
+    );
   });
 
   it("job introuvable (supprime) -> aucun log JOB_DUE, aucune tentative d'execution", async () => {
@@ -253,6 +296,13 @@ describe("declenchement d'une alarme de job (JOB_DUE)", () => {
 
     expect(logger.info).not.toHaveBeenCalledWith("REPUBLISH_SCHEDULER_JOB_DUE", expect.anything());
     expect(executeClaimedSchedule).not.toHaveBeenCalled();
+    // Le point precis du correctif : meme un job introuvable a vu son ALARME
+    // reellement se declencher -- sans ce log inconditionnel, ce cas etait
+    // indiscernable de "l'alarme n'a jamais ete creee/n'a jamais fire".
+    expect(logger.info).toHaveBeenCalledWith(
+      "SCHEDULE_ALARM_FIRED",
+      expect.objectContaining({ alarmName: alarmNameForSchedule("sched-gone"), alarmType: "job" })
+    );
   });
 
   it("job plus au statut scheduled (deja annule) -> aucun log JOB_DUE, aucune tentative d'execution", async () => {
@@ -272,6 +322,7 @@ describe("declenchement d'une alarme de job (JOB_DUE)", () => {
     expect(logger.info).not.toHaveBeenCalledWith("REPUBLISH_SCHEDULER_JOB_DUE", expect.anything());
     expect(logger.info).not.toHaveBeenCalledWith("REPUBLISH_SCHEDULER_SWEEP_DUE_JOB", expect.anything());
     expect(executeClaimedSchedule).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalledWith("SCHEDULE_ALARM_FIRED", expect.anything());
   });
 });
 
@@ -288,6 +339,10 @@ describe("sweep periodique", () => {
       expect.objectContaining({ scheduleId: job.id, listingId: job.listing_id, scheduledFor: job.scheduled_for })
     );
     expect(executeClaimedSchedule).toHaveBeenCalledWith(job.id);
+    expect(logger.info).toHaveBeenCalledWith(
+      "SCHEDULE_ALARM_FIRED",
+      expect.objectContaining({ alarmName: REPUBLISH_SWEEP_ALARM_NAME, alarmType: "sweep", scheduleId: null })
+    );
   });
 
   it("ignore un job encore futur, aucune tentative d'execution", async () => {
@@ -338,14 +393,37 @@ describe("onStartup", () => {
 });
 
 describe("initRepublishScheduler", () => {
-  it("enregistre les listeners onAlarm/onStartup et cree l'alarme de sweep", () => {
+  it("enregistre les listeners onAlarm/onStartup et cree l'alarme de sweep", async () => {
     mockSession();
     mockScheduledList([]);
 
     initRepublishScheduler();
+    // ensureSweepAlarm() est desormais async (chrome.alarms.get() AVANT de
+    // creer -- 2026-08-27, ne plus reprogrammer le sweep a chaque reveil) :
+    // initRepublishScheduler() l'appelle en fire-and-forget (void), l'effet
+    // (chrome.alarms.create) n'est donc visible qu'apres avoir laisse filer
+    // la microtask.
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(chromeHelpers.chromeMock.alarms.onAlarm.addListener).toHaveBeenCalledTimes(1);
     expect(chromeHelpers.chromeMock.runtime.onStartup.addListener).toHaveBeenCalledTimes(1);
     expect(chromeHelpers.create).toHaveBeenCalledWith(REPUBLISH_SWEEP_ALARM_NAME, { periodInMinutes: 5, delayInMinutes: 5 });
+  });
+
+  it("ne reprogramme PAS l'alarme de sweep si elle existe deja (2026-08-27 : evite la famine par reveils frequents)", async () => {
+    mockSession();
+    mockScheduledList([]);
+    // Simule une alarme sweep DEJA presente (ex. posee par un reveil precedent).
+    chromeHelpers.alarmsStore.set(REPUBLISH_SWEEP_ALARM_NAME, {
+      name: REPUBLISH_SWEEP_ALARM_NAME,
+      scheduledTime: NOW + 3 * 60 * 1000,
+      periodInMinutes: 5,
+    } as chrome.alarms.Alarm);
+
+    initRepublishScheduler();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(chromeHelpers.get).toHaveBeenCalledWith(REPUBLISH_SWEEP_ALARM_NAME);
+    expect(chromeHelpers.create).not.toHaveBeenCalledWith(REPUBLISH_SWEEP_ALARM_NAME, expect.anything());
   });
 });

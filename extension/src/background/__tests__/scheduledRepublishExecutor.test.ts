@@ -97,6 +97,32 @@ beforeEach(() => {
   mockClient();
 });
 
+// Point de cycle de vie demande explicitement (2026-08-27), complementaire a
+// SCHEDULE_ALARM_FIRED (republishScheduler.ts) : preuve qu'une TENTATIVE
+// d'execution reelle a demarre, distincte d'un simple constat "job du" qui
+// n'aurait jamais atteint executeClaimedSchedule() (ex. filtre en memoire
+// scheduleIdsInFlight). Logue AVANT meme la verification de session, pour
+// distinguer "l'execution n'a jamais demarre" de "l'execution a demarre mais
+// n'a pas pu obtenir de session".
+describe("SCHEDULE_EXECUTION_START", () => {
+  it("est logue meme quand aucune session valide n'est disponible", async () => {
+    vi.mocked(getValidAccessToken).mockResolvedValue(null);
+
+    await executeClaimedSchedule("sched-1");
+
+    expect(logger.info).toHaveBeenCalledWith("SCHEDULE_EXECUTION_START", expect.objectContaining({ scheduleId: "sched-1" }));
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it("est logue avant le claim sur le chemin nominal", async () => {
+    vi.mocked(runAction).mockResolvedValue({ status: "success", resultPayload: {} });
+
+    await executeClaimedSchedule("sched-1");
+
+    expect(logger.info).toHaveBeenCalledWith("SCHEDULE_EXECUTION_START", expect.objectContaining({ scheduleId: "sched-1" }));
+  });
+});
+
 describe("claim", () => {
   it("claim gagné : lit listing+compte et appelle runAction", async () => {
     vi.mocked(runAction).mockResolvedValue({ status: "success", resultPayload: { vintedItemId: "999", vintedUrl: "https://www.vinted.fr/items/999" } });
