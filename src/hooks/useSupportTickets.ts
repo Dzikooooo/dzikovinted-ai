@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { notifyTicketDiscord } from '../lib/notifyTicketDiscord';
 import type { SupportTicket, TicketStatus } from '../lib/types';
 
 export type TicketScope = 'mine' | 'queue';
@@ -73,6 +74,11 @@ export function useSupportTickets(scope: TicketScope) {
       setError('Le ticket a été créé mais le premier message a échoué. Réessaie plus tard.');
       return null;
     }
+    // Fire-and-forget : le ticket est deja ecrit en base ci-dessus, un echec
+    // de notification (webhook Discord non configure, indisponible...) ne
+    // doit jamais faire echouer ni ralentir la creation du ticket. Jamais
+    // attendu (void), voir notifyTicketDiscord.ts.
+    void notifyTicketDiscord(ticket.id);
     await load();
     return ticket as SupportTicket;
   }

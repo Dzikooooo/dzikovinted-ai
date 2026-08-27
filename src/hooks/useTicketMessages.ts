@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { notifyTicketDiscord } from '../lib/notifyTicketDiscord';
 import type { TicketMessage } from '../lib/types';
 
 // Calque de useActionLogEntries (src/hooks/useActionHistory.ts) : journal
@@ -65,6 +66,12 @@ export function useTicketMessages(ticketId: string | null, isAdmin: boolean) {
       setError("Impossible d'envoyer ce message. Réessaie plus tard.");
       return false;
     }
+    // Uniquement quand l'utilisateur (pas l'equipe) repond -- l'Edge
+    // Function refuserait de toute facon une notification declenchee par un
+    // admin (voir notify-ticket-discord/index.ts, verification user_id), et
+    // l'equipe n'a jamais besoin d'etre notifiee de sa propre reponse.
+    // Fire-and-forget, meme discipline que useSupportTickets.ts::createTicket.
+    if (!isAdmin) void notifyTicketDiscord(ticketId);
     await load();
     return true;
   }
