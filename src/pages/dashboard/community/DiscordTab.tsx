@@ -1,7 +1,7 @@
 import { Bell, ExternalLink, Link2, Loader2, Lock, Map, Unlink, Users } from 'lucide-react';
 import { DiscordIcon } from '../../../components/ui/DiscordIcon';
 import { useDiscordAccount } from '../../../hooks/useDiscordAccount';
-import { discordInviteUrl } from '../../../services/discordAccount';
+import { discordGuildChannelsUrl, discordInviteUrl } from '../../../services/discordAccount';
 import type { Plan } from '../../../lib/types';
 
 // Onglet Communaute > Discord.
@@ -47,7 +47,7 @@ const PERKS: Array<{ icon: typeof Bell; title: string; description: string; requ
 
 type DiscordAccountState = ReturnType<typeof useDiscordAccount>;
 
-function ActivityBlock({ activity }: { activity: DiscordAccountState['activity'] }) {
+function ActivityBlock({ activity, isLinked }: { activity: DiscordAccountState['activity']; isLinked: boolean }) {
 
   return (
     <div className="bg-surface border border-gray-200 rounded-2xl p-6">
@@ -88,7 +88,15 @@ function ActivityBlock({ activity }: { activity: DiscordAccountState['activity']
       </div>
 
       {(() => {
-        const href = (activity?.status === 'ok' && activity.inviteUrl) || discordInviteUrl;
+        // Compte LIE (isLinked) : lien direct vers le serveur plutot que
+        // l'invitation -- meilleure experience pour qui l'a deja rejoint
+        // (aucune invitation a re-accepter), sans jamais pretendre qu'un
+        // compte lie est forcement deja membre (voir discordGuildChannelsUrl,
+        // services/discordAccount.ts : ce sont deux choses independantes
+        // cote Discord). Retombe sur l'invitation si la guilde n'est pas
+        // configuree, jamais un lien fabrique.
+        const useDirectLink = isLinked && discordGuildChannelsUrl;
+        const href = useDirectLink ? discordGuildChannelsUrl : (activity?.status === 'ok' && activity.inviteUrl) || discordInviteUrl;
         return href ? (
           <a
             href={href}
@@ -96,7 +104,7 @@ function ActivityBlock({ activity }: { activity: DiscordAccountState['activity']
             rel="noopener noreferrer"
             className="mt-5 w-full inline-flex items-center justify-center gap-2 bg-neon-600 text-white font-bold px-5 py-3 rounded-xl hover:bg-neon-700 transition-colors"
           >
-            Rejoindre le Discord <ExternalLink className="w-4 h-4" />
+            {useDirectLink ? 'Ouvrir le Discord' : 'Rejoindre le Discord'} <ExternalLink className="w-4 h-4" />
           </a>
         ) : (
           <p className="mt-5 text-xs text-gray-500">
@@ -243,7 +251,7 @@ export function DiscordTab() {
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ActivityBlock activity={discord.activity} />
+        <ActivityBlock activity={discord.activity} isLinked={discord.isLinked} />
         <AccountBlock
           profile={discord.profile}
           isLinked={discord.isLinked}

@@ -14,6 +14,21 @@ const DISCORD_GUILD_ID = import.meta.env.VITE_DISCORD_GUILD_ID as string | undef
 
 export const discordInviteUrl = DISCORD_INVITE_URL ?? null;
 
+// Lien direct vers le serveur (2026-08-27), distinct de l'invitation.
+//
+// Un compte Discord LIE (isLinked, sync_discord_identity() a reussi) n'est
+// PAS forcement membre du serveur -- lier l'identite (prouver "c'est bien
+// moi") et rejoindre le serveur sont deux actions independantes cote
+// Discord. On ne pretend donc pas ici que "lie" implique "deja membre" :
+// `discord.com/channels/<guild_id>` ouvre directement le serveur pour qui en
+// est deja membre, et ameliore l'experience de ceux qui l'ont deja rejoint
+// (pas de nouvelle invitation a accepter) -- pour un non-membre, Discord
+// affiche son propre ecran de demande/apercu, jamais un lien mort.
+//
+// null si la guilde n'est pas configuree -- meme discipline que
+// discordInviteUrl juste au-dessus, jamais un lien fabrique.
+export const discordGuildChannelsUrl = DISCORD_GUILD_ID ? `https://discord.com/channels/${DISCORD_GUILD_ID}` : null;
+
 // ---------------------------------------------------------------------------
 // Activite du serveur
 // ---------------------------------------------------------------------------
