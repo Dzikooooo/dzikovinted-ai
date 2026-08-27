@@ -94,5 +94,23 @@ export function useSupportTickets(scope: TicketScope) {
     return true;
   }
 
-  return { tickets, loading, error, createTicket, setTicketStatus, refresh: load };
+  // Suppression DEFINITIVE (demande explicite -- tickets de test/obsoletes,
+  // distincte de la simple cloture) : reservee aux admins cote base (policy
+  // "delete_admin_support_tickets", `using (is_admin())`, aucune policy
+  // proprietaire equivalente) -- ce hook ne fait qu'exposer cet appel,
+  // jamais de contournement client. ticket_messages est en `on delete
+  // cascade` (voir la migration) : ses messages disparaissent avec lui,
+  // aucun appel separe necessaire ici.
+  async function deleteTicket(id: string): Promise<boolean> {
+    const { error: deleteError } = await supabase.from('support_tickets').delete().eq('id', id);
+    if (deleteError) {
+      console.error(deleteError);
+      setError('Impossible de supprimer ce ticket. Réessaie plus tard.');
+      return false;
+    }
+    await load();
+    return true;
+  }
+
+  return { tickets, loading, error, createTicket, setTicketStatus, deleteTicket, refresh: load };
 }

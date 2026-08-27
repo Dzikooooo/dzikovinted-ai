@@ -13,6 +13,7 @@ import type { SupportTicket } from '../../../../lib/types';
 let isAdmin = false;
 const createTicket = vi.fn();
 const setTicketStatus = vi.fn();
+const deleteTicket = vi.fn();
 
 function makeTicket(overrides: Partial<SupportTicket> = {}): SupportTicket {
   return {
@@ -31,7 +32,7 @@ let tickets: SupportTicket[] = [];
 
 vi.mock('../../../../hooks/useIsAdmin', () => ({ useIsAdmin: () => isAdmin }));
 vi.mock('../../../../hooks/useSupportTickets', () => ({
-  useSupportTickets: () => ({ tickets, loading: false, error: null, createTicket, setTicketStatus }),
+  useSupportTickets: () => ({ tickets, loading: false, error: null, createTicket, setTicketStatus, deleteTicket }),
 }));
 // Isole SupportTab de ses modales -- deja couvertes independamment,
 // hors perimetre de ce test (filtrage de liste uniquement).

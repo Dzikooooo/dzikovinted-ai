@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { X, Send, BadgeCheck } from 'lucide-react';
+import { X, Send, BadgeCheck, Trash2 } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 import { ErrorBanner } from '../ui/ErrorBanner';
 import { Skeleton } from '../ui/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,13 +20,22 @@ interface TicketDetailModalProps {
   isAdmin: boolean;
   onClose: () => void;
   onStatusChange: (id: string, status: TicketStatus) => Promise<boolean>;
+  // Suppression DEFINITIVE, distincte de la cloture (demande explicite --
+  // tickets de test/obsoletes) -- reservee a l'admin cote base (policy
+  // "delete_admin_support_tickets", `using (is_admin())`, aucune policy
+  // proprietaire equivalente) : le bouton n'est donc rendu que si isAdmin,
+  // jamais propose a un utilisateur pour qui l'appel echouerait de toute
+  // facon cote RLS.
+  onDelete: (id: string) => Promise<boolean>;
 }
 
-export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: TicketDetailModalProps) {
+export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange, onDelete }: TicketDetailModalProps) {
   const { user } = useAuth();
   const { messages, loading, error, sendMessage } = useTicketMessages(ticket.id, isAdmin);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleSend = async () => {
     if (!draft.trim() || sending) return;
@@ -35,8 +45,25 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
     if (ok) setDraft('');
   };
 
+  const handleDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    const ok = await onDelete(ticket.id);
+    setDeleting(false);
+    // Ticket reellement supprime : cette modale n'a plus rien a afficher --
+    // se ferme d'elle-meme. En echec, referme SEULEMENT la confirmation
+    // (jamais la modale de detail elle-meme) : onDelete a deja pose son
+    // propre message d'erreur (voir useSupportTickets.ts::deleteTicket),
+    // qui ne peut s'afficher (ErrorBanner, plus haut dans cette modale) que
+    // si la confirmation -- un second calque au-dessus -- n'est plus la
+    // pour le masquer.
+    if (ok) onClose();
+    else setConfirmingDelete(false);
+  };
+
   return (
-    <Modal onClose={onClose} size="lg">
+    <>
+      <Modal onClose={onClose} size="lg">
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <h2 className="text-lg font-black mb-1">{ticket.subject}</h2>
@@ -62,9 +89,20 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
             </span>
           )}
         </div>
-        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0">
-          <X className="w-4 h-4 text-gray-500" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {isAdmin && (
+            <button
+              onClick={() => setConfirmingDelete(true)}
+              aria-label="Supprimer ce ticket"
+              className="p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-700 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} className="mb-4" />}
@@ -131,6 +169,24 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
           </button>
         </div>
       )}
-    </Modal>
+      </Modal>
+
+      {confirmingDelete && (
+        <Modal onClose={() => setConfirmingDelete(false)} size="sm">
+          <h2 className="text-lg font-black mb-2">Supprimer ce ticket ?</h2>
+          <p className="text-sm text-gray-500 mb-5">
+            "{ticket.subject}" et tous ses messages seront définitivement supprimés. Cette action est irréversible.
+          </p>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+              Annuler
+            </Button>
+            <Button variant="danger" fullWidth onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Suppression...' : 'Supprimer'}
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

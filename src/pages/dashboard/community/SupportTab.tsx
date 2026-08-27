@@ -25,7 +25,7 @@ const STATUS_STYLES: Record<TicketStatus, { label: string; tone: BadgeTone }> = 
 export function SupportTab() {
   const isAdmin = useIsAdmin();
   const [scope, setScope] = useState<TicketScope>('mine');
-  const { tickets, loading, error, createTicket, setTicketStatus } = useSupportTickets(scope);
+  const { tickets, loading, error, createTicket, setTicketStatus, deleteTicket } = useSupportTickets(scope);
   const [showCreate, setShowCreate] = useState(false);
   const [openTicket, setOpenTicket] = useState<SupportTicket | null>(null);
   // Retour beta (2026-08-27) : "Mes tickets" s'encombrait de tickets clos,
@@ -124,7 +124,13 @@ export function SupportTab() {
         />
       )}
       {openTicket && (
-        <TicketDetailModal ticket={openTicket} isAdmin={isAdmin} onClose={() => setOpenTicket(null)} onStatusChange={setTicketStatus} />
+        <TicketDetailModal
+          ticket={openTicket}
+          isAdmin={isAdmin}
+          onClose={() => setOpenTicket(null)}
+          onStatusChange={setTicketStatus}
+          onDelete={deleteTicket}
+        />
       )}
     </div>
   );
