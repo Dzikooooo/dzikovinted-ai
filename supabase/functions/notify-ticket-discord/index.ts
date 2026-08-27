@@ -26,6 +26,18 @@ import { parseNotifyRequest, buildTicketNotificationPayload } from "./discordPay
 // lu du body (voir discordPayload.ts::parseNotifyRequest). Empeche un
 // utilisateur authentifie de faire apparaitre dans Discord un texte
 // different du contenu reellement enregistre pour son ticket.
+//
+// PORTEE VOLONTAIREMENT LIMITEE A LA CREATION (retour beta 2026-08-27,
+// decision explicite) : ce webhook ne notifie QUE la creation d'un ticket
+// et les reponses ulterieures de l'utilisateur -- jamais la fermeture d'un
+// ticket. Un changement de statut (setTicketStatus, useSupportTickets.ts)
+// n'a aucune valeur d'alerte pour l'equipe (c'est l'admin LUI-MEME qui le
+// declenche, il le sait deja) -- ajouter une notification dessus serait de
+// la complexite sans utilite reelle. Le canal Discord cible reste donc un
+// JOURNAL D'ACTIVITE brut et en lecture seule cote ResellOS (aucune synchro
+// retour Discord -> Supabase) : chaque message y est une archive texte, sans
+// mise a jour ni suppression automatique quand le ticket correspondant est
+// clos cote app -- au staff de nettoyer ce salon manuellement si besoin.
 const DASHBOARD_SUPPORT_URL = "https://resellosapp.com/dashboard/community";
 
 Deno.serve(async (req: Request) => {

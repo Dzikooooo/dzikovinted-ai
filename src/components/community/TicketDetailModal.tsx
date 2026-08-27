@@ -5,6 +5,7 @@ import { ErrorBanner } from '../ui/ErrorBanner';
 import { Skeleton } from '../ui/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTicketMessages } from '../../hooks/useTicketMessages';
+import { formatRelativeSync } from '../../lib/formatRelativeTime';
 import type { SupportTicket, TicketStatus } from '../../lib/types';
 
 const STATUS_OPTIONS: { value: TicketStatus; label: string }[] = [
@@ -74,6 +75,16 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
         ) : (
           messages.map((msg) => {
             const isMine = msg.author_id === user?.id;
+            // Retour beta (2026-08-27) : seule la reponse de l'equipe portait
+            // un libelle -- un message de l'utilisateur lui-meme restait une
+            // bulle nue, ambigue a relire plus tard ("qui a ecrit ca ?"),
+            // proche de l'impression de "s'auto-repondre". Desormais CHAQUE
+            // bulle porte un libelle explicite. Les deux seules combinaisons
+            // qu'un utilisateur non-admin peut jamais voir dans SON propre
+            // ticket sont couvertes ('Toi' / "Réponse de l'équipe") ; 'Toi
+            // (équipe)' ne concerne que l'admin relisant sa PROPRE reponse
+            // passee depuis la file d'attente -- jamais visible autrement.
+            const label = isMine && !msg.is_admin_reply ? 'Toi' : isMine && msg.is_admin_reply ? 'Toi (équipe)' : msg.is_admin_reply ? "Réponse de l'équipe" : null;
             return (
               <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -81,13 +92,20 @@ export function TicketDetailModal({ ticket, isAdmin, onClose, onStatusChange }: 
                     msg.is_admin_reply ? 'bg-neon-500/5 border border-neon-500/20' : 'bg-dark-400 border border-gray-200'
                   }`}
                 >
-                  {msg.is_admin_reply && (
+                  {label && (
                     <div className="flex items-center gap-1.5 mb-1.5">
-                      <BadgeCheck className="w-3.5 h-3.5 text-neon-500" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-neon-500">Réponse de l'équipe</span>
+                      {msg.is_admin_reply && <BadgeCheck className="w-3.5 h-3.5 text-neon-500" />}
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wider ${
+                          msg.is_admin_reply ? 'text-neon-500' : 'text-gray-500'
+                        }`}
+                      >
+                        {label}
+                      </span>
                     </div>
                   )}
                   <p className="text-sm text-gray-800 whitespace-pre-line">{msg.body}</p>
+                  <p className="text-[10px] text-gray-500 mt-1.5">{formatRelativeSync(msg.created_at)}</p>
                 </div>
               </div>
             );

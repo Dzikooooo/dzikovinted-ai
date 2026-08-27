@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { LifeBuoy, Plus } from 'lucide-react';
 import { useSupportTickets, type TicketScope } from '../../../hooks/useSupportTickets';
 import { useIsAdmin } from '../../../hooks/useIsAdmin';
@@ -28,6 +28,18 @@ export function SupportTab() {
   const { tickets, loading, error, createTicket, setTicketStatus } = useSupportTickets(scope);
   const [showCreate, setShowCreate] = useState(false);
   const [openTicket, setOpenTicket] = useState<SupportTicket | null>(null);
+  // Retour beta (2026-08-27) : "Mes tickets" s'encombrait de tickets clos,
+  // jamais retires de la liste -- masques par defaut ici (jamais en base,
+  // jamais supprimes : `tickets` reste la source complete, seul l'AFFICHAGE
+  // filtre). "File d'attente" (scope admin) reste INTACTE -- un admin doit
+  // toujours pouvoir y retrouver un ticket deja clos pour verifier son
+  // historique, ce n'est pas le meme besoin que la vue "mine".
+  const [showClosed, setShowClosed] = useState(false);
+  const closedCount = useMemo(() => tickets.filter((t) => t.status === 'closed').length, [tickets]);
+  const visibleTickets = useMemo(() => {
+    if (scope !== 'mine' || showClosed) return tickets;
+    return tickets.filter((t) => t.status !== 'closed');
+  }, [tickets, scope, showClosed]);
 
   return (
     <div>
@@ -52,6 +64,15 @@ export function SupportTab() {
 
       {error && <ErrorBanner message={error} className="mb-6" />}
 
+      {scope === 'mine' && closedCount > 0 && (
+        <button
+          onClick={() => setShowClosed((v) => !v)}
+          className="text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors mb-4"
+        >
+          {showClosed ? 'Masquer les tickets clos' : `Afficher les tickets clos (${closedCount})`}
+        </button>
+      )}
+
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -65,15 +86,24 @@ export function SupportTab() {
           description="Un souci, une question ? On te répond ici."
           action={{ label: 'Ouvrir un ticket', onClick: () => setShowCreate(true) }}
         />
+      ) : visibleTickets.length === 0 ? (
+        <EmptyState
+          icon={LifeBuoy}
+          title="Aucun ticket ouvert"
+          description={`Tous tes tickets sont clos (${closedCount}).`}
+          action={{ label: 'Afficher les tickets clos', onClick: () => setShowClosed(true) }}
+        />
       ) : (
         <div className="bg-surface border border-gray-200 rounded-2xl divide-y divide-gray-200 overflow-hidden">
-          {tickets.map((ticket) => {
+          {visibleTickets.map((ticket) => {
             const style = STATUS_STYLES[ticket.status];
             return (
               <button
                 key={ticket.id}
                 onClick={() => setOpenTicket(ticket)}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-100 transition-colors"
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-100 transition-colors ${
+                  ticket.status === 'closed' ? 'opacity-60' : ''
+                }`}
               >
                 <span className="text-sm font-medium text-gray-800 truncate">{ticket.subject}</span>
                 <Badge label={style.label} tone={style.tone} />
