@@ -80,7 +80,12 @@ const FEATURES = [
   },
 ];
 
-function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
+// Exporte (2026-08-28) pour reutilisation par ProductPreview.tsx (bento
+// grid) -- memes donnees REELLES/honnetes partout sur la landing (meme
+// discipline que "coherence des noms/icones sur toute la landing" deja en
+// place, voir l'en-tete de ce fichier), plutot que deux jeux de chiffres
+// factices divergents pour la meme fonctionnalite.
+export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
   if (kind === 'generator') {
     return (
       <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 space-y-4">
