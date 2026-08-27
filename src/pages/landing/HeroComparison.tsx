@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { X, Check, Bell } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import { DiscordIcon } from '../../components/ui/DiscordIcon';
 import { Badge } from '../../components/ui/Badge';
@@ -16,35 +16,39 @@ const VINTED_BLUE = '#007782';
 // meme travail sans reproduire leur marque. Logo ResellOS et icone
 // Discord : les deux nous appartiennent/sont deja utilises ailleurs dans
 // le produit, aucun risque equivalent.
+//
+// Retour "standard Stripe/Linear, effet waouh" (2026-08-28) -- CADRAGE
+// EXPLICITE avant ce round (2 questions posees, reponses actees) :
+// 1. Le panneau "Avec ResellOS" RESTE en theme clair -- un dark mode ici
+//    recreerait exactement le probleme corrige le 2026-08-24 (dashboard
+//    sombre + landing claire = "deux produits differents"). Le "waouh"
+//    vient de la precision (typo, alignement, micro-etat), pas d'un
+//    changement de theme.
+// 2. Aucun scroll-scrubbing/zoom pilote par la position de scroll -- le
+//    concept "Dressing ResellOS" (docs/DRESSING_EXPERIENCE.md) qui
+//    possederait cette mecanique reste GELE, l'utilisateur l'a confirme.
+//    L'animation reste une entree au scroll UNE FOIS (IntersectionObserver,
+//    inchangee dans son principe depuis le round precedent), simplement
+//    plus marquee.
+// Copie sharpened : memes revendications FACTUELLES qu'avant (rien
+// invente), phrasing plus direct sur la charge mentale/le temps perdu
+// (playbook F : le benefice s'ajoute au fait, ne le remplace jamais).
 const PAIN_POINTS = [
-  'Republier ses annonces à la main',
-  'Répondre à tous les messages un par un',
-  "Calculer son budget sans visibilité sur le bénéfice, le chiffre d'affaires et l'investissement",
-  "Gérer l'URSSAF sans outil dédié",
+  "Republier chaque annonce à la main — encore et encore, à chaque fois qu'elle expire",
+  'Répondre seul à des dizaines de messages, un par un, sans jamais rattraper le retard',
+  "Deviner ton bénéfice réel, sans visibilité sur le chiffre d'affaires ni l'investissement",
+  "Gérer l'URSSAF dans un tableur, sans outil dédié",
 ];
 
 const BENEFITS = [
   'Republication programmée ou automatique, au choix',
   'Message automatique aux favoris (bientôt)',
-  'SKU généré automatiquement',
+  'SKU généré automatiquement, sur chaque annonce',
   "Vraie vue sur ta comptabilité : dépenses, bénéfice, chiffre d'affaires",
   "Cotisation URSSAF et prix du matériel (emballage, imprimante...) suivis",
   'Communauté Discord',
 ];
 
-// Retour beta (2026-08-28) : 1) "Avant/Après" ne disait pas CE QUI change --
-// renomme en "Sans/Avec Resell OS" (le vrai facteur de la comparaison).
-// 2) demande de dynamisme visuel -- ATTENTION, ce point touche directement
-// au concept "Dressing ResellOS" GELE (docs/DRESSING_EXPERIENCE.md, "Avant/
-// Après -> Étagère haute", "ne pas rouvrir sans validation explicite") :
-// option "vetements animes" explicitement ECARTEE par l'utilisateur en
-// faveur de cette version legere, qui reste dans la structure classique de
-// la landing. Le dynamisme vient de mini-cartes qui imitent REELLEMENT
-// l'UI produit (meme composant Badge que WatchlistPage/VintedStatusBadge,
-// memes tons violet/teal) plutot que d'une illustration decorative sans
-// lien produit (design playbook, regle anti-generique #5) : chaos visuel
-// SANS ResellOS (cartes desalignees, aucun statut, prix ternes) vs ordre
-// AVEC ResellOS (cartes alignees, statut "Vendu" reel, prix mis en avant).
 interface MiniListingCardProps {
   variant: 'chaos' | 'clean';
   price: string;
@@ -52,25 +56,42 @@ interface MiniListingCardProps {
   offsetPx?: number;
   muted?: number;
   glow?: boolean;
+  sku?: string;
+  status?: 'Vendu' | null;
+  notifyCount?: number;
+  correctedFrom?: string;
 }
 
-// Retour beta (2026-08-28) : "rendu plus pro, moins template IA" -- deux
-// leviers PRECIS plutot qu'un effet decoratif ajoute au hasard (playbook,
-// anti-generique #1 : un glow n'a le droit d'exister que s'il sert un but).
-// 1) Le desordre cote "chaos" est desormais VARIABLE (opacite individuelle
-//    `muted`, jamais une seule classe uniforme) -- un vrai tas a des cartes
-//    plus ou moins visibles, pas des copies identiques a 70% d'opacite.
-// 2) La lueur cote "clean" (`glow`) n'existe QUE pendant la transition
-//    d'entree (voir plus bas, couplee au meme etat `visible` que
-//    opacite/position) -- jamais une pulsation permanente type blob de
-//    fond : c'est une confirmation visuelle de "cette carte vient de se
-//    ranger", pas une decoration statique. Teinte violette (BRAND_VIOLET) :
-//    l'element designe bien ResellOS, jamais Vinted (voir CLAUDE.md).
-function MiniListingCard({ variant, price, rotateDeg = 0, offsetPx = 0, muted = 0.7, glow = false }: MiniListingCardProps) {
+// Deux leviers PRECIS plutot qu'un effet decoratif ajoute au hasard
+// (playbook, anti-generique #1 : un glow/badge n'a le droit d'exister que
+// s'il sert un but, jamais "parce que ca fait plus premium").
+// 1) Cote chaos : `notifyCount` (badge rouge, messages non lus -- pointe
+//    directement le pain point "Répondre seul à des dizaines de messages")
+//    et `correctedFrom` (prix barre + prix reecrit -- pointe "Deviner ton
+//    bénéfice réel") sont des representations d'un VRAI probleme deja
+//    nomme dans PAIN_POINTS, jamais un ajout gratuit.
+// 2) Cote clean : `sku` reprend le VRAI format ResellOS ("#12", voir
+//    src/lib/sku.ts::formatTitleWithSku, jamais un code invente) en
+//    font-mono (token deja defini, tailwind.config.js). `status` n'affiche
+//    "Vendu" que sur certaines cartes -- une annonce "en ligne" n'affiche
+//    normalement AUCUN badge cote vrai produit (meme convention que
+//    VintedStatusBadge.tsx : "l'etat par defaut, pas besoin d'insister").
+function MiniListingCard({
+  variant,
+  price,
+  rotateDeg = 0,
+  offsetPx = 0,
+  muted = 0.7,
+  glow = false,
+  sku,
+  status = null,
+  notifyCount,
+  correctedFrom,
+}: MiniListingCardProps) {
   const chaos = variant === 'chaos';
   return (
     <div
-      className={`w-20 sm:w-24 flex-shrink-0 rounded-lg border p-2 transition-shadow duration-500 ${
+      className={`relative w-20 sm:w-24 flex-shrink-0 rounded-lg border p-2 transition-shadow duration-500 ${
         chaos ? 'border-gray-200 bg-white/80' : 'border-gray-200 bg-white ring-1 ring-gray-900/[0.04]'
       }`}
       style={{
@@ -79,13 +100,33 @@ function MiniListingCard({ variant, price, rotateDeg = 0, offsetPx = 0, muted = 
         boxShadow: !chaos ? (glow ? '0 10px 28px -10px rgba(124,92,255,0.28)' : '0 1px 2px rgba(17,24,39,0.04)') : undefined,
       }}
     >
+      {chaos && !!notifyCount && (
+        <span
+          aria-hidden="true"
+          className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-bold leading-none shadow-sm"
+        >
+          {notifyCount}
+        </span>
+      )}
       <div
         className={`h-10 rounded mb-1.5 ${chaos ? 'bg-gray-200' : ''}`}
         style={chaos ? undefined : { background: `${VINTED_BLUE}14` }}
       />
       <div className={`h-1.5 w-3/4 rounded mb-1 ${chaos ? 'bg-gray-200' : 'bg-gray-300'}`} />
-      <p className={`text-[10px] font-bold ${chaos ? 'text-gray-400' : 'text-gray-900'}`}>{price}</p>
-      {!chaos && <Badge label="Vendu" tone="positive" className="mt-1" />}
+      {correctedFrom ? (
+        <p className="text-[10px] font-bold leading-tight">
+          <span className="text-gray-400 line-through mr-1">{correctedFrom}</span>
+          <span className="text-red-600 -rotate-2 inline-block">{price}</span>
+        </p>
+      ) : (
+        <p className={`text-[10px] font-bold ${chaos ? 'text-gray-400' : 'text-gray-900'}`}>{price}</p>
+      )}
+      {!chaos && (
+        <div className="flex items-center justify-between mt-1">
+          {sku && <span className="font-mono text-[9px] text-gray-400">{sku}</span>}
+          {status && <Badge label={status} tone="positive" />}
+        </div>
+      )}
     </div>
   );
 }
@@ -93,9 +134,10 @@ function MiniListingCard({ variant, price, rotateDeg = 0, offsetPx = 0, muted = 
 // Meme discipline que Wardrobe.tsx (seul autre usage d'IntersectionObserver
 // sur la landing, deja etabli dans ce repo) : declenche UNE FOIS quand la
 // section entre dans le viewport, jamais une animation pilotee/scrubbee par
-// le scroll. `prefers-reduced-motion` verifie en JS (pas seulement en CSS) :
-// l'etat initial du rendu depend de `visible`, un simple `motion-reduce:`
-// Tailwind ne suffirait pas a eviter la sequence masque -> apparition.
+// le scroll (cadrage explicite reconfirme dans ce round, voir plus haut).
+// `prefers-reduced-motion` verifie en JS (pas seulement en CSS) : l'etat
+// initial du rendu depend de `visible`, un simple `motion-reduce:` Tailwind
+// ne suffirait pas a eviter la sequence masque -> apparition.
 //
 // `settled` bascule ~650ms apres `visible` (duree de la transition d'entree
 // la plus longue, cote "chaos", + marge) -- seule fenetre pendant laquelle
@@ -141,103 +183,149 @@ export function HeroComparison() {
   const cleanReveal = useRevealOnScroll();
 
   return (
-    <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-16 sm:pb-24 grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-left items-start">
-      {/* Les deux cartes ne portent DELIBEREMENT pas le meme poids visuel :
-          "Sans" reste plate (aucune ombre, fond gris, bordure discrete),
-          "Avec" est surelevee. Leur donner la meme ombre serait exactement
-          l'uniformite sans hierarchie que le playbook interdit -- ici la
-          hierarchie EST le message de la section. */}
-      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-7 sm:p-10">
-        <div className="flex items-center gap-2 mb-6">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Sans Resell OS</span>
-          <span className="text-sm font-semibold" style={{ color: VINTED_BLUE }}>Vinted</span>
+    <section className="max-w-6xl mx-auto px-4 sm:px-6 pb-16 sm:pb-24">
+      {/* Accroche courte au-dessus du comparatif -- le "waouh" demande vient
+          d'abord de la clarte du message (playbook F), pas d'un effet
+          visuel : la phrase nomme directement Vinted et pose le choix en
+          une lecture, avant meme que l'oeil n'atteigne les deux cartes. */}
+      <p className="text-center text-sm sm:text-base font-semibold text-gray-500 mb-8 sm:mb-10">
+        Deux façons de vendre sur Vinted. Une seule te fait gagner ton temps.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 text-left items-start">
+        {/* Les deux cartes ne portent DELIBEREMENT pas le meme poids visuel :
+            "Sans" reste plate (aucune ombre, fond gris, bordure discrete),
+            "Avec" est surelevee. Leur donner la meme ombre serait exactement
+            l'uniformite sans hierarchie que le playbook interdit -- ici la
+            hierarchie EST le message de la section. */}
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-7 sm:p-10">
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Sans Resell OS</span>
+            <span className="text-sm font-semibold" style={{ color: VINTED_BLUE }}>Vinted</span>
+          </div>
+
+          {/* Ecarts d'angle/decalage/opacite INDIVIDUELS (jamais une seule
+              classe uniforme) -- un vrai tas jete sur un bureau n'a jamais 3
+              cartes identiques. Badge rouge + prix corrige a la main :
+              representations directes des pain points ci-dessous, pas des
+              gadgets ajoutes en plus. Easing "back-out" (leger depassement
+              avant stabilisation, jamais present cote "clean") : la courbe
+              elle-meme porte le sens -- une carte posee sans soin rebondit
+              legerement en se posant. Stagger plus lache (130ms) : un geste
+              desordonne n'a pas de cadence. */}
+          <div ref={chaosReveal.ref} className="flex mb-6" aria-hidden="true">
+            {[
+              { price: '18 €', rotateDeg: -11, offsetPx: 5, muted: 0.52, ml: '', notifyCount: 7 },
+              { price: '29 €', correctedFrom: '35 €', rotateDeg: 7, offsetPx: -4, muted: 0.8, ml: '-ml-4' },
+              { price: '12 €', rotateDeg: -7, offsetPx: 8, muted: 0.6, ml: '-ml-4' },
+            ].map((c, i) => (
+              <div
+                key={i}
+                className={`${c.ml} transition-all ${chaosReveal.visible ? 'opacity-100' : 'opacity-0 translate-y-5'}`}
+                style={{
+                  transitionDuration: '900ms',
+                  transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  transitionDelay: `${i * 130}ms`,
+                }}
+              >
+                <MiniListingCard
+                  variant="chaos"
+                  price={c.price}
+                  rotateDeg={c.rotateDeg}
+                  offsetPx={c.offsetPx}
+                  muted={c.muted}
+                  notifyCount={c.notifyCount}
+                  correctedFrom={c.correctedFrom}
+                />
+              </div>
+            ))}
+          </div>
+
+          <ul className="space-y-4">
+            {PAIN_POINTS.map((p) => (
+              <li key={p} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-600">
+                <X className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
+                {p}
+              </li>
+            ))}
+          </ul>
+
+          {/* Charge mentale nommee explicitement (retour "piquer la ou ca
+              fait mal") -- une icone de notification statique (jamais de
+              pulsation infinie, voir la discipline anti-generique #1) sert
+              d'ancrage visuel a la phrase, sans repeter un pain point deja
+              liste ci-dessus. */}
+          <div className="flex items-center gap-2 mt-6 pt-5 border-t border-gray-200 text-xs text-gray-500">
+            <Bell className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            Chaque jour recommence à zéro — rien ne se fait tout seul.
+          </div>
         </div>
 
-        {/* Ecarts d'angle/decalage/opacite ELARGIS et INDIVIDUELS (retour
-            "accentuer le brouillon") -- un vrai tas jete sur un bureau n'a
-            jamais 3 cartes a la meme opacite/inclinaison. Easing "back-out"
-            (leger depassement avant stabilisation, jamais present cote
-            "clean") : la courbe elle-meme porte le sens -- une carte posee
-            sans soin rebondit legerement en se posant, une carte rangee
-            non. Stagger plus lache (120ms) que le cote clean : un geste
-            desordonne n'a pas de cadence. */}
-        <div ref={chaosReveal.ref} className="flex mb-6" aria-hidden="true">
-          {[
-            { price: '18 €', rotateDeg: -10, offsetPx: 4, muted: 0.55, ml: '' },
-            { price: '35 €', rotateDeg: 6, offsetPx: -3, muted: 0.78, ml: '-ml-4' },
-            { price: '12 €', rotateDeg: -6, offsetPx: 7, muted: 0.62, ml: '-ml-4' },
-          ].map((c, i) => (
-            <div
-              key={i}
-              className={`${c.ml} transition-all ${chaosReveal.visible ? 'opacity-100' : 'opacity-0 translate-y-4'}`}
-              style={{
-                transitionDuration: '850ms',
-                transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
-                transitionDelay: `${i * 120}ms`,
-              }}
-            >
-              <MiniListingCard variant="chaos" price={c.price} rotateDeg={c.rotateDeg} offsetPx={c.offsetPx} muted={c.muted} />
-            </div>
-          ))}
+        <div
+          className="rounded-2xl border bg-white p-7 sm:p-10 shadow-xl shadow-gray-900/[0.06]"
+          style={{ borderColor: `${VINTED_BLUE}40` }}
+        >
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-6">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Avec Resell OS</span>
+            <span className="text-gray-300">+</span>
+            <span className="text-sm font-semibold" style={{ color: VINTED_BLUE }}>Vinted</span>
+            <span className="text-gray-300">+</span>
+            <Logo variant="transparent" size={18} />
+            <span className="text-sm font-semibold text-gray-900">ResellOS</span>
+            <span className="text-gray-300">+</span>
+            <DiscordIcon className="w-4 h-4 text-gray-400" />
+          </div>
+
+          {/* Miroir exact du cote "chaos" mais avec l'intention inverse :
+              aucune rotation, un espacement egal, et un easing "expo-out"
+              SANS depassement -- une deceleration nette, la signature d'un
+              geste precis. Stagger plus serre (70ms) : une cadence
+              reguliere lit comme "orchestre", jamais aleatoire. SKU (vrai
+              format produit) + "Vendu" sur 2 cartes sur 3 seulement -- la
+              3e reste sans badge, exactement la convention du vrai produit
+              pour une annonce "en ligne" (VintedStatusBadge.tsx). La lueur
+              (`glow`) n'apparait que PENDANT la fenetre de transition
+              d'entree -- jamais une pulsation permanente. */}
+          <div ref={cleanReveal.ref} className="flex gap-2.5 mb-6" aria-hidden="true">
+            {[
+              { price: '22 €', sku: '#12', status: 'Vendu' as const },
+              { price: '39 €', sku: '#47', status: 'Vendu' as const },
+              { price: '15 €', sku: '#23', status: null },
+            ].map((c, i) => (
+              <div
+                key={c.price}
+                className={`transition-all ${cleanReveal.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'}`}
+                style={{
+                  transitionDuration: '600ms',
+                  transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                  transitionDelay: `${i * 70}ms`,
+                }}
+              >
+                <MiniListingCard
+                  variant="clean"
+                  price={c.price}
+                  sku={c.sku}
+                  status={c.status}
+                  glow={cleanReveal.visible && !cleanReveal.settled}
+                />
+              </div>
+            ))}
+          </div>
+
+          <ul className="space-y-4">
+            {BENEFITS.map((b) => (
+              <li key={b} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-700">
+                <Check className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: VINTED_BLUE }} />
+                {b}
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex items-center gap-2 mt-6 pt-5 border-t border-gray-200 text-xs text-gray-500">
+            <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: VINTED_BLUE }} />
+            ResellOS tourne pendant que tu vis ta vie.
+          </div>
         </div>
-
-        <ul className="space-y-4">
-          {PAIN_POINTS.map((p) => (
-            <li key={p} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-600">
-              <X className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
-              {p}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div
-        className="rounded-2xl border bg-white p-7 sm:p-10 shadow-xl shadow-gray-900/[0.06]"
-        style={{ borderColor: `${VINTED_BLUE}40` }}
-      >
-        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-6">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Avec Resell OS</span>
-          <span className="text-gray-300">+</span>
-          <span className="text-sm font-semibold" style={{ color: VINTED_BLUE }}>Vinted</span>
-          <span className="text-gray-300">+</span>
-          <Logo variant="transparent" size={18} />
-          <span className="text-sm font-semibold text-gray-900">ResellOS</span>
-          <span className="text-gray-300">+</span>
-          <DiscordIcon className="w-4 h-4 text-gray-400" />
-        </div>
-
-        {/* Miroir exact du cote "chaos" mais avec l'intention inverse :
-            aucune rotation, un espacement egal (gap-2.5, jamais de
-            chevauchement), et un easing "expo-out" SANS depassement -- une
-            deceleration nette, la signature d'un geste precis. Stagger plus
-            serre (70ms) : une cadence reguliere lit comme "orchestre",
-            jamais aleatoire. La lueur (`glow`) n'apparait que PENDANT les
-            ~500ms de la transition d'entree (voir son useEffect ci-dessous)
-            -- jamais une pulsation permanente. */}
-        <div ref={cleanReveal.ref} className="flex gap-2.5 mb-6" aria-hidden="true">
-          {['22 €', '39 €', '15 €'].map((price, i) => (
-            <div
-              key={price}
-              className={`transition-all ${cleanReveal.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
-              style={{
-                transitionDuration: '550ms',
-                transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
-                transitionDelay: `${i * 70}ms`,
-              }}
-            >
-              <MiniListingCard variant="clean" price={price} glow={cleanReveal.visible && !cleanReveal.settled} />
-            </div>
-          ))}
-        </div>
-
-        <ul className="space-y-4">
-          {BENEFITS.map((b) => (
-            <li key={b} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-700">
-              <Check className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: VINTED_BLUE }} />
-              {b}
-            </li>
-          ))}
-        </ul>
       </div>
     </section>
   );
