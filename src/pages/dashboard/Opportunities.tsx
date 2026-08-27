@@ -88,6 +88,19 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
   // hauteur avant la premiere carte, a chaque visite.
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [scanState, setScanState] = useState<ScanState | null>(null);
+  // Retour beta (2026-08-27) : la modale de progression bloquait toute
+  // navigation pendant un scan (ScanProgressModal.tsx passait
+  // dismissible={!isScanning} a Modal.tsx, donc ni Echap ni clic exterieur
+  // ni bouton X). Le scan lui-meme tourne entierement cote serveur (Edge
+  // Function -> workflow GitHub Actions -> action_log_entries, voir
+  // ScanProgressModal.tsx) : fermer cette modale n'a jamais eu d'effet
+  // dessus, ce n'etait qu'un affichage passif (Realtime). scanModalOpen est
+  // donc desormais DECOUPLE de scanState -- masquer la modale ne touche
+  // jamais scanState (isScanning reste vrai, le suivi de fin de scan par
+  // scanNow() ci-dessous continue normalement tant que ce composant reste
+  // monte), seule sa VISIBILITE change. Permet de fermer la vue sans jamais
+  // interrompre ni perdre le suivi du scan en cours.
+  const [scanModalOpen, setScanModalOpen] = useState(false);
   const [lastScanRun, setLastScanRun] = useState<LastScanRun | null>(null);
   const { prepareAction, confirmAction } = useActionEngine();
 
@@ -202,7 +215,14 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
   const isScanning = !!scanState && !scanState.done;
 
   async function scanNow() {
-    if (isScanning) return;
+    if (isScanning) {
+      // Un scan tourne deja (fenetre fermee entre-temps, voir scanModalOpen
+      // ci-dessus) -- rouvre simplement la vue existante, ne relance jamais
+      // un second scan concurrent.
+      setScanModalOpen(true);
+      return;
+    }
+    setScanModalOpen(true);
     setScanState({ historyId: null, done: false, error: null, opportunitiesFound: null, failedSearches: null });
 
     const prepared = await prepareAction("scan_market", {});
@@ -364,7 +384,6 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
         action={
           <Button
             onClick={scanNow}
-            disabled={isScanning}
             loading={isScanning}
             icon={!isScanning && <Search className="w-4 h-4" />}
           >
@@ -508,18 +527,26 @@ export default function Opportunities({ onViewAction }: OpportunitiesProps) {
         </div>
       )}
 
-      {scanState && (
+      {scanState && scanModalOpen && (
         <ScanProgressModal
           actionId={scanState.historyId}
           done={scanState.done}
           error={scanState.error}
           opportunitiesFound={scanState.opportunitiesFound}
           failedSearches={scanState.failedSearches}
-          onClose={() => setScanState(null)}
+          // Scan encore en cours : masque seulement la modale (scanState
+          // intact, voir son commentaire plus haut) -- reouvrable via le
+          // bouton "Scan en cours" du header. Scan termine (succes ou
+          // erreur) : reinitialise entierement, comportement inchange.
+          onClose={() => {
+            setScanModalOpen(false);
+            if (scanState.done) setScanState(null);
+          }}
           onViewAction={
             onViewAction && scanState.historyId
               ? () => {
                   const historyId = scanState.historyId as string;
+                  setScanModalOpen(false);
                   setScanState(null);
                   onViewAction(historyId);
                 }

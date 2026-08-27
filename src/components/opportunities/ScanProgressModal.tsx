@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock, Search } from 'lucide-react';
+import { AlertTriangle, Clock, Search, X } from 'lucide-react';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../actions/ActionStepTimeline';
 import { SCAN_STEP_ORDER, SCAN_STEP_LABELS, isScanStep, type ScanStep } from '../../lib/actions/scanSteps';
 import { SCAN_TIMEOUT_ERROR_MESSAGE } from '../../lib/actions/handlers/scanMarket';
@@ -61,14 +61,36 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
   const isUncertainTimeout = error === SCAN_TIMEOUT_ERROR_MESSAGE;
   const confirmedError = !!error && !isUncertainTimeout;
 
+  // Retour beta (2026-08-27) : cette modale bloquait toute navigation
+  // pendant un scan (dismissible={isTerminal} coupait Echap ET le clic
+  // exterieur, et aucun bouton X n'existait). Le scan tourne entierement
+  // cote serveur (Edge Function -> workflow GitHub Actions ->
+  // action_log_entries, voir le commentaire de useActionLogEntries plus
+  // haut) : cette vue n'est qu'un AFFICHAGE PASSIF (Realtime), la fermer
+  // n'a jamais eu la moindre prise sur le scan lui-meme. Desormais
+  // toujours fermable (Echap, clic exterieur, bouton X) -- le suivi
+  // continue en arriere-plan (voir Opportunities.tsx::scanModalOpen), le
+  // bouton "Scan en cours" du header permet de rouvrir cette vue.
   return (
-    <Modal onClose={onClose} dismissible={isTerminal} size="sm">
-      <div className="flex items-center gap-2 mb-5">
-        <Search className="w-4 h-4 text-neon-500" />
-        <h2 className="text-lg font-black">
-          {confirmedError ? 'Échec du scan' : isUncertainTimeout ? 'Scan toujours en cours ?' : 'Scan en cours'}
-        </h2>
+    <Modal onClose={onClose} dismissible size="sm">
+      <div className="flex items-center justify-between gap-2 mb-5">
+        <div className="flex items-center gap-2">
+          <Search className="w-4 h-4 text-neon-500" />
+          <h2 className="text-lg font-black">
+            {confirmedError ? 'Échec du scan' : isUncertainTimeout ? 'Scan toujours en cours ?' : 'Scan en cours'}
+          </h2>
+        </div>
+        <button onClick={onClose} aria-label="Fermer" className="p-1.5 rounded-lg hover:bg-gray-100">
+          <X className="w-4 h-4 text-gray-500" />
+        </button>
       </div>
+
+      {!isTerminal && (
+        <p className="mb-4 text-xs text-gray-500">
+          Le scan continue en arrière-plan -- tu peux fermer cette fenêtre et te balader dans ResellOS, il se
+          termine tout seul.
+        </p>
+      )}
 
       <ActionStepTimeline rows={buildRows(currentStep, done, error, entries)} />
 
@@ -110,12 +132,19 @@ export default function ScanProgressModal({ actionId, done, error, opportunities
         </button>
       )}
 
-      {isTerminal && (
+      {isTerminal ? (
         <button
           onClick={onClose}
           className="w-full mt-3 bg-neon-600 text-white font-bold py-3 rounded-xl hover:bg-neon-700 transition-all"
         >
           Fermer
+        </button>
+      ) : (
+        <button
+          onClick={onClose}
+          className="w-full mt-5 bg-dark-400 border border-gray-200 text-gray-800 font-semibold py-3 rounded-xl hover:border-neon-500/40 transition-all"
+        >
+          Continuer en arrière-plan
         </button>
       )}
     </Modal>

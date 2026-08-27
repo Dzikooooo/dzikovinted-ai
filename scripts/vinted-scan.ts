@@ -673,10 +673,21 @@ async function main() {
       // BASCULE -- le seul moment ou l'on supprime quoi que ce soit, et
       // uniquement apres un upsert reussi.
       //
-      // `not(..., 'eq', ...)` et non `neq` : en SQL, `scan_batch_id <> '...'`
-      // est NULL (donc faux) pour une ligne dont scan_batch_id EST NULL, et
-      // les lignes ecrites avant la migration ne seraient jamais nettoyees.
-      // La forme negative attrape aussi les NULL.
+      // BUG CONFIRME en production le 2026-08-27 (requete SQL directe) :
+      // `.not("scan_batch_id", "eq", scanBatchId)` genere `NOT (scan_batch_id
+      // = '...')` cote SQL. Logique ternaire standard -- pour une ligne dont
+      // scan_batch_id EST NULL, `scan_batch_id = '...'` vaut NULL, et
+      // `NOT NULL` vaut NULL, jamais TRUE : la ligne est donc EXCLUE du
+      // DELETE, l'inverse exact de l'intention documentee ici avant ce
+      // correctif ("la forme negative attrape aussi les NULL" -- affirmation
+      // fausse, jamais verifiee en base). 105 opportunites anterieures a la
+      // migration scan_batch_id (donc scan_batch_id IS NULL), avec des
+      // vinted_url relatives obsoletes, sont ainsi restees indefiniment en
+      // base malgre des dizaines de scans reussis depuis -- cause du bouton
+      // "Voir sur Vinted" qui rouvrait ResellOS pour CES lignes precises.
+      // `.or("scan_batch_id.is.null,scan_batch_id.neq.<id>")` couvre
+      // explicitement les deux cas (NULL OU different du lot courant),
+      // jamais laisse a la logique ternaire implicite de `<>`.
       //
       // Une opportunite presente dans l'ancien ET le nouveau lot a ete mise a
       // jour en place par l'upsert (contrainte unique sur vinted_url) : elle
@@ -684,7 +695,7 @@ async function main() {
       const { error: swapError, count: removed } = await supabase
         .from("market_opportunities")
         .delete({ count: "exact" })
-        .not("scan_batch_id", "eq", scanBatchId);
+        .or(`scan_batch_id.is.null,scan_batch_id.neq.${scanBatchId}`);
 
       if (swapError) {
         // Echec non bloquant : les nouvelles opportunites SONT en base et
