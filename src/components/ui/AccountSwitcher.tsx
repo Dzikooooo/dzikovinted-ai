@@ -97,31 +97,43 @@ export default function AccountSwitcher({ onManageAccounts }: AccountSwitcherPro
               </div>
             )}
 
-            <button
-              role="option"
-              aria-selected={selectedAccountId === 'all'}
-              onClick={() => {
-                selectAccount('all');
-                close();
-              }}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
-                selectedAccountId === 'all' ? 'bg-neon-500/10' : 'hover:bg-gray-100'
-              }`}
-            >
-              <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <Layers className="w-3 h-3 text-gray-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                {/* Le libelle selectionne reste en gris FONCE : du violet clair
-                    sur un fond violet clair perdait tout contraste. C'est la
-                    pastille a droite qui marque la selection. */}
-                <p className="text-xs font-semibold text-gray-900">Tous les comptes</p>
-                <p className="text-[11px] text-gray-500">Vue globale de l'activité</p>
-              </div>
-              {selectedAccountId === 'all' && <SelectedDot />}
-            </button>
+            {/* "Tous les comptes" n'a de sens qu'a partir de 2 comptes relies
+                -- avec un seul, cette option et le compte lui-meme filtrent
+                des donnees identiques, et l'afficher n'etait qu'une case
+                supplementaire sans choix reel derriere (retour beta,
+                2026-08-27). Le contexte (VintedAccountFilterContext.tsx)
+                garantit desormais que selectedAccountId ne vaut jamais "all"
+                quand accounts.length === 1, donc aucun etat "selectionne mais
+                invisible" ne peut se produire ici. */}
+            {accounts.length > 1 && (
+              <>
+                <button
+                  role="option"
+                  aria-selected={selectedAccountId === 'all'}
+                  onClick={() => {
+                    selectAccount('all');
+                    close();
+                  }}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
+                    selectedAccountId === 'all' ? 'bg-neon-500/10' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Layers className="w-3 h-3 text-gray-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {/* Le libelle selectionne reste en gris FONCE : du violet clair
+                        sur un fond violet clair perdait tout contraste. C'est la
+                        pastille a droite qui marque la selection. */}
+                    <p className="text-xs font-semibold text-gray-900">Tous les comptes</p>
+                    <p className="text-[11px] text-gray-500">Vue globale de l'activité</p>
+                  </div>
+                  {selectedAccountId === 'all' && <SelectedDot />}
+                </button>
 
-            <div className="my-2 border-t border-gray-200" />
+                <div className="my-2 border-t border-gray-200" />
+              </>
+            )}
 
             <div className="max-h-64 overflow-y-auto space-y-0.5">
               {filteredAccounts.length === 0 ? (

@@ -39,6 +39,16 @@ export function VintedAccountFilterProvider({ children }: { children: ReactNode 
     const rows = (data as VintedAccount[] | null) ?? [];
     setAccounts(rows);
     setSelectedAccountId((current) => {
+      // Un seul compte relie : "all" et "ce compte" filtrent exactement les
+      // memes donnees, mais l'un des deux merite d'etre EFFACE de l'etat --
+      // sinon un utilisateur solo reste bloque sur "Tous les comptes / Vue
+      // globale" sans jamais pouvoir choisir explicitement son propre
+      // compte (2026-08-27, retour beta : la "Vue globale" n'a pas de sens
+      // pour un seul compte, l'option est desormais masquee cote UI --
+      // AccountSwitcher.tsx). Couvre aussi bien le defaut jamais touche que
+      // localStorage contenant un "all" d'une session passee a plusieurs
+      // comptes.
+      if (rows.length === 1 && current === 'all') return rows[0].id;
       if (current === 'all') return current;
       return rows.some((a) => a.id === current) ? current : 'all';
     });

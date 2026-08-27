@@ -141,3 +141,33 @@ describe('AccountSwitcher -- popover', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 });
+
+// Retour beta 2026-08-27 : "Tous les comptes" n'a de sens qu'a partir de
+// 2 comptes relies. Un seul compte : le contexte garantit desormais que
+// selectedAccountId ne vaut jamais "all" (voir VintedAccountFilterContext),
+// donc ces tests fixent un compte precis comme selection courante -- pas
+// "all", qui ne devrait plus se produire dans ce cas.
+describe('AccountSwitcher -- un seul compte relie', () => {
+  beforeEach(() => {
+    accountsFixture = [makeAccount()];
+    selectedIdFixture = 'acc-1';
+  });
+
+  it("n'affiche pas l'option 'Tous les comptes' dans le popover", async () => {
+    const user = userEvent.setup();
+    render(<AccountSwitcher onManageAccounts={() => {}} />);
+
+    await user.click(screen.getByRole('button', { name: /dziko0737/i }));
+
+    expect(screen.queryByText('Tous les comptes')).toBeNull();
+    // Un seul compte : un unique option dans la liste, pas de doublon "all".
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(1);
+  });
+
+  it("affiche directement le compte dans le declencheur, jamais 'Tous les comptes'", () => {
+    render(<AccountSwitcher onManageAccounts={() => {}} />);
+
+    expect(screen.queryByText('Tous les comptes')).toBeNull();
+    expect(screen.getByText('dziko0737')).toBeTruthy();
+  });
+});
