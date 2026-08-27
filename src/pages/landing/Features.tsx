@@ -14,7 +14,11 @@ const DISCORD_INVITE_URL = import.meta.env.VITE_DISCORD_INVITE_URL as string | u
 // d'un coup plutot qu'un seul paragraphe -- tous tires de fonctionnalites
 // reelles, "Communication" reste etiquetee "bientot" pour les points pas
 // encore construits.
-const FEATURES = [
+//
+// Exporte (2026-08-28) -- ProductPreview.tsx reutilise CETTE meme liste
+// (icone/titre/visual) pour son selecteur interactif, plutot que de
+// dupliquer les 5 modules dans un second tableau qui pourrait diverger.
+export const FEATURES = [
   {
     icon: DiscordIcon,
     title: 'Communauté Discord',

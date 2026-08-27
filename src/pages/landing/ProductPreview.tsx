@@ -1,7 +1,6 @@
-import { Shirt, RefreshCw, MessageSquare, ReceiptEuro, Clock } from 'lucide-react';
-import { DiscordIcon } from '../../components/ui/DiscordIcon';
-import { BRAND_VIOLET } from '../../lib/brandColors';
-import { FeatureVisual } from './Features';
+import { useState } from 'react';
+import { MousePointerClick } from 'lucide-react';
+import { FEATURES, FeatureVisual } from './Features';
 
 // Refonte complete (audit personnel utilisateur, 2026-08-01) : l'ancienne
 // version reproduisait une capture d'ecran quasi complete du Dashboard --
@@ -9,37 +8,33 @@ import { FeatureVisual } from './Features';
 // chiffree) pour donner envie de decouvrir le produit plutot que de tout
 // montrer avant l'inscription.
 //
-// Refonte 2026-08-28 (retour "standard Linear/Vercel, elimine le rendu
-// template IA") -- INVERSE DELIBEREMENT la decision du 2026-08-01 ci-dessus :
-// remplace la ligne uniforme d'icones par une bento grid asymetrique avec
-// de VRAIS micro-apercus produit (statuts d'annonces, KPI de comptabilite),
-// exactement ce que "mysterieux, zero donnee" excluait. Signale a
-// l'utilisateur avant execution -- ce round est explicite au point de
-// nommer "tags de prix, graphiques de marge nette, files d'attente", donc
-// execute tel quel plutot que redemande une confirmation deja implicite
-// dans la precision de la demande.
+// Round 2026-08-28 (bento grid + vraies donnees par defaut) puis ROUND
+// SUIVANT le meme jour, qui corrige le round bento : l'utilisateur demande
+// desormais de RECONCILIER les deux exigences plutot que de choisir --
+// structure simple en ligne (comme le 2026-08-01) CONSERVEE, mais chaque
+// module revele son vrai aperçu (FeatureVisual, memes donnees que
+// Features.tsx) uniquement au survol/clic, jamais par defaut. "Mysterieux
+// par defaut" et "montrer du concret" cessent de s'opposer des lors que la
+// revelation est un VRAI changement d'etat (interaction reelle), exactement
+// ce que le playbook demande (section E : "hover sur un element
+// interactif" est explicitement cite comme meritant une animation).
 //
-// Deux points de cadrage RECONFIRMES (memes reponses que les 2 rounds
-// precedents sur HeroComparison.tsx, meme session) :
-// - Theme CLAIR conserve (l'utilisateur proposait lui-meme "bordures
-//   ultra-fines" en alternative au sombre) -- un dark mode ici recreerait
-//   le probleme "deux produits differents" corrige le 2026-08-24.
-// - Aucune donnee inventee pour Communication : module non construit (voir
-//   Features.tsx, "(bientot)" partout) -- reste visuellement en retrait,
-//   jamais au meme rang que les 4 modules reels (regle deja actee, voir
-//   docs/DRESSING_EXPERIENCE.md section 8, independante du gel du concept
-//   lui-meme).
-//
-// Donnees des visuels : reprises TELLES QUELLES de Features.tsx (memes
-// chiffres/noms d'annonces partout sur la landing, jamais deux jeux de
-// donnees factices divergents pour la meme fonctionnalite -- voir
-// FeatureVisual, desormais exporte).
-const GENERATOR_EXAMPLE = { title: 'Polo Ralph Lauren homme bleu marine taille L', price: '35 €' };
-
+// Theme clair conserve (meme arbitrage que les 2 rounds precedents sur
+// cette landing) -- le "haut de gamme" vient de la fluidite de la
+// transition et de la precision de l'interaction, pas d'un changement de
+// theme.
 export function ProductPreview() {
+  // `hovered` (survol, temporaire) prend le pas sur `pinned` (clic,
+  // persiste apres que la souris quitte) -- clic = "je veux le garder
+  // affiche", survol = "aperçu rapide en passant". Aucun des deux actif =
+  // etat mysterieux d'origine, jamais perdu par defaut.
+  const [pinned, setPinned] = useState<number | null>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const active = hovered ?? pinned;
+
   return (
     <section className="pt-16 pb-16 sm:pb-24">
-      <div className="max-w-7xl mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4">
         <div className="text-center mb-16">
           {/* Meme traitement que l'eyebrow du Hero ("PLATEFORME TOUT-EN-UN
               POUR REVENDEURS") : gris neutre, pas un accent colore -- un
@@ -59,78 +54,70 @@ export function ProductPreview() {
           </p>
         </div>
 
-        {/* Bento asymetrique : le module hero (Republication) occupe 2x2 --
-            c'est la fonctionnalite qui rend le plus de temps au revendeur,
-            elle porte donc le plus de poids visuel (contraste relatif,
-            playbook principe #3 -- jamais une taille choisie "pour faire
-            joli"). Comptabilite en second (2x1, donnee la plus riche apres
-            l'automatisation). Generateur/Discord en support (1x1 chacun).
-            Communication en bande complete mais VISUELLEMENT PLUS DISCRETE
-            (fond uni, pas de bordure surelevee, pas de shadow) -- jamais au
-            meme rang que les 4 modules reels. */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-5">
-          {/* A. Republication -- hero */}
-          <div className="sm:col-span-2 sm:row-span-2 rounded-2xl border border-gray-200 bg-white p-6 sm:p-8 shadow-xl shadow-gray-900/[0.06] flex flex-col">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 bg-white border border-gray-200 flex-shrink-0">
-              <RefreshCw className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
-            </div>
-            <h3 className="text-xl sm:text-2xl font-black text-gray-900 mb-2">Zéro effort, tes articles tournent seuls.</h3>
-            <p className="text-sm text-gray-600 mb-6 max-w-sm">
-              Republication programmée ou en un clic, statut Vinted toujours à jour, pendant que tu fais autre chose.
-            </p>
-            <div className="mt-auto">
-              <FeatureVisual kind="stock" />
-            </div>
+        <div className="rounded-[36px] border border-gray-200 bg-gray-50 px-6 py-12 sm:px-16 sm:py-16">
+          {/* Ligne de selection -- structure IDENTIQUE au 2026-08-01 (icone
+              au-dessus, libelle en dessous, centre), simplement rendue
+              interactive : etat actif = fond/bordure violette (meme
+              convention que le tablist de Features.tsx), jamais une
+              cinquieme couleur inventee. role="tablist" : semantique
+              explicite pour qu'un lecteur d'ecran annonce lequel est
+              selectionne, meme discipline que Features.tsx. */}
+          <div role="tablist" aria-label="Modules ResellOS" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+            {FEATURES.map(({ icon: Icon, title }, i) => {
+              const isActive = active === i;
+              return (
+                <button
+                  key={title}
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setPinned((p) => (p === i ? null : i))}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(i)}
+                  onBlur={() => setHovered(null)}
+                  className="flex flex-col items-center text-center gap-3 rounded-2xl border p-4 sm:p-5 transition-colors duration-200"
+                  style={
+                    isActive
+                      ? { borderColor: 'rgba(124,92,255,0.3)', backgroundColor: 'rgba(124,92,255,0.08)' }
+                      : { borderColor: 'transparent', backgroundColor: 'transparent' }
+                  }
+                >
+                  <Icon className="w-7 h-7 transition-colors duration-200" style={{ color: isActive ? '#7C5CFF' : '#9CA3AF' }} />
+                  <p className={`font-bold text-sm sm:text-base transition-colors duration-200 ${isActive ? 'text-gray-900' : 'text-gray-700'}`}>
+                    {title}
+                  </p>
+                </button>
+              );
+            })}
           </div>
 
-          {/* B. Comptabilite */}
-          <div className="sm:col-span-2 rounded-2xl border border-gray-200 bg-white p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-white border border-gray-200 flex-shrink-0">
-                <ReceiptEuro className="w-4 h-4" style={{ color: BRAND_VIOLET }} />
+          {/* Zone de revelation -- hauteur FIXE (jamais de saut de layout
+              entre un visuel compact et un visuel dense) : les 5 apercus et
+              l'etat par defaut sont tous montes en superposition
+              (absolute inset-0) et se crossfadent par opacite, plutot que
+              d'etre montes/demontes -- transition fluide immediate au
+              survol, jamais un flash de contenu qui se recalcule. */}
+          <div className="relative mt-10 sm:mt-12 min-h-[280px] sm:min-h-[300px]">
+            <div
+              className={`absolute inset-0 flex flex-col items-center justify-center text-center gap-3 transition-opacity duration-300 ${
+                active === null ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+            >
+              <MousePointerClick className="w-6 h-6 text-gray-400" aria-hidden="true" />
+              <p className="text-sm text-gray-500 max-w-xs">Survole ou touche un module pour découvrir l'interface réelle.</p>
+            </div>
+
+            {FEATURES.map(({ title, visual }, i) => (
+              <div
+                key={title}
+                aria-hidden={active !== i}
+                className={`absolute inset-0 max-w-xl mx-auto transition-opacity duration-300 ${
+                  active === i ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+              >
+                <FeatureVisual kind={visual} />
               </div>
-              <h3 className="text-base sm:text-lg font-black text-gray-900">Tréso, marges & URSSAF en direct.</h3>
-            </div>
-            <FeatureVisual kind="accounting" />
-          </div>
-
-          {/* C. Generateur IA -- meme nom que Features.tsx/HeroComparison,
-              coherence de marque deja etablie sur toute la landing. */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 flex flex-col">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4 bg-white border border-gray-200 flex-shrink-0">
-              <Shirt className="w-4 h-4" style={{ color: BRAND_VIOLET }} />
-            </div>
-            <h3 className="text-sm font-black text-gray-900 mb-1">Générateur IA</h3>
-            <p className="text-xs text-gray-500 mb-4">Photo → fiche complète, prête à publier.</p>
-            <div className="mt-auto rounded-xl bg-gray-50 border border-gray-200 p-3">
-              <p className="text-xs font-semibold text-gray-900 leading-snug">{GENERATOR_EXAMPLE.title}</p>
-              <p className="font-black text-sm mt-1.5" style={{ color: BRAND_VIOLET }}>{GENERATOR_EXAMPLE.price}</p>
-            </div>
-          </div>
-
-          {/* D. Discord -- aucun chiffre invente (pas de "N membres" sans
-              donnee reelle a afficher, playbook G.7 : preuves reelles ou
-              rien). */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 flex flex-col">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4 bg-white border border-gray-200 flex-shrink-0">
-              <DiscordIcon className="w-4 h-4" style={{ color: BRAND_VIOLET }} />
-            </div>
-            <h3 className="text-sm font-black text-gray-900 mb-1">Le QG des Resellers</h3>
-            <p className="text-xs text-gray-500 mt-auto">Échange en direct avec les autres revendeurs et l'équipe ResellOS.</p>
-          </div>
-
-          {/* E. Communication -- non construit (voir Features.tsx, tout en
-              "(bientot)"). Delibarement plus discret : fond gris uni,
-              aucune ombre, aucune bordure violette -- jamais presente au
-              meme rang qu'une fonctionnalite reelle. */}
-          <div className="sm:col-span-4 rounded-2xl bg-gray-50 border border-gray-200 border-dashed p-5 flex items-center gap-3">
-            <MessageSquare className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm font-semibold text-gray-600">Communication</span>
-            <span className="text-xs text-gray-500">— réponses suggérées, messages automatiques aux favoris</span>
-            <span className="ml-auto flex items-center gap-1.5 text-[11px] font-bold text-gray-500 flex-shrink-0">
-              <Clock className="w-3.5 h-3.5" />
-              Bientôt
-            </span>
+            ))}
           </div>
         </div>
       </div>
