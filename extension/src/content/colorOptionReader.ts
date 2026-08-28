@@ -119,3 +119,54 @@ export function resolveColorOptionByTestId(testId: string): HTMLElement | null {
 export function isColorCandidateChecked(candidate: ColorOptionCandidate): boolean {
   return candidate.container.getAttribute("aria-checked") === "true";
 }
+
+export interface ColorPanelInteractiveElement {
+  tag: string;
+  testId: string | null;
+  role: string | null;
+  text: string | null;
+}
+
+// Remonte depuis un candidat connu jusqu'a l'ancetre le plus proche qui
+// contient AUSSI au moins un AUTRE candidat filter-grid-option (donc le
+// panneau lui-meme, pas un simple wrapper de l'option) -- borne a
+// MAX_PANEL_SEARCH_DEPTH pour ne jamais remonter jusqu'a un conteneur trop
+// large (layout de page) qui ferait remonter des boutons sans rapport
+// (menu, header...). Retourne null plutot que de deviner un conteneur non
+// prouve -- meme discipline que le reste de ce fichier.
+const MAX_PANEL_SEARCH_DEPTH = 6;
+
+function findColorPanelRoot(fromCandidate: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = fromCandidate.parentElement;
+  for (let depth = 0; node && depth < MAX_PANEL_SEARCH_DEPTH; depth += 1) {
+    if (node.querySelectorAll('[data-testid^="filter-grid-option-"]').length >= 2) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+// PUREMENT OBSERVATIONNEL (audit 2026-08-28, suite au bug couleur non
+// resolu apres 3 rounds de diagnostic live -- "La couleur doit être
+// renseignée" cote Vinted malgre aria-checked confirme cote ResellOS).
+// Hypothese jamais testee (widget "filtre" reutilise, voir
+// vinted-publish.ts::attemptColorPrefill) : un bouton d'application distinct
+// du simple "cliquer ailleurs" pourrait etre necessaire pour que la
+// selection soit reellement committee cote Vinted. Ne clique JAMAIS rien
+// ici -- fournit seulement la preuve dont la prochaine republication en
+// conditions reelles a besoin pour trancher, automatiquement, sans exiger
+// une session devtools dediee du beta-testeur (contrairement a
+// attributeCommitEventRecorder.ts, qui exige un appel manuel en console et
+// dont le diagnostic precedent a ete interrompu avant preuve definitive).
+export function describeColorPanelInteractiveElements(fromCandidate: HTMLElement): ColorPanelInteractiveElement[] {
+  const panel = findColorPanelRoot(fromCandidate);
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll<HTMLElement>('button, [role="button"], [role="tab"]'))
+    .filter((el) => !CANONICAL_COLOR_OPTION_REGEX.test(el.getAttribute("data-testid") ?? ""))
+    .slice(0, 20)
+    .map((el) => ({
+      tag: el.tagName.toLowerCase(),
+      testId: el.getAttribute("data-testid"),
+      role: el.getAttribute("role"),
+      text: el.textContent?.trim().slice(0, 40) || null,
+    }));
+}

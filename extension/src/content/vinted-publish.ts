@@ -77,7 +77,7 @@ import {
   resolveConditionOptionByTestId,
 } from "./conditionOptionReader";
 import { readSizeOptionCandidates } from "./sizeOptionReader";
-import { readColorOptionCandidates, isColorCandidateChecked, resolveColorOptionByTestId } from "./colorOptionReader";
+import { readColorOptionCandidates, isColorCandidateChecked, resolveColorOptionByTestId, describeColorPanelInteractiveElements } from "./colorOptionReader";
 import { matchMaterialOption, readMaterialOptionCandidates } from "./materialOptionReader";
 import { parseMaterials } from "./materials";
 import { readCategoryResultCells, readCategoryResultCellsDetailed, describeCategoryContainer } from "./categoryOptionReader";
@@ -1620,6 +1620,15 @@ async function attemptColorPrefill(spec: AttributePickerSpec, confirmed: string[
       colorCommitConfirmed = false;
       return;
     }
+
+    // Diagnostic pur (audit 2026-08-28, voir describeColorPanelInteractiveElements
+    // dans colorOptionReader.ts) : liste les boutons du panneau pendant qu'il
+    // est ENCORE OUVERT, avant toute tentative de fermeture -- aucun clic
+    // ajoute, seulement la preuve dont le prochain retour beta a besoin si le
+    // bug persiste malgre aria-checked confirme ci-dessus.
+    docLog.info("ATTRIBUTE_COLOR_PANEL_DIAGNOSTIC", {
+      interactiveElements: describeColorPanelInteractiveElements(freshClickTarget),
+    });
 
     // Mission "REPUBLICATION 100% UNATTENDED -- COMMIT MARQUE/COULEUR"
     // (2026-08-19) : CAUSE CONFIRMEE en test live -- meme apres ce correctif

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { RATE_LIMIT_SCOPES, rateLimitMessage, tryConsumeRateLimit } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,6 +62,24 @@ Deno.serve(async (req: Request) => {
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: "messages is required" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Cooldown par utilisateur (audit 2026-08-28) : cette route n'avait
+    // aucune limite, alors qu'elle appelle le meme GEMINI_API_KEY partage
+    // (niveau gratuit) que le Generateur IA -- un usage sans borne pouvait
+    // degrader cette fonctionnalite payante pour tout le monde. Volontairement
+    // un simple cooldown (pas de credits, voir rateLimit.ts) : l'assistant
+    // reste gratuit, seule la cadence est bornee.
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const rateLimitOk = await tryConsumeRateLimit(adminClient, user.id, RATE_LIMIT_SCOPES.dzikoAssistant);
+    if (!rateLimitOk) {
+      return new Response(JSON.stringify({ error: rateLimitMessage(RATE_LIMIT_SCOPES.dzikoAssistant.scope) }), {
+        status: 429,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

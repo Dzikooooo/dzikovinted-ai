@@ -38,6 +38,17 @@ import pkg from "./package.json";
 // Une seule liste, calculee une fois, plutot que deux manifestes dupliques
 // a maintenir en parallele (risque de recidive du bug documente ci-dessous
 // si les deux listes divergent).
+//
+// RAPPEL CRITIQUE (audit securite, 2026-08-28) : `npm run build` (mode par
+// defaut) INCLUT localhost:5173 dans externally_connectable -- correct pour
+// le dev quotidien, mais dangereux pour tout ce qui quitte cette machine.
+// `npm run build:beta` / `npm run package:beta` sont deja la commande sure
+// (localhost retire, voir buildExternallyConnectableMatches ci-dessous) --
+// c'est aussi la commande a utiliser pour une future premiere soumission au
+// Chrome Web Store, JAMAIS `npm run build` seul. Meme classe d'erreur que
+// les deux incidents documentes ci-dessus (2026-07-13, 2026-08-04) : une
+// liste de confiance qui n'est pas mise a jour au bon moment echoue de
+// facon silencieuse, sans trace cote extension.
 function buildExternallyConnectableMatches(isBeta: boolean): string[] {
   const matches = [
     "https://dzikovinted-ai.vercel.app/*",

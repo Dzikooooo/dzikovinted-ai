@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isColorCandidateChecked, readColorOptionCandidates, resolveColorOptionByTestId } from "../colorOptionReader";
+import { describeColorPanelInteractiveElements, isColorCandidateChecked, readColorOptionCandidates, resolveColorOptionByTestId } from "../colorOptionReader";
 import { matchOption } from "../matchOption";
 
 // Mission "CAUSE COULEUR CONFIRMEE LIVE" (2026-08-19) : preuve live directe
@@ -270,5 +270,80 @@ describe("isColorCandidateChecked -- source de verite structurelle (aria-checked
     document.body.appendChild(el);
     const [candidate] = readColorOptionCandidates();
     expect(isColorCandidateChecked(candidate)).toBe(false);
+  });
+});
+
+// Diagnostic ajoute suite au bug couleur non resolu apres 3 rounds live
+// (audit 2026-08-28) -- voir colorOptionReader.ts pour le contexte complet.
+// Ces tests ne prouvent QUE la logique de lecture DOM (jamais un
+// comportement Vinted reel, impossible a rejouer hors ligne) : le panneau
+// simule ci-dessous est une hypothese de structure, pas une preuve live.
+describe("describeColorPanelInteractiveElements", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function makePanelWithOptions(count: number): HTMLElement {
+    const panel = document.createElement("div");
+    for (let i = 0; i < count; i += 1) {
+      const option = makeColorOption(i, `Couleur ${i}`);
+      panel.appendChild(option);
+    }
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  it("returns [] when no ancestor contains another filter-grid-option (jamais de conteneur invente)", () => {
+    const lone = makeColorOption(9, "Bleu");
+    expect(describeColorPanelInteractiveElements(lone)).toEqual([]);
+  });
+
+  it("finds the panel root (ancestor with >=2 options) and lists its buttons, excluding the options themselves", () => {
+    const panel = makePanelWithOptions(3);
+    const applyButton = document.createElement("button");
+    applyButton.setAttribute("data-testid", "filter-apply-button");
+    applyButton.textContent = "Appliquer";
+    panel.appendChild(applyButton);
+
+    const [firstOption] = Array.from(panel.querySelectorAll<HTMLElement>('[data-testid^="filter-grid-option-"]'));
+    const found = describeColorPanelInteractiveElements(firstOption);
+
+    expect(found).toHaveLength(1);
+    expect(found[0]).toEqual({ tag: "button", testId: "filter-apply-button", role: null, text: "Appliquer" });
+  });
+
+  it("also matches role=button and role=tab elements", () => {
+    const panel = makePanelWithOptions(2);
+    const tab = document.createElement("div");
+    tab.setAttribute("role", "tab");
+    tab.textContent = "Onglet";
+    panel.appendChild(tab);
+
+    const [firstOption] = Array.from(panel.querySelectorAll<HTMLElement>('[data-testid^="filter-grid-option-"]'));
+    const found = describeColorPanelInteractiveElements(firstOption);
+
+    expect(found.some((el) => el.role === "tab" && el.text === "Onglet")).toBe(true);
+  });
+
+  it("stops climbing beyond the search depth -- never falls back to document.body as the panel", () => {
+    // Options separees de leur ancetre commun par plus de MAX_PANEL_SEARCH_DEPTH
+    // niveaux vides : aucun panneau ne doit etre trouve plutot que d'en
+    // deviner un trop large.
+    let wrapper: HTMLElement = document.body;
+    for (let i = 0; i < 8; i += 1) {
+      const div = document.createElement("div");
+      wrapper.appendChild(div);
+      wrapper = div;
+    }
+    const optionA = makeColorOption(1, "Bleu");
+    const optionB = makeColorOption(2, "Rouge");
+    wrapper.appendChild(optionA);
+    wrapper.appendChild(optionB);
+
+    expect(describeColorPanelInteractiveElements(optionA)).toEqual([]);
   });
 });

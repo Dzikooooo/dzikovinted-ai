@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { RATE_LIMIT_SCOPES, rateLimitMessage, tryConsumeRateLimit } from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,6 +61,35 @@ Deno.serve(async (req: Request) => {
     const { action_id: actionId } = await req.json();
     if (!actionId || typeof actionId !== "string") {
       return jsonResponse(400, { error: "action_id is required" });
+    }
+
+    // Verifie que cet action_log appartient bien a l'appelant AVANT de
+    // declencher quoi que ce soit -- audit du 2026-08-28 : sans ce controle,
+    // n'importe quel utilisateur authentifie pouvait fournir un action_id
+    // arbitraire et declencher le workflow GitHub Actions a volonte. RLS
+    // ("select_own_action_log", auth.uid() = user_id) suffit ici : ce SELECT
+    // passe par userClient (anon + JWT), donc ne peut structurellement
+    // renvoyer une ligne que si elle appartient a l'appelant.
+    const { data: ownedAction } = await userClient
+      .from("action_log")
+      .select("id")
+      .eq("id", actionId)
+      .maybeSingle();
+
+    if (!ownedAction) {
+      return jsonResponse(403, { error: "action_id introuvable ou non autorisé." });
+    }
+
+    // Cooldown par utilisateur (pas de credits ici, voir rateLimit.ts) :
+    // meme audit, meme date -- proteger le workflow GitHub Actions partage
+    // et le runner de scan Vinted d'un declenchement en rafale.
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const allowed = await tryConsumeRateLimit(adminClient, user.id, RATE_LIMIT_SCOPES.scanMarket);
+    if (!allowed) {
+      return jsonResponse(429, { error: rateLimitMessage(RATE_LIMIT_SCOPES.scanMarket.scope) });
     }
 
     const githubToken = Deno.env.get("GITHUB_ACTIONS_TOKEN");

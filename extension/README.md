@@ -22,6 +22,8 @@ Le build produit `extension/dist/`. Charger l'extension dans Chrome :
 
 Après toute modification du code de l'extension : `npm run build` puis, dans `chrome://extensions`, cliquer l'icône de rechargement de la carte de l'extension (l'ID reste stable tant qu'on recharge le même dossier `dist`).
 
+**Tout build qui quitte cette machine (ZIP bêta-testeurs, ou une future soumission Chrome Web Store) doit passer par `npm run build:beta` / `npm run package:beta`, jamais `npm run build` seul** — ce dernier inclut `http://localhost:5173/*` dans `externally_connectable` (nécessaire au dev quotidien), ce que `build:beta` retire (voir `manifest.config.ts`, section « RAPPEL CRITIQUE »).
+
 ## Vérifications avant de committer
 
 ```bash
