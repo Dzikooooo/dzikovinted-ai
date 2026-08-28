@@ -4,7 +4,7 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { VINTED_INK, VINTED_TEAL } from '../../../lib/brandColors';
 import { formatEUR } from '../../../lib/currency';
-import { computeOfferSuggestions, type OfferKind } from '../../../lib/offerPricing';
+import { computeOfferSuggestions, type OfferKind, type OfferSuggestion } from '../../../lib/offerPricing';
 import {
   computeFavouritesGains,
   readFavouritesBaseline,
@@ -24,6 +24,14 @@ import { resolveMessageTemplate, type TemplateListingSource } from '../../../lib
 // deja synchronise par l'extension sur la table listings. ResellOS ne connait
 // TOUJOURS pas l'identite des personnes qui ont mis en favori -- Vinted ne
 // l'expose pas, et rien ici ne cherche a la deviner.
+//
+// ZERO-FRICTION (2026-08-28) : le bouton "Copier le message" separe, en bas
+// de chaque carte, obligeait un aller-retour visuel (choisir une offre en
+// haut -> repondre le message compose plus bas -> chercher le bouton encore
+// plus bas). Les badges d'offre SONT desormais l'action -- un clic compose
+// ET copie en un seul geste, avec un retour "Copie !" directement sur le
+// badge clique (jamais un etat global ambigu qui ne dit pas LEQUEL vient
+// d'etre copie).
 
 export interface FavouriteListing extends TemplateListingSource {
   id: string;
@@ -34,9 +42,22 @@ export interface FavouriteListing extends TemplateListingSource {
 interface FavouritesFollowUpProps {
   listings: FavouriteListing[];
   loading: boolean;
-  /** Corps du modele selectionne, ou null si aucun modele n'est choisi. */
+  /** Corps du modele effectif (choisi ou par defaut), ou null si aucun. */
   templateBody: string | null;
   templateName: string | null;
+}
+
+// Compose le message pour UNE offre precise, jamais depuis un etat qui
+// pourrait etre perime au moment du clic (voir le commentaire sur
+// composeMessage plus bas) -- reutilise pour le clic ET pour l'aperçu.
+function composeMessage(templateBody: string | null, listing: FavouriteListing, offer: OfferSuggestion | null): string | null {
+  if (!templateBody) return null;
+  const base = resolveMessageTemplate(templateBody, listing);
+  if (!offer) return base;
+  // L'offre est AJOUTEE au message prepare, jamais substituee au modele : le
+  // vendeur garde le texte qu'il a ecrit, et voit exactement ce qui a ete
+  // ajoute avant de copier.
+  return `${base}\n\nJe peux te le faire à ${formatEUR(offer.price)} si ça t'intéresse.`;
 }
 
 export function FavouritesFollowUp({ listings, loading, templateBody, templateName }: FavouritesFollowUpProps) {
@@ -45,7 +66,11 @@ export function FavouritesFollowUp({ listings, loading, templateBody, templateNa
   // les "+N" sous les yeux de l'utilisateur.
   const [baseline] = useState(() => readFavouritesBaseline());
   const [selectedOffer, setSelectedOffer] = useState<Record<string, OfferKind>>({});
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Cle composite `${listingId}:${offerKind|'base'}` -- jamais un simple id
+  // de carte : plusieurs badges different UNIQUEMENT par leur offre sur la
+  // meme carte, un etat par carte seule ne saurait pas LEQUEL vient d'etre
+  // copie.
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const gains = useMemo(() => {
     const byId = new Map(computeFavouritesGains(listings, baseline).map((g) => [g.listingId, g]));
@@ -66,23 +91,10 @@ export function FavouritesFollowUp({ listings, loading, templateBody, templateNa
     writeFavouritesBaseline(Object.fromEntries(listings.map((l) => [l.id, l.favourites ?? 0])));
   }, [loading, listings]);
 
-  const messageFor = (listing: FavouriteListing): string | null => {
-    if (!templateBody) return null;
-    const base = resolveMessageTemplate(templateBody, listing);
-    const kind = selectedOffer[listing.id];
-    if (!kind) return base;
-    const offer = computeOfferSuggestions(listing.price).find((o) => o.kind === kind);
-    if (!offer) return base;
-    // L'offre est AJOUTEE au message prepare, jamais substituee au modele :
-    // le vendeur garde le texte qu'il a ecrit, et voit exactement ce qui a
-    // ete ajoute avant de copier.
-    return `${base}\n\nJe peux te le faire à ${formatEUR(offer.price)} si ça t'intéresse.`;
-  };
-
-  const copy = (listingId: string, text: string) => {
+  const copy = (key: string, text: string) => {
     void navigator.clipboard.writeText(text).then(() => {
-      setCopiedId(listingId);
-      setTimeout(() => setCopiedId((current) => (current === listingId ? null : current)), 2000);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((current) => (current === key ? null : current)), 2000);
     });
   };
 
@@ -108,16 +120,11 @@ export function FavouritesFollowUp({ listings, loading, templateBody, templateNa
 
   return (
     <div className="space-y-3">
-      {!templateBody && (
-        <p className="text-xs text-gray-500">
-          Choisis un modèle ci-dessus pour préparer le message de chaque relance.
-        </p>
-      )}
-
       {gains.map(({ listing, gain }) => {
         const offers = computeOfferSuggestions(listing.price);
-        const message = messageFor(listing);
-        const activeOffer = selectedOffer[listing.id];
+        const activeOfferKind = selectedOffer[listing.id];
+        const activeOffer = offers.find((o) => o.kind === activeOfferKind) ?? null;
+        const preview = composeMessage(templateBody, listing, activeOffer);
         return (
           <div key={listing.id} className="border border-gray-200 rounded-xl p-4">
             <div className="flex items-start justify-between gap-3">
@@ -140,77 +147,88 @@ export function FavouritesFollowUp({ listings, loading, templateBody, templateNa
               </span>
             </div>
 
-            {offers.length > 0 && (
+            {offers.length > 0 ? (
               <div className="flex items-center gap-2 mt-3 flex-wrap">
-                <span className="text-[11px] text-gray-500">Proposer :</span>
+                <span className="text-[11px] text-gray-500">Copier et proposer :</span>
                 {offers.map((offer) => {
-                  const active = activeOffer === offer.kind;
+                  const key = `${listing.id}:${offer.kind}`;
+                  const isCopied = copiedKey === key;
                   return (
                     <button
                       key={offer.kind}
-                      aria-pressed={active}
-                      onClick={() =>
-                        setSelectedOffer((prev) => {
-                          const next = { ...prev };
-                          if (active) delete next[listing.id];
-                          else next[listing.id] = offer.kind;
-                          return next;
-                        })
-                      }
-                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${
-                        active
-                          ? 'bg-neon-500/10 text-neon-600 border-neon-500/30'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      onClick={() => {
+                        setSelectedOffer((prev) => ({ ...prev, [listing.id]: offer.kind }));
+                        const text = composeMessage(templateBody, listing, offer);
+                        if (text) copy(key, text);
+                      }}
+                      disabled={!templateBody}
+                      title={!templateBody ? "Choisis d'abord un modèle de message" : `Copier le message avec ${offer.label}`}
+                      className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                        isCopied
+                          ? 'bg-green-500/10 text-green-700 border-green-500/30'
+                          : 'bg-neon-500/10 text-neon-600 border-neon-500/25 hover:bg-neon-500/20'
                       }`}
                     >
-                      {offer.label} · {formatEUR(offer.price)}
+                      {isCopied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {isCopied ? 'Copié !' : `${offer.label} · ${formatEUR(offer.price)}`}
                     </button>
                   );
                 })}
               </div>
+            ) : (
+              // Repli RARE (prix invalide, computeOfferSuggestions ne
+              // propose alors aucune offre -- voir offerPricing.ts) : seul
+              // cas ou un bouton de copie generique reste necessaire, faute
+              // de badge de prix a cliquer.
+              templateBody && (
+                <button
+                  onClick={() => {
+                    const text = composeMessage(templateBody, listing, null);
+                    if (text) copy(`${listing.id}:base`, text);
+                  }}
+                  className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition-colors mt-3 ${
+                    copiedKey === `${listing.id}:base`
+                      ? 'bg-green-500/10 text-green-700 border-green-500/30'
+                      : 'bg-neon-500/10 text-neon-600 border-neon-500/25 hover:bg-neon-500/20'
+                  }`}
+                >
+                  {copiedKey === `${listing.id}:base` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  {copiedKey === `${listing.id}:base` ? 'Copié !' : 'Copier le message'}
+                </button>
+              )
             )}
 
-            {message && (
+            {preview && (
               <p className="text-xs text-gray-700 bg-surface-alt border border-gray-200 rounded-lg px-3 py-2 mt-3 whitespace-pre-wrap">
-                {message}
+                {preview}
               </p>
             )}
 
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={() => message && copy(listing.id, message)}
-                disabled={!message}
-                title={!message ? 'Choisis d\'abord un modèle de message' : undefined}
-                className="inline-flex items-center justify-center gap-1.5 flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-neon-500/10 text-neon-600 border border-neon-500/25 hover:bg-neon-500/20 transition-colors disabled:opacity-50"
+            {!templateBody && <p className="text-xs text-gray-500 mt-3">Choisis un modèle ci-dessus pour préparer le message de cette relance.</p>}
+
+            {/* Ce bouton mene reellement sur Vinted, d'ou l'accent Vinted.
+                Fond VINTED_INK et non VINTED_TEAL : du blanc sur le teal ne
+                mesure que 2.62:1 (echec AA), sur l'ink 5.30:1. Corrige le
+                2026-08-26 avec la regle du playbook qui l'autorisait a tort. */}
+            {listing.vinted_url && (
+              <a
+                href={listing.vinted_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-lg transition-opacity hover:opacity-90 mt-3"
+                style={{ backgroundColor: VINTED_INK }}
               >
-                {copiedId === listing.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedId === listing.id ? 'Copié' : 'Copier le message'}
-              </button>
-              {/* Ce bouton mene reellement sur Vinted, d'ou l'accent Vinted.
-                  Fond VINTED_INK et non VINTED_TEAL : du blanc sur le teal ne
-                  mesure que 2.62:1 (echec AA), sur l'ink 5.30:1. Corrige le
-                  2026-08-26 avec la regle du playbook qui l'autorisait a tort. */}
-              {listing.vinted_url ? (
-                <a
-                  href={listing.vinted_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white px-3 py-2 rounded-lg transition-opacity hover:opacity-90 flex-shrink-0"
-                  style={{ backgroundColor: VINTED_INK }}
-                >
-                  Ouvrir sur Vinted <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              ) : (
-                <span className="text-[11px] text-gray-500 flex-shrink-0">Lien Vinted indisponible</span>
-              )}
-            </div>
+                Ouvrir sur Vinted <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
           </div>
         );
       })}
 
       {templateName && (
         <p className="text-[11px] text-gray-500">
-          Message préparé à partir du modèle « {templateName} ». Tu le copies et tu l'envoies toi-même sur Vinted.
+          Message préparé à partir du modèle « {templateName} ». Clique un prix pour le copier — c'est toujours toi
+          qui le copies et l'envoies sur Vinted.
         </p>
       )}
     </div>

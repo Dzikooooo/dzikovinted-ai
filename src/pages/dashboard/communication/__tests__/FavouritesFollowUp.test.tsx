@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { FavouritesFollowUp, type FavouriteListing } from '../FavouritesFollowUp';
 
-// Relance favoris assistee (2026-08-26). Le plus important ici n'est pas ce
-// que la section affiche, mais ce qu'elle NE FAIT PAS : aucun envoi, aucune
-// identite de destinataire, aucun chiffre invente. Ces garde-fous decoulent
-// d'un engagement affiche publiquement sur la landing -- un test les protege
-// d'une derive future.
+// Relance favoris assistee (2026-08-26, revue ZERO-FRICTION 2026-08-28). Le
+// plus important ici n'est pas ce que la section affiche, mais ce qu'elle NE
+// FAIT PAS : aucun envoi, aucune identite de destinataire, aucun chiffre
+// invente. Ces garde-fous decoulent d'un engagement affiche publiquement sur
+// la landing -- un test les protege d'une derive future.
+//
+// ZERO-FRICTION (2026-08-28) : les badges d'offre (-5 %/-10 %/Prix rond)
+// SONT desormais l'action de copie -- un clic compose ET copie en un seul
+// geste, feedback "Copié !" sur le badge clique. Le bouton generique
+// "Copier le message" du bas n'existe plus QUE dans le cas rare ou aucune
+// offre n'est calculable (prix invalide) -- ces tests reflete ce nouveau
+// contrat plutot que l'ancien bouton toujours present.
 
 function makeListing(over: Partial<FavouriteListing> = {}): FavouriteListing {
   return {
@@ -40,13 +46,15 @@ describe('FavouritesFollowUp -- garde-fous', () => {
     render(<FavouritesFollowUp listings={[makeListing()]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
     expect(screen.queryByRole('button', { name: /envoyer/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /Copier le message/i })).toBeTruthy();
+    // Prix reel (25 €) -> des offres existent -- ce sont elles, desormais,
+    // l'unique sortie de copie (pas un bouton generique separe).
+    expect(screen.getByRole('button', { name: /-10 %/ })).toBeTruthy();
   });
 
   it("rappelle explicitement que l'envoi reste manuel", () => {
     render(<FavouritesFollowUp listings={[makeListing()]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
-    expect(screen.getByText(/tu le copies et tu l'envoies toi-même sur Vinted/i)).toBeTruthy();
+    expect(screen.getByText(/toi qui le copies et l'envoies sur Vinted/i)).toBeTruthy();
   });
 });
 
@@ -79,17 +87,17 @@ describe('FavouritesFollowUp -- ce qui est affiche', () => {
     expect(screen.getByText(/Aucun favori à relancer/i)).toBeTruthy();
   });
 
-  it('resout les variables du modele avec les vraies donnees', () => {
+  it('resout les variables du modele avec les vraies donnees, sans offre selectionnee', () => {
     render(<FavouritesFollowUp listings={[makeListing()]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
     expect(screen.getByText(/Bonjour ! Polo Ralph Lauren est toujours dispo à 25/)).toBeTruthy();
   });
 
-  it("invite a choisir un modele plutot que d'inventer un message", () => {
+  it("invite a choisir un modele plutot que d'inventer un message -- les badges d'offre restent visibles mais desactives", () => {
     render(<FavouritesFollowUp listings={[makeListing()]} loading={false} templateBody={null} templateName={null} />);
 
     expect(screen.getByText(/Choisis un modèle/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Copier le message/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /-10 %/ })).toBeDisabled();
   });
 });
 
@@ -102,11 +110,10 @@ describe('FavouritesFollowUp -- offres', () => {
     expect(screen.getByRole('button', { name: /Prix rond/ })).toBeTruthy();
   });
 
-  it("AJOUTE l'offre au message sans remplacer le texte du modele", async () => {
-    const user = userEvent.setup();
+  it("un clic sur une offre AJOUTE l'offre au message sans remplacer le texte du modele", () => {
     render(<FavouritesFollowUp listings={[makeListing({ price: 25 })]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
-    await user.click(screen.getByRole('button', { name: /-10 %/ }));
+    fireEvent.click(screen.getByRole('button', { name: /-10 %/ }));
 
     // Le texte d'origine survit ET l'offre s'y ajoute, dans le MEME bloc.
     // 25 € -10 % = 22,5 -> 23 € : euros entiers, comme partout dans l'app.
@@ -114,30 +121,48 @@ describe('FavouritesFollowUp -- offres', () => {
     expect(apercu.textContent).toContain('23 €');
   });
 
-  it("permet de retirer l'offre en recliquant", async () => {
-    const user = userEvent.setup();
+  it("cliquer une AUTRE offre remplace l'aperçu par la nouvelle, jamais les deux cumulees", () => {
     render(<FavouritesFollowUp listings={[makeListing({ price: 25 })]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
-    const btn = screen.getByRole('button', { name: /-10 %/ });
-    await user.click(btn);
-    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: /-10 %/ }));
+    expect(screen.getByText(/Polo Ralph Lauren est toujours dispo/).textContent).toContain('23 €');
 
-    await user.click(btn);
-    expect(btn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: /-5 %/ }));
+    // 25 € -5 % = 23,75 -> 24 €.
+    expect(screen.getByText(/Polo Ralph Lauren est toujours dispo/).textContent).toContain('24 €');
+    expect(screen.getByText(/Polo Ralph Lauren est toujours dispo/).textContent).not.toContain('23 €');
   });
 
-  it('ne propose aucune offre sur un prix nul', () => {
+  it('ne propose aucune offre sur un prix nul -- repli sur le bouton de copie generique', () => {
     render(<FavouritesFollowUp listings={[makeListing({ price: 0 })]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
     expect(screen.queryByRole('button', { name: /-5 %/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Copier le message/i })).toBeTruthy();
   });
 });
 
 describe('FavouritesFollowUp -- actions', () => {
-  it('copie le message prepare', async () => {
-    // fireEvent et non userEvent : userEvent.setup() installe SON PROPRE stub
-    // de navigator.clipboard, qui remplacerait l'espion pose en beforeEach.
+  it('un clic sur un badge de prix copie IMMEDIATEMENT le message compose (zero-friction, pas de bouton separe)', async () => {
     render(<FavouritesFollowUp listings={[makeListing()]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /-10 %/ }));
+
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('Polo Ralph Lauren'))
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('23 €'));
+  });
+
+  it('affiche "Copié !" sur le badge cliqué, puis revient a son libelle normal', async () => {
+    render(<FavouritesFollowUp listings={[makeListing()]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /-10 %/ }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /Copié !/i })).toBeTruthy());
+  });
+
+  it('repli sans offre (prix nul) : le bouton generique copie bien le message de base', async () => {
+    render(<FavouritesFollowUp listings={[makeListing({ price: 0 })]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Copier le message/i }));
 
@@ -158,7 +183,6 @@ describe('FavouritesFollowUp -- actions', () => {
     render(<FavouritesFollowUp listings={[makeListing({ vinted_url: null })]} loading={false} templateBody={TEMPLATE} templateName="Relance" />);
 
     expect(screen.queryByRole('link', { name: /Ouvrir sur Vinted/i })).toBeNull();
-    expect(screen.getByText(/Lien Vinted indisponible/i)).toBeTruthy();
   });
 
   it('trie les gains connus les plus eleves en tete', () => {

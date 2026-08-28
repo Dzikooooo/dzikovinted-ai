@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MessageSquare, Plus, Pencil, Trash2, Copy, ExternalLink, Check, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Copy, ExternalLink, Check, Info } from 'lucide-react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
-import { EmptyState } from '../../components/ui/EmptyState';
 import { FavouritesFollowUp } from './communication/FavouritesFollowUp';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -86,6 +85,20 @@ const STARTER_TEMPLATES: { name: string; body: string }[] = [
     body: 'Bonjour, je viens de baisser le prix de {titre} à {prix}. Ça peut t\'intéresser !',
   },
 ];
+
+// ZERO-FRICTION (2026-08-28) : tant que l'utilisateur n'a cree AUCUN modele
+// personnel, le bloc "Aucun modèle pour l'instant" ne rendait rien
+// exploitable -- il fallait d'abord creer un modele avant de pouvoir
+// preparer le moindre message. Le premier modele de depart (deja ecrit et
+// deja teste comme "idee de modele") devient desormais le modele EFFECTIF
+// par defaut : la page (et la relance favoris) reste immediatement
+// utilisable, sans jamais pretendre que l'utilisateur l'a lui-meme cree
+// (etiquete "Par defaut" partout ou il apparait, jamais confondu avec un
+// vrai modele personnel). Des qu'un premier modele reel est cree, ce
+// fallback silencieux disparait -- l'utilisateur doit alors choisir
+// explicitement, jamais de bascule invisible entre deux sources differentes.
+const DEFAULT_TEMPLATE_ID = '__default__';
+const DEFAULT_TEMPLATE = STARTER_TEMPLATES[0];
 
 function TemplateFormModal({
   initial,
@@ -170,11 +183,19 @@ export default function CommunicationPage() {
 
   const selectedListing = listings.find((l) => l.id === selectedListingId) ?? null;
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+  const hasCustomTemplates = templates.length > 0;
+  // Modele EFFECTIF : le vrai modele choisi, sinon le modele par defaut
+  // UNIQUEMENT si l'utilisateur n'a encore cree aucun modele personnel (voir
+  // le commentaire de DEFAULT_TEMPLATE_ID ci-dessus) -- jamais de fallback
+  // silencieux des qu'un premier modele reel existe.
+  const isDefaultActive = !hasCustomTemplates && (selectedTemplateId === '' || selectedTemplateId === DEFAULT_TEMPLATE_ID);
+  const effectiveTemplate = selectedTemplate ?? (isDefaultActive ? DEFAULT_TEMPLATE : null);
+  const effectiveTemplateId = selectedTemplateId || (isDefaultActive ? DEFAULT_TEMPLATE_ID : '');
 
   const resolvedText = useMemo(() => {
-    if (!selectedTemplate || !selectedListing) return '';
-    return resolveMessageTemplate(selectedTemplate.body, selectedListing);
-  }, [selectedTemplate, selectedListing]);
+    if (!effectiveTemplate || !selectedListing) return '';
+    return resolveMessageTemplate(effectiveTemplate.body, selectedListing);
+  }, [effectiveTemplate, selectedListing]);
 
   useEffect(() => {
     setEditedText(resolvedText);
@@ -214,13 +235,38 @@ export default function CommunicationPage() {
               <Skeleton shape="block" className="h-14" />
             </div>
           ) : templates.length === 0 ? (
-            <EmptyState
-              icon={MessageSquare}
-              title="Aucun modèle pour l'instant"
-              description="Crée un premier modèle pour préparer tes messages plus vite."
-              action={{ label: 'Créer un modèle', onClick: () => { setFormPrefill(null); setFormTemplate('new'); } }}
-              bare
-            />
+            // ZERO-FRICTION (2026-08-28) : plus d'etat vide qui bloque tout
+            // -- le modele par defaut est deja actif (voir DEFAULT_TEMPLATE_ID
+            // plus haut), affiche ici comme tel ("Par defaut", jamais
+            // confondu avec un modele reellement cree par l'utilisateur).
+            // "Personnaliser" ouvre le formulaire habituel PRE-REMPLI avec
+            // son contenu -- l'enregistrer le transforme en vrai modele
+            // personnel, meme mecanisme que les chips "Idees de modeles"
+            // plus bas.
+            <div className="space-y-2">
+              <div className="flex items-start gap-3 p-3 rounded-xl border border-dashed border-gray-200 bg-gray-50">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{DEFAULT_TEMPLATE.name}</p>
+                    <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                      Par défaut
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 truncate mt-0.5">{DEFAULT_TEMPLATE.body}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setFormPrefill(DEFAULT_TEMPLATE); setFormTemplate('new'); }}
+                  aria-label="Personnaliser"
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 flex-shrink-0"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500 px-1">
+                Ce modèle par défaut est déjà actif ci-contre — personnalise-le ou crée le tien.
+              </p>
+            </div>
           ) : (
             <div className="space-y-2">
               {templates.map((t) => (
@@ -260,7 +306,11 @@ export default function CommunicationPage() {
           <div className="mt-4 pt-4 border-t border-gray-200">
             <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Idées de modèles</p>
             <div className="flex flex-wrap gap-2">
-              {STARTER_TEMPLATES.map((s) => (
+              {/* Le premier modele de depart est deja affiche ci-dessus comme
+                  modele PAR DEFAUT tant qu'aucun modele personnel n'existe --
+                  le reproposer ici serait redondant. Des qu'un modele reel
+                  existe, les deux idees redeviennent utiles a egalite. */}
+              {(hasCustomTemplates ? STARTER_TEMPLATES : STARTER_TEMPLATES.slice(1)).map((s) => (
                 <button
                   key={s.name}
                   type="button"
@@ -297,12 +347,16 @@ export default function CommunicationPage() {
           )}
 
           <select
-            value={selectedTemplateId}
-            onChange={(e) => setSelectedTemplateId(e.target.value)}
-            disabled={templates.length === 0}
-            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3 disabled:opacity-50"
+            value={effectiveTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value === DEFAULT_TEMPLATE_ID ? '' : e.target.value)}
+            className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 mb-3"
           >
+            {/* "" reste la valeur neutre : tant qu'aucun modele personnel
+                n'existe, elle EST le defaut (il n'y a rien d'autre a
+                proposer comme repli) -- des qu'un modele reel existe, elle
+                redevient un vrai "aucun choix", voir isDefaultActive. */}
             <option value="">Choisir un modèle...</option>
+            {!hasCustomTemplates && <option value={DEFAULT_TEMPLATE_ID}>{DEFAULT_TEMPLATE.name} (par défaut)</option>}
             {templates.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -310,7 +364,7 @@ export default function CommunicationPage() {
             ))}
           </select>
 
-          {selectedListing && selectedTemplate ? (
+          {selectedListing && effectiveTemplate ? (
             <>
               <textarea
                 value={editedText}
@@ -365,8 +419,8 @@ export default function CommunicationPage() {
         <FavouritesFollowUp
           listings={listings}
           loading={listingsLoading}
-          templateBody={selectedTemplate?.body ?? null}
-          templateName={selectedTemplate?.name ?? null}
+          templateBody={effectiveTemplate?.body ?? null}
+          templateName={effectiveTemplate?.name ?? null}
         />
       </div>
 

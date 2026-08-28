@@ -14,15 +14,20 @@ import { FeatureVisual } from './Features';
 // defaut, revele au survol/clic) -> CE ROUND, qui revient a une bento grid
 // mais en integrant Communication au meme rang que les 4 modules reels.
 //
-// POINT DE VIGILANCE EXPLICITE (question posee, reponse actee) :
-// Communication n'est PAS construite (voir Features.tsx, tout en
-// "(bientot)") -- l'integrer visuellement "au meme niveau" (meme taille,
-// meme traitement de carte) que Republication/Comptabilite/Generateur/
-// Discord est une INTEGRATION DE MISE EN PAGE, jamais une affirmation
-// qu'elle fonctionne. Sa carte reste donc honnete : badge "Bientot"
-// visible, aucun faux statut/aucune fausse donnee de messagerie qui la
-// ferait passer pour une capture reelle (playbook G.6 : "chaque visuel
-// doit correspondre a une fonctionnalite qui existe vraiment aujourd'hui").
+// POINT DE VIGILANCE EXPLICITE (question posee, reponse actee) : integrer
+// Communication "au meme niveau" (meme taille, meme traitement de carte)
+// que Republication/Comptabilite/Generateur/Discord est une INTEGRATION DE
+// MISE EN PAGE, jamais une affirmation qu'elle fonctionne integralement.
+//
+// MISE A JOUR (2026-08-28, meme round) : la carte annoncait "Bientot" sur
+// TOUT le module -- inexact. La relance favoris (badges de prix -> message
+// copie en un clic, voir CommunicationPage.tsx/FavouritesFollowUp.tsx) est
+// REELLEMENT construite ; seule l'automatisation complete (envoi/reponse
+// SANS action de l'utilisateur) reste roadmap. Le titre/texte de la carte
+// decrit desormais la vraie fonctionnalite, le badge "Bientot" ne porte
+// plus que sur l'automatisation (playbook G.6 : chaque visuel doit
+// correspondre a une fonctionnalite qui existe vraiment -- ni sous-vendre
+// ce qui marche, ni survendre ce qui ne marche pas).
 //
 // Theme clair conserve (meme arbitrage que tous les rounds precedents sur
 // cette landing).
@@ -120,22 +125,23 @@ export function ProductPreview() {
           </div>
 
           {/* Communication -- MEME taille/style de carte que les 3 tuiles
-              ci-dessus (integration demandee), mais contenu honnete : badge
-              "Bientot" toujours visible, aucun faux message/statut qui la
-              ferait passer pour une fonctionnalite reelle (voir le
-              commentaire d'en-tete de ce fichier). */}
+              ci-dessus (integration demandee). Retour beta (2026-08-28) :
+              la relance favoris (badges de prix -> message copie en un
+              clic) est REELLEMENT construite -- seule l'automatisation
+              complete (envoi/reponse SANS action de l'utilisateur) reste
+              roadmap. Le badge "Bientot" ne porte donc plus que sur CETTE
+              partie precise, jamais sur toute la carte -- voir
+              Features.tsx pour le detail complet (memes donnees). */}
           <div className="rounded-2xl border border-gray-200 bg-white p-5 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-white border border-gray-200">
-                <MessageSquare className="w-4 h-4" style={{ color: BRAND_VIOLET }} />
-              </div>
-              <span className="flex items-center gap-1 text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                <Clock className="w-3 h-3" />
-                Bientôt
-              </span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-4 bg-white border border-gray-200">
+              <MessageSquare className="w-4 h-4" style={{ color: BRAND_VIOLET }} />
             </div>
-            <h3 className="text-sm font-black text-gray-900 mb-1">Communication</h3>
-            <p className="text-xs text-gray-500 mt-auto">Réponses suggérées, messages automatiques aux favoris.</p>
+            <h3 className="text-sm font-black text-gray-900 mb-1">Relance favoris en un clic</h3>
+            <p className="text-xs text-gray-500 mb-4">Message prêt à copier, prix suggéré inclus.</p>
+            <span className="mt-auto inline-flex items-center gap-1 text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-full w-fit">
+              <Clock className="w-3 h-3" />
+              Envoi auto : bientôt
+            </span>
           </div>
         </div>
       </div>

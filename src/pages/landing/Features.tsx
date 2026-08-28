@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Camera, Shirt, RefreshCw, ReceiptEuro, CheckSquare, MessageSquare, ExternalLink, Check } from "lucide-react";
+import { Camera, Shirt, RefreshCw, ReceiptEuro, CheckSquare, MessageSquare, ExternalLink, Check, Clock } from "lucide-react";
 import { DiscordIcon } from '../../components/ui/DiscordIcon';
 
 import { BRAND_VIOLET } from "../../lib/brandColors";
@@ -56,11 +56,20 @@ const FEATURES = [
   {
     icon: MessageSquare,
     title: 'Communication',
+    // Retour beta (2026-08-28) : ce module etait etiquete "(bientot)" en
+    // bloc alors qu'une partie est reellement construite -- modeles de
+    // message + relance favoris assistee (prix suggere en un clic, voir
+    // CommunicationPage.tsx/FavouritesFollowUp.tsx). Seule l'automatisation
+    // complete (envoi/reponse SANS action de l'utilisateur) reste roadmap --
+    // desormais la seule chose etiquetee "(bientot)" ici, pour ne plus
+    // sous-vendre ce qui marche deja ni survendre ce qui ne marche pas.
     benefits: [
+      'Modèles de message personnalisables',
+      'Relance favoris en un clic, prix suggéré inclus',
+      'Message préparé avec les vraies infos de l\'annonce',
       'Réponse suggérée aux messages (bientôt)',
-      'Message auto aux favoris (bientôt)',
       'Réponse aux offres (bientôt)',
-      'Programmation des envois (bientôt)',
+      'Envoi automatique programmé (bientôt)',
       'Toujours confirmé par toi, jamais automatique',
     ],
     visual: 'communication' as const,
@@ -132,15 +141,35 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
     );
   }
   if (kind === 'communication') {
+    // Retour beta (2026-08-28) : remplace l'ancien "Bientôt disponible"
+    // generique -- la relance favoris (badges de prix qui copient un
+    // message pret) est REELLEMENT construite (voir CommunicationPage.tsx/
+    // FavouritesFollowUp.tsx), seule l'automatisation complete (envoi sans
+    // action de l'utilisateur) reste roadmap. Memes offres/prix que la
+    // vraie fonctionnalite (25 € -5 %/-10 %, euros entiers -- voir
+    // offerPricing.ts) plutot que des chiffres inventes pour ce visuel.
     return (
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-white border border-gray-200">
-          <MessageSquare className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
+      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6">
+        <p className="text-xs font-semibold text-gray-900">Sweat Nike gris</p>
+        <p className="text-xs text-gray-500 mb-3">25 €</p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {[
+            { label: '-5 %', price: '24 €' },
+            { label: '-10 %', price: '23 €' },
+          ].map((offer) => (
+            <span
+              key={offer.label}
+              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-white"
+              style={{ color: BRAND_VIOLET, borderColor: `${BRAND_VIOLET}33` }}
+            >
+              {offer.label} · {offer.price}
+            </span>
+          ))}
         </div>
-        <p className="font-semibold text-sm mb-1.5 text-gray-900">Bientôt disponible</p>
-        <p className="text-xs text-gray-500">
-          Chaque message restera une action que tu déclenches et confirmes toi-même — jamais un envoi automatique
-          silencieux sur ton compte Vinted.
+        <p className="text-xs text-gray-500 mb-3">Un clic sur un prix copie le message, prêt à coller sur Vinted.</p>
+        <p className="text-[11px] text-gray-500 flex items-center gap-1.5 pt-3 border-t border-gray-200">
+          <Clock className="w-3 h-3 flex-shrink-0" />
+          Réponses et envois automatiques : bientôt
         </p>
       </div>
     );
