@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ListingCard } from '../ListingsManagementSection';
-import type { ListingCardProps } from '../ListingsManagementSection';
+import { ListingCard } from '../ListingCard';
+import type { ListingCardProps } from '../ListingCard';
 import type { Listing } from '../../../../lib/types';
 
 // Premier test de composant du projet (voir vitest.config.ts) -- couvre le

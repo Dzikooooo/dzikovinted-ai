@@ -3,8 +3,7 @@ import { X, Check, Bell } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import { DiscordIcon } from '../../components/ui/DiscordIcon';
 import { Badge } from '../../components/ui/Badge';
-
-const VINTED_BLUE = '#007782';
+import { VINTED_INK } from '../../lib/brandColors';
 
 // Round M -- bloc Avant/Avec ResellOS sous le Hero (retour utilisateur
 // 2026-08-23). "Message automatique aux favoris" reste marque "(bientot)",
@@ -110,7 +109,7 @@ function MiniListingCard({
       )}
       <div
         className={`h-10 rounded mb-1.5 ${chaos ? 'bg-gray-200' : ''}`}
-        style={chaos ? undefined : { background: `${VINTED_BLUE}14` }}
+        style={chaos ? undefined : { background: `${VINTED_INK}14` }}
       />
       <div className={`h-1.5 w-3/4 rounded mb-1 ${chaos ? 'bg-gray-200' : 'bg-gray-300'}`} />
       {correctedFrom ? (
@@ -201,7 +200,7 @@ export function HeroComparison() {
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-7 sm:p-10">
           <div className="flex items-center gap-2 mb-6">
             <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Sans Resell OS</span>
-            <span className="text-sm font-semibold" style={{ color: VINTED_BLUE }}>Vinted</span>
+            <span className="text-sm font-semibold" style={{ color: VINTED_INK }}>Vinted</span>
           </div>
 
           {/* Ecarts d'angle/decalage/opacite INDIVIDUELS (jamais une seule
@@ -263,12 +262,12 @@ export function HeroComparison() {
 
         <div
           className="rounded-2xl border bg-white p-7 sm:p-10 shadow-xl shadow-gray-900/[0.06]"
-          style={{ borderColor: `${VINTED_BLUE}40` }}
+          style={{ borderColor: `${VINTED_INK}40` }}
         >
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-6">
             <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Avec Resell OS</span>
             <span className="text-gray-300">+</span>
-            <span className="text-sm font-semibold" style={{ color: VINTED_BLUE }}>Vinted</span>
+            <span className="text-sm font-semibold" style={{ color: VINTED_INK }}>Vinted</span>
             <span className="text-gray-300">+</span>
             <Logo variant="transparent" size={18} />
             <span className="text-sm font-semibold text-gray-900">ResellOS</span>
@@ -315,14 +314,14 @@ export function HeroComparison() {
           <ul className="space-y-4">
             {BENEFITS.map((b) => (
               <li key={b} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-700">
-                <Check className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: VINTED_BLUE }} />
+                <Check className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: VINTED_INK }} />
                 {b}
               </li>
             ))}
           </ul>
 
           <div className="flex items-center gap-2 mt-6 pt-5 border-t border-gray-200 text-xs text-gray-500">
-            <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: VINTED_BLUE }} />
+            <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: VINTED_INK }} />
             ResellOS tourne pendant que tu vis ta vie.
           </div>
         </div>

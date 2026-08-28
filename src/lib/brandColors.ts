@@ -33,6 +33,3 @@
 export const BRAND_VIOLET = '#7C5CFF';
 export const VINTED_TEAL = '#09B1BA';
 export const VINTED_INK = '#007782';
-
-// Alias historique -- la landing l'utilise deja sous ce nom pour du texte.
-export const VINTED_BLUE = VINTED_INK;
