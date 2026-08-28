@@ -21,6 +21,7 @@ import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { SectionLabel } from '../../components/ui/SectionLabel';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { OnboardingChecklist } from './OnboardingChecklist';
 
 // Au-dela de ce seuil, une synchro Vinted est consideree trop ancienne pour
 // que le Copilote affiche ses chiffres comme fiables -- meme convention que
@@ -295,6 +296,11 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
           </Button>
         }
       />
+
+      {/* FTUE minimal (audit 2026-08-28) : disparait d'elle-meme des que le
+          compte Vinted est connecte ET qu'au moins une annonce existe --
+          jamais affichee a un utilisateur deja etabli. */}
+      <OnboardingChecklist hasAccount={accounts.length > 0} hasAnyListing={metrics.hasAnyListing} onNavigate={onNavigate} />
 
       {/* Credits et actions rapides sur la MEME ligne : les credits
           conditionnent ce que ces actions permettent de faire. Les separer
