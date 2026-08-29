@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import type { AppNotification, DashboardPage } from '../lib/types';
@@ -56,6 +56,18 @@ export function useNotifications() {
   // encore arrive" de "tout ce qui est charge est deja connu", pour ne
   // jamais notifier tout le backlog au montage (voir load() ci-dessous).
   const seenIdsRef = useRef<Set<string> | null>(null);
+  // Identifiant STABLE par instance de hook (pas par utilisateur) --
+  // corrige un bug reel (2026-08-29) : NotificationBell.tsx ET
+  // NotificationRecapModal.tsx appellent tous les deux useNotifications()
+  // en meme temps depuis DashboardLayout.tsx. Avec un topic de canal base
+  // uniquement sur user.id, les deux instances ouvraient un canal PORTANT
+  // LE MEME NOM -- le client Supabase Realtime reutilise alors le canal
+  // deja souscrit pour la seconde instance au lieu d'en creer un distinct,
+  // et son .on('postgres_changes', ...) echouait avec "cannot add
+  // postgres_changes callbacks ... after subscribe()" (le canal avait deja
+  // ete souscrit par la premiere instance). useId() rend chaque instance
+  // du hook unique, meme pour le meme utilisateur.
+  const instanceId = useId();
 
   useEffect(() => {
     if (user) setDismissedIds(loadDismissed(user.id));
@@ -103,13 +115,13 @@ export function useNotifications() {
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel(`notifications_${user.id}`)
+      .channel(`notifications_${user.id}_${instanceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => void load())
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [user, load]);
+  }, [user, load, instanceId]);
 
   const requestPermission = useCallback(async () => {
     if (typeof Notification === 'undefined') return;
