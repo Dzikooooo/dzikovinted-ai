@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
 import { PaintedWord } from './PaintedWord';
+import { BrowserFrame } from './BrowserFrame';
 
 // Round M -- retouches Hero (retour utilisateur 2026-08-23, comparaison
 // directe avec VintyResell) :
@@ -63,19 +64,15 @@ export function Hero({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
 
         {hasVideo && (
           <div className="mt-20 max-w-4xl mx-auto">
-            {/* Cadre style navigateur/macOS : encadre un VRAI enregistrement
-                d'ecran du produit, jamais une illustration decorative
-                (playbook, Design principles #2). */}
-            <div className="rounded-xl border border-white/10 shadow-2xl overflow-hidden bg-gray-950">
-              <div className="flex items-center gap-1.5 px-4 py-3">
-                <span className="w-3 h-3 rounded-full bg-red-500/70" aria-hidden="true" />
-                <span className="w-3 h-3 rounded-full bg-yellow-500/70" aria-hidden="true" />
-                <span className="w-3 h-3 rounded-full bg-green-500/70" aria-hidden="true" />
-              </div>
+            {/* Cadre style navigateur/macOS (BrowserFrame, partage avec
+                Features.tsx) : encadre un VRAI enregistrement d'ecran du
+                produit, jamais une illustration decorative (playbook,
+                Design principles #2). */}
+            <BrowserFrame>
               <video className="w-full h-auto block" autoPlay muted loop playsInline onError={() => setHasVideo(false)}>
                 <source src="/videos/hero-demo.mp4" type="video/mp4" />
               </video>
-            </div>
+            </BrowserFrame>
           </div>
         )}
       </div>

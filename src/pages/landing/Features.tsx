@@ -3,6 +3,7 @@ import { Camera, Shirt, RefreshCw, ReceiptEuro, MessageSquare, ExternalLink, Che
 import { DiscordIcon } from '../../components/ui/DiscordIcon';
 
 import { BRAND_VIOLET } from "../../lib/brandColors";
+import { BrowserFrame } from "./BrowserFrame";
 import screenshotStock from "../../assets/screenshot-stock.png";
 import screenshotCommunication from "../../assets/screenshot-communication.png";
 import screenshotInsights from "../../assets/screenshot-insights.png";
@@ -114,110 +115,150 @@ const FEATURES = [
   },
 ];
 
-// Retour d'un pro du design web (2026-08-29) : "ça se voit direct que
-// c'est un projet IA, 0 visuel réel". Les cas 'insights'/'communication'/
-// 'stock' ci-dessous sont desormais de VRAIES captures du produit reel
-// (playbook, Human feel #1 : jamais de maquette vide) -- 'generator'/
-// 'discord'/'accounting' (defaut) restent des mockups stylises en
-// attendant de meilleures captures (voir le tri fait avant d'integrer :
-// une capture "generateur" vide, une "comptabilite" a 0 € partout et une
-// "communaute" a 4 membres en ligne ont ete ecartees, pas cachees --
-// aucune n'aurait servi l'objectif). object-cover + object-position :
-// cadrage approximatif en CSS en l'absence d'un vrai recadrage du fichier
-// -- amelioration possible plus tard, pas un blocage aujourd'hui.
+// Retour d'un pro du design web (2026-08-29, puis finition macOS/Linear le
+// meme jour) : "ça se voit direct que c'est un projet IA, 0 visuel réel".
+// Les cas 'insights'/'communication'/'stock' ci-dessous sont de VRAIES
+// captures du produit reel (playbook, Human feel #1 : jamais de maquette
+// vide) -- 'generator'/'discord'/'accounting' (defaut) restent des mockups
+// stylises en attendant de meilleures captures (voir le tri fait avant
+// d'integrer : une capture "generateur" vide, une "comptabilite" a 0 €
+// partout et une "communaute" a 4 membres en ligne ont ete ecartees, pas
+// cachees -- aucune n'aurait servi l'objectif).
+//
+// Les 6 onglets partagent desormais le meme BrowserFrame (cadre macOS) pour
+// un alignement visuel premium, QUE le contenu soit une vraie capture ou un
+// mockup -- demande explicite "meme taille/ombres/angles partout". Ce qui
+// n'a PAS ete fait tel que demande : pas de skeleton loader "en cours de
+// developpement" pour Comptabilite/Discord -- ce sont deux modules REELS et
+// fonctionnels, pas des maquettes en attente. Un skeleton signalerait
+// explicitement "pas encore pret", ce qui serait faux (playbook, Human feel
+// #6 : jamais une anticipation presentee comme acquise -- et l'inverse
+// s'applique tout autant : jamais un module fini presente comme en attente).
+// Pas non plus de fond floute "page Vinted" derriere les vraies captures ni
+// de rotation 3D au survol (anti-patterns #1 et #10 du playbook : motif
+// decoratif duplique section apres section, animation sans lien avec un
+// vrai changement d'etat) -- seul un zoom leger de toute la composition
+// reste, porte par BrowserFrame lui-meme.
 export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
   if (kind === 'insights') {
-    return (
-      <div className="rounded-2xl border border-gray-200 overflow-hidden">
-        <img
-          src={screenshotInsights}
-          alt="Scan d'opportunités du Copilote : 211 détectées, +58 € de profit moyen, +116 % de ROI moyen"
-          className="w-full h-72 object-cover object-top transition-transform duration-500 ease-out hover:scale-105"
-        />
-      </div>
-    );
+    return <CopiloteVisual />;
   }
   if (kind === 'generator') {
     return (
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center">
-            <Camera className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
+      <BrowserFrame>
+        <div className="bg-gray-50 p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center">
+              <Camera className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
+            </div>
+            <div className="h-2 flex-1 rounded-full bg-gray-200 overflow-hidden">
+              <div className="h-full w-[70%] rounded-full" style={{ backgroundColor: BRAND_VIOLET }} />
+            </div>
           </div>
-          <div className="h-2 flex-1 rounded-full bg-gray-200 overflow-hidden">
-            <div className="h-full w-[70%] rounded-full" style={{ backgroundColor: BRAND_VIOLET }} />
+          <div className="rounded-xl bg-white border border-gray-200 p-4">
+            <p className="font-semibold text-sm text-gray-900">Polo Ralph Lauren homme bleu marine taille L</p>
+            <p className="text-xs text-gray-500 mt-1">Ralph Lauren · Polos · Taille L · Très bon état</p>
+            <p className="font-black mt-3" style={{ color: BRAND_VIOLET }}>35 €</p>
           </div>
         </div>
-        <div className="rounded-xl bg-white border border-gray-200 p-4">
-          <p className="font-semibold text-sm text-gray-900">Polo Ralph Lauren homme bleu marine taille L</p>
-          <p className="text-xs text-gray-500 mt-1">Ralph Lauren · Polos · Taille L · Très bon état</p>
-          <p className="font-black mt-3" style={{ color: BRAND_VIOLET }}>35 €</p>
-        </div>
-      </div>
+      </BrowserFrame>
     );
   }
   if (kind === 'discord') {
     return (
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-white border border-gray-200">
-          <DiscordIcon className="w-6 h-6" style={{ color: BRAND_VIOLET }} />
+      <BrowserFrame>
+        <div className="bg-gray-50 p-6 text-center">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-white border border-gray-200">
+            <DiscordIcon className="w-6 h-6" style={{ color: BRAND_VIOLET }} />
+          </div>
+          <p className="font-semibold text-sm mb-1.5 text-gray-900">Discord ResellOS</p>
+          <p className="text-xs text-gray-500 mb-5">
+            Échange en direct avec les autres revendeurs et l'équipe ResellOS.
+          </p>
+          {DISCORD_INVITE_URL ? (
+            <a
+              href={DISCORD_INVITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-lg border transition-colors"
+              style={{ color: BRAND_VIOLET, backgroundColor: `${BRAND_VIOLET}1A`, borderColor: `${BRAND_VIOLET}33` }}
+            >
+              Rejoindre la communauté Discord <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          ) : (
+            <p className="text-[11px] text-gray-500">Lien Discord pas encore configuré.</p>
+          )}
         </div>
-        <p className="font-semibold text-sm mb-1.5 text-gray-900">Discord ResellOS</p>
-        <p className="text-xs text-gray-500 mb-5">
-          Échange en direct avec les autres revendeurs et l'équipe ResellOS.
-        </p>
-        {DISCORD_INVITE_URL ? (
-          <a
-            href={DISCORD_INVITE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-lg border transition-colors"
-            style={{ color: BRAND_VIOLET, backgroundColor: `${BRAND_VIOLET}1A`, borderColor: `${BRAND_VIOLET}33` }}
-          >
-            Rejoindre la communauté Discord <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        ) : (
-          <p className="text-[11px] text-gray-500">Lien Discord pas encore configuré.</p>
-        )}
-      </div>
+      </BrowserFrame>
     );
   }
   if (kind === 'communication') {
     return (
-      <div className="rounded-2xl border border-gray-200 overflow-hidden">
+      <BrowserFrame>
         <img
           src={screenshotCommunication}
           alt="Relance favoris : messages préparés avec offres -5 %/-10 %, prêts à copier sur Vinted"
-          className="w-full h-72 object-cover object-top transition-transform duration-500 ease-out hover:scale-105"
+          className="w-full h-72 object-cover object-top block"
         />
-      </div>
+      </BrowserFrame>
     );
   }
   if (kind === 'stock') {
     return (
-      <div className="rounded-2xl border border-gray-200 overflow-hidden">
+      <BrowserFrame>
         <img
           src={screenshotStock}
           alt="Mes annonces : statuts réels, valeur du stock et chiffre d'affaires à jour"
-          className="w-full h-72 object-cover object-top transition-transform duration-500 ease-out hover:scale-105"
+          className="w-full h-72 object-cover object-top block"
         />
-      </div>
+      </BrowserFrame>
     );
   }
   return (
-    <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 grid grid-cols-2 gap-3">
-      {[
-        ['1 240 €', "Chiffre d'affaires"],
-        ['+326 €', 'Bénéfice net'],
-        ['18 %', 'ROI moyen'],
-        ['796 €', 'Valeur du stock'],
-      ].map(([value, label]) => (
-        <div key={label} className="rounded-xl bg-white border border-gray-200 p-4">
-          <p className="text-lg font-black" style={{ color: BRAND_VIOLET }}>{value}</p>
-          <p className="text-gray-500 text-[11px] mt-1">{label}</p>
-        </div>
-      ))}
-    </div>
+    <BrowserFrame>
+      <div className="bg-gray-50 p-6 grid grid-cols-2 gap-3">
+        {[
+          ['1 240 €', "Chiffre d'affaires"],
+          ['+326 €', 'Bénéfice net'],
+          ['18 %', 'ROI moyen'],
+          ['796 €', 'Valeur du stock'],
+        ].map(([value, label]) => (
+          <div key={label} className="rounded-xl bg-white border border-gray-200 p-4">
+            <p className="text-lg font-black" style={{ color: BRAND_VIOLET }}>{value}</p>
+            <p className="text-gray-500 text-[11px] mt-1">{label}</p>
+          </div>
+        ))}
+      </div>
+    </BrowserFrame>
+  );
+}
+
+// Copilote : conteneur video prevu (micro-interaction de survol du scan
+// d'opportunites, /videos/copilote-hover.mp4) -- pas encore tourne. Repli
+// automatique sur la vraie capture existante via onError, MEME contrat que
+// Hero.tsx -- jamais un bouton "Lecture video" affiche sans video reelle
+// derriere (ce serait un clic mort pour un vrai visiteur).
+function CopiloteVisual() {
+  const [hasVideo, setHasVideo] = useState(true);
+
+  if (!hasVideo) {
+    return (
+      <BrowserFrame>
+        <img
+          src={screenshotInsights}
+          alt="Scan d'opportunités du Copilote : 211 détectées, +58 € de profit moyen, +116 % de ROI moyen"
+          className="w-full h-72 object-cover object-top block"
+        />
+      </BrowserFrame>
+    );
+  }
+
+  return (
+    <BrowserFrame>
+      <video className="w-full h-72 object-cover object-top block" autoPlay muted loop playsInline onError={() => setHasVideo(false)}>
+        <source src="/videos/copilote-hover.mp4" type="video/mp4" />
+      </video>
+    </BrowserFrame>
   );
 }
 
