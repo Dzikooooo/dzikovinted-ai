@@ -197,7 +197,14 @@ export interface Profile {
 // notifications) -- voir la migration
 // 20260829130000_add_notification_types_and_ticket_reply_trigger.sql pour
 // le check constraint cote base (doit rester synchronise avec cette union).
-export type NotificationType = 'sale' | 'community' | 'admin_broadcast' | 'ticket_reply' | 'stock_alert';
+export type NotificationType =
+  | 'sale' | 'community' | 'admin_broadcast' | 'ticket_reply' | 'stock_alert'
+  // Pilier "Stock Vinted (synchronisation et statuts)" (2026-08-29) --
+  // ecrites uniquement par le trigger notify_on_vinted_sync_status_change
+  // (voir supabase/migrations/20260829150000_...), jamais par du code
+  // client -- pas de fonction notifyXxx() cote src/lib comme les autres
+  // types (meme discipline que 'ticket_reply', deja purement trigger-only).
+  | 'sync_success' | 'sync_failed';
 
 export interface AppNotification {
   id: string;
