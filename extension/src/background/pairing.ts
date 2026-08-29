@@ -2,7 +2,15 @@ import { supabase, supabaseWithToken } from "./supabaseClient";
 import { logger } from "./logger";
 import { SESSION_REVOKED_ERROR } from "./authErrors";
 import { getValidAccessToken, writeStoredSession, clearStoredSession, decodeJwtExpiry, isSessionRevoked, clearSessionRevoked } from "./session";
+import { withTimeout, TimeoutError } from "./retry";
 import type { StatusResponse } from "../lib/messages";
+
+// Bug live 2026-08-29 (voir retry.ts::withTimeout) : ni la validation du
+// token au handshake, ni la lecture de vinted_accounts pour le statut,
+// n'avaient de delai maximum -- un fetch qui pend bloquait PAIR/GET_STATUS
+// indefiniment, popup coince sur "Verification du statut" sans jamais
+// d'erreur visible.
+const AUTH_CALL_TIMEOUT_MS = 10000;
 
 // Recoit la session Supabase deja ouverte dans l'app web (voir EXTENSION.md §3) -
 // jamais de nouvelle authentification demandee a l'utilisateur ici.
@@ -20,11 +28,18 @@ export async function pair(accessToken: string, refreshToken: string): Promise<v
   });
 
   // Validation stateless du token (n'utilise pas la session ambiante).
-  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+  let userData: { user: { id: string } | null };
+  let userError: { message: string } | null;
+  try {
+    ({ data: userData, error: userError } = await withTimeout(supabase.auth.getUser(accessToken), AUTH_CALL_TIMEOUT_MS, "getUser"));
+  } catch (err) {
+    if (!(err instanceof TimeoutError)) throw err;
+    logger.error("Validation du token : delai depasse - appairage abandonne", { timeoutMs: AUTH_CALL_TIMEOUT_MS });
+    throw new Error("Vinted n'a pas répondu à temps - réessaie dans un instant.");
+  }
   logger.debug("Reponse supabase.auth.getUser(accessToken)", {
     ok: !userError && !!userData.user,
     errorMessage: userError?.message ?? null,
-    errorStatus: userError?.status ?? null,
   });
 
   if (userError || !userData.user) {
@@ -82,14 +97,32 @@ export async function getStatus(): Promise<StatusResponse> {
   // ou le premier cree). La vraie selection multi-comptes arrive en Phase B
   // - voir EXTENSION.md.
   const client = supabaseWithToken(valid.accessToken);
-  const { data: row, error: rowError } = await client
-    .from("vinted_accounts")
-    .select("connected, last_synced_at, last_error")
-    .eq("user_id", valid.userId)
-    .order("is_default", { ascending: false })
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  let row: { connected: boolean; last_synced_at: string | null; last_error: string | null } | null;
+  let rowError: { message: string } | null;
+  try {
+    ({ data: row, error: rowError } = await withTimeout(
+      client
+        .from("vinted_accounts")
+        .select("connected, last_synced_at, last_error")
+        .eq("user_id", valid.userId)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+      AUTH_CALL_TIMEOUT_MS,
+      "vinted_accounts select"
+    ));
+  } catch (err) {
+    if (!(err instanceof TimeoutError)) throw err;
+    logger.warn("Lecture de vinted_accounts : delai depasse", { timeoutMs: AUTH_CALL_TIMEOUT_MS });
+    return {
+      paired: true,
+      pairedUserId: valid.userId,
+      vintedConnected: false,
+      lastSyncedAt: null,
+      lastError: "Délai dépassé, réessaie dans un instant.",
+    };
+  }
 
   if (rowError) {
     logger.warn("Lecture de vinted_accounts impossible", rowError.message);

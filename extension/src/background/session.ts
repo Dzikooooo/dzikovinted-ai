@@ -1,6 +1,11 @@
 import { supabase } from "./supabaseClient";
 import { logger } from "./logger";
 import { classifyRefreshFailure } from "./authErrors";
+import { withTimeout, TimeoutError } from "./retry";
+
+// Bug live 2026-08-29 (popup bloque sur "Verification du statut", voir
+// retry.ts::withTimeout) : refreshSession() n'avait aucun delai maximum.
+const REFRESH_SESSION_TIMEOUT_MS = 10000;
 
 // Gestion de session explicite et self-managed plutot que de compter sur
 // supabase.auth.setSession()/getSession() (gestion "ambiante" de
@@ -128,7 +133,34 @@ export async function getValidAccessToken(): Promise<{ accessToken: string; user
   inFlightRefresh = (async () => {
     try {
       logger.debug("getValidAccessToken: appel refreshSession()", { userId: stored.user_id });
-      const { data, error } = await supabase.auth.refreshSession({ refresh_token: stored.refresh_token });
+      // withTimeout (2026-08-29) : sans lui, un fetch qui pend laissait
+      // cette promesse ne JAMAIS se resoudre -- inFlightRefresh restait
+      // alors bloque pour toujours (le `finally` plus bas qui le remet a
+      // null n'est atteint qu'une fois cette promesse REELLEMENT reglee),
+      // et toute verification de statut suivante retombait sur cette meme
+      // promesse morte, meme apres un re-appairage reussi. Un timeout
+      // degrade ce cas en un echec normal, classe "transitoire" par
+      // classifyRefreshFailure() (voir son commentaire : un message
+      // inconnu est traite par defaut comme transitoire) -- la session
+      // n'est donc jamais effacee a tort sur un simple depassement de
+      // delai.
+      let data: { session: { access_token: string; refresh_token: string; expires_at?: number; user: { id: string } } | null };
+      let error: { message: string; status?: number } | null;
+      try {
+        ({ data, error } = await withTimeout(
+          supabase.auth.refreshSession({ refresh_token: stored.refresh_token }),
+          REFRESH_SESSION_TIMEOUT_MS,
+          "refreshSession"
+        ));
+      } catch (err) {
+        if (!(err instanceof TimeoutError)) throw err;
+        logger.warn("getValidAccessToken: refreshSession() a depasse le delai -- traite comme transitoire", {
+          userId: stored.user_id,
+          timeoutMs: REFRESH_SESSION_TIMEOUT_MS,
+        });
+        data = { session: null };
+        error = { message: err.message };
+      }
       if (error || !data.session) {
         // Deux issues tres differentes -- voir authErrors.ts. Effacer la
         // session sur un simple incident reseau faisait perdre l'appairage

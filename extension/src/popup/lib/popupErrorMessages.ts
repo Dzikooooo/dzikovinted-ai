@@ -16,6 +16,11 @@ const KNOWN_PATTERNS: { pattern: RegExp; message: string }[] = [
     message: "Ta session a expiré. Reconnecte-toi sur resellosapp.com puis relance l'appairage.",
   },
   { pattern: /network|fetch/i, message: "Connexion réseau instable. Nouvelle tentative automatique." },
+  // withTimeout (retry.ts) -- bug live 2026-08-29 (popup bloque
+  // indefiniment sur "Verification du statut"). AVANT /refresh|expired|
+  // session/i (juste en dessous) : un delai depasse ne dit RIEN sur l'etat
+  // du token, contrairement a un vrai refus de rafraichissement.
+  { pattern: /délai dépassé|delai depasse|timeout/i, message: "Le serveur met du temps à répondre. Réessaie dans un instant." },
   { pattern: /refresh|expired|session/i, message: "Ta session a besoin d'être rafraîchie. Réessaie dans un instant." },
   { pattern: /rate limit|too many/i, message: "Trop de tentatives récentes. Réessaie dans quelques minutes." },
 ];
