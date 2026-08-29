@@ -7,8 +7,23 @@ import { PopupButton } from "./components/PopupButton";
 import { DiagnosticPanel } from "./components/DiagnosticPanel";
 import { Spinner } from "./components/Spinner";
 import { toClientErrorMessage } from "./lib/popupErrorMessages";
+import { withTimeout, TimeoutError } from "../background/retry";
 import logoGlyphTransparent from "./assets/logo-glyph-transparent.png";
 import "./popup.css";
+
+// Bug live 2026-08-29, round 3 : le popup restait bloque sur "Verification
+// du statut" MEME apres le try/catch ci-dessous (round 2) ET le timeout
+// cote background (round 1, session.ts/pairing.ts). Troisieme cause
+// possible, distincte des deux premieres : chrome.runtime.sendMessage() ne
+// REJETTE pas forcement quand le service worker est endormi/en cours de
+// reveil -- c'est un comportement MV3 documente comme instable (le message
+// peut se perdre silencieusement pendant la course reveil/livraison, sans
+// jamais ni resoudre ni rejeter). Le try/catch du round 2 ne protege que
+// contre un REJET explicite -- rien contre un appel qui ne se regle
+// simplement jamais. Meme filet que cote background (retry.ts) : un
+// timeout cote popup aussi, sur l'appel lui-meme, pas seulement sur ce qui
+// se passe une fois qu'il a atteint un handler.
+const POPUP_MESSAGE_TIMEOUT_MS = 10000;
 
 // Etats derives uniquement des champs REELS de StatusResponse (voir
 // lib/messages.ts) -- aucun etat invente qui ne serait pas observable
@@ -40,10 +55,18 @@ function useStatus() {
     setLoading(true);
     setCommunicationError(false);
     try {
-      const response = (await chrome.runtime.sendMessage({ type: "GET_STATUS" })) as StatusResponse;
+      const response = (await withTimeout(
+        chrome.runtime.sendMessage({ type: "GET_STATUS" }),
+        POPUP_MESSAGE_TIMEOUT_MS,
+        "GET_STATUS"
+      )) as StatusResponse;
       setStatus(response);
     } catch (err) {
-      logger.error("GET_STATUS (popup) : sendMessage a echoue", err instanceof Error ? err.message : String(err));
+      const isTimeout = err instanceof TimeoutError;
+      logger.error(
+        `GET_STATUS (popup) : sendMessage a ${isTimeout ? "depasse le delai" : "echoue"}`,
+        err instanceof Error ? err.message : String(err)
+      );
       setCommunicationError(true);
     } finally {
       setLoading(false);
@@ -69,7 +92,7 @@ export default function Popup() {
   const handleUnpair = async () => {
     setWorking(true);
     try {
-      await chrome.runtime.sendMessage({ type: "UNPAIR" });
+      await withTimeout(chrome.runtime.sendMessage({ type: "UNPAIR" }), POPUP_MESSAGE_TIMEOUT_MS, "UNPAIR");
     } catch (err) {
       logger.error("UNPAIR (popup) : sendMessage a echoue", err instanceof Error ? err.message : String(err));
     }
