@@ -5,6 +5,7 @@ import { HeroComparison } from './landing/HeroComparison';
 import { Features } from './landing/Features';
 import { Pricing } from './landing/Pricing';
 import { FAQ } from './landing/FAQ';
+import { Founder } from './landing/Founder';
 import { CTABanner } from './landing/CTABanner';
 import { Footer } from './landing/Footer';
 
@@ -31,6 +32,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <Features />
       <Pricing onNavigate={onNavigate} />
       <FAQ />
+      <Founder />
       <CTABanner onNavigate={onNavigate} />
       <Footer onNavigate={onNavigate} />
     </div>
