@@ -42,3 +42,15 @@ export async function deleteAccount(): Promise<DeleteAccountResult> {
   }
   return { ok: true };
 }
+
+// Panneau admin (AdminUsersPage.tsx) : meme fonction Edge, ciblee sur un
+// AUTRE compte -- l'autorisation reelle (appelant admin) est verifiee cote
+// serveur (supabase/functions/delete-account/index.ts), jamais seulement
+// par l'affichage conditionnel du bouton ici.
+export async function adminDeleteAccount(targetUserId: string): Promise<DeleteAccountResult> {
+  const { error } = await supabase.functions.invoke('delete-account', { body: { target_user_id: targetUserId } });
+  if (error) {
+    return { ok: false, error: await extractErrorMessage(error, GENERIC_DELETE_ERROR) };
+  }
+  return { ok: true };
+}

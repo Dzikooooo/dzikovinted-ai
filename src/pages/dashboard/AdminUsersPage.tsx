@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Ban, CheckCircle2, RotateCcw, Send, Settings2, ShieldAlert, Users, X } from 'lucide-react';
+import { Ban, CheckCircle2, RotateCcw, Send, Settings2, ShieldAlert, Trash2, Users, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { adminDeleteAccount } from '../../lib/accountDeletion';
 import type { BetaCommercialOffer, CreditsMode, DashboardPage, Profile, ProgramStatus } from '../../lib/types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { SearchInput } from '../../components/ui/SearchInput';
@@ -21,13 +22,19 @@ const TARGET_PAGES: { value: DashboardPage; label: string }[] = [
   { value: 'subscription', label: 'Abonnement' },
 ];
 
-// Categorie admin-only (demande produit 2026-08-04) : liste reelle des
-// comptes inscrits (profiles.select ouvert aux admins depuis la migration
-// 20260804120000), blocage/deblocage et retour au plan Free via des RPC
-// SECURITY DEFINER dediees -- jamais un update direct sur profiles, qui
-// reste verrouille pour authenticated (P0.1, 2026-07-11). Reserve a
-// useIsAdmin() -- DashboardLayout ne montre l'onglet qu'aux admins, ce
-// composant se re-garde lui-meme au cas ou.
+// Categorie admin-only (demande produit 2026-08-04, etendue 2026-08-29 avec
+// renommage + suppression de compte) : liste reelle des comptes inscrits
+// (profiles.select ouvert aux admins depuis la migration 20260804120000),
+// blocage/deblocage/retour au plan Free/renommage via des RPC SECURITY
+// DEFINER dediees -- jamais un update direct sur profiles, qui reste
+// verrouille pour authenticated (P0.1, 2026-07-11). Suppression de compte
+// via la meme fonction Edge que l'auto-suppression (SettingsPage.tsx),
+// ciblee sur un autre utilisateur -- voir accountDeletion.ts::
+// adminDeleteAccount pour le detail. Reserve a useIsAdmin() --
+// DashboardLayout ne montre l'onglet qu'aux admins, ce composant se
+// re-garde lui-meme au cas ou -- la vraie frontiere de securite reste
+// cote serveur (is_admin() SECURITY DEFINER + verification explicite dans
+// chaque RPC/la fonction Edge, jamais seulement ce garde-fou client).
 export default function AdminUsersPage() {
   const { profile: myProfile, user } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -44,15 +51,30 @@ export default function AdminUsersPage() {
   const [banConfirmTarget, setBanConfirmTarget] = useState<Profile | null>(null);
 
   // Programme Beta ResellOS (Lot 5, 2026-08-10) : fiche detail d'un compte,
-  // 3 sections volontairement independantes (Programme/Credits/Avantage
-  // commercial) -- aucune des trois RPC ci-dessous n'en declenche une autre.
+  // sections volontairement independantes (Identite/Programme/Credits/
+  // Avantage commercial) -- aucune des RPC ci-dessous n'en declenche une
+  // autre. Identite ajoutee le 2026-08-29 (demande produit : renommer un
+  // compte depuis le panneau admin -- update_own_profile restant limite a
+  // auth.uid() = id, voir admin_set_user_full_name).
   const [detailTarget, setDetailTarget] = useState<Profile | null>(null);
-  const [detailWorking, setDetailWorking] = useState<'program' | 'credits' | 'offer' | null>(null);
+  const [detailWorking, setDetailWorking] = useState<'name' | 'program' | 'credits' | 'offer' | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const [offer, setOffer] = useState<BetaCommercialOffer | null>(null);
   const [offerLoading, setOfferLoading] = useState(false);
   const [offerTrialDays, setOfferTrialDays] = useState('30');
   const [offerCouponId, setOfferCouponId] = useState('');
+
+  // Suppression de compte (demande produit 2026-08-29) : irreversible, la
+  // meme fonction Edge que l'auto-suppression (SettingsPage.tsx) mais ciblee
+  // sur un AUTRE compte -- voir accountDeletion.ts::adminDeleteAccount et
+  // supabase/functions/delete-account/index.ts pour la verification cote
+  // serveur. Modale de confirmation dediee, meme discipline que
+  // banConfirmTarget mais jamais reutilisee pour elle : bloquer est
+  // reversible, supprimer ne l'est pas.
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<Profile | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [target, setTarget] = useState<Profile | 'all' | null>(null);
   const [notifTitle, setNotifTitle] = useState('');
@@ -135,7 +157,29 @@ export default function AdminUsersPage() {
   const openDetail = (p: Profile) => {
     setDetailTarget(p);
     setDetailError(null);
+    setRenameValue(p.full_name || '');
     void loadOffer(p.id);
+  };
+
+  const saveFullName = async (p: Profile) => {
+    if (!renameValue.trim()) {
+      setDetailError('Le nom ne peut pas être vide.');
+      return;
+    }
+    setDetailWorking('name');
+    setDetailError(null);
+    const { error: rpcError } = await supabase.rpc('admin_set_user_full_name', {
+      p_user_id: p.id,
+      p_full_name: renameValue.trim(),
+    });
+    setDetailWorking(null);
+    if (rpcError) {
+      console.error(rpcError);
+      setDetailError('Impossible de renommer ce compte. Réessaie plus tard.');
+      return;
+    }
+    setDetailTarget({ ...p, full_name: renameValue.trim() });
+    await load();
   };
 
   // Etiquette seule -- n'accorde jamais de credits illimites. Voir
@@ -238,6 +282,19 @@ export default function AdminUsersPage() {
     setTimeout(() => setSent(false), 3000);
   };
 
+  const confirmDelete = async (p: Profile) => {
+    setDeleting(true);
+    setDeleteError(null);
+    const result = await adminDeleteAccount(p.id);
+    setDeleting(false);
+    if (!result.ok) {
+      setDeleteError(result.error);
+      return;
+    }
+    setDeleteConfirmTarget(null);
+    await load();
+  };
+
   if (myProfile && myProfile.role !== 'admin') {
     return (
       <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto text-center">
@@ -323,6 +380,16 @@ export default function AdminUsersPage() {
                       onClick={() => setBanConfirmTarget(p)}
                     >
                       {p.banned ? 'Débloquer' : 'Bloquer'}
+                    </Button>
+                  )}
+                  {p.id !== myProfile?.id && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 className="w-3.5 h-3.5" />}
+                      onClick={() => { setDeleteConfirmTarget(p); setDeleteError(null); }}
+                    >
+                      Supprimer
                     </Button>
                   )}
                 </div>
@@ -455,6 +522,48 @@ export default function AdminUsersPage() {
         </Modal>
       )}
 
+      {deleteConfirmTarget && (
+        <Modal onClose={() => (deleting ? null : setDeleteConfirmTarget(null))} size="md">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-black">Supprimer ce compte ?</h2>
+            <button
+              onClick={() => setDeleteConfirmTarget(null)}
+              disabled={deleting}
+              aria-label="Fermer"
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 mb-4 bg-dark-400 border border-gray-200 rounded-xl p-3">
+            <AccountAvatar label={deleteConfirmTarget.full_name || deleteConfirmTarget.email} size="md" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-800 truncate">
+                {deleteConfirmTarget.full_name || deleteConfirmTarget.email}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{deleteConfirmTarget.email}</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-500 mb-5">
+            Action définitive et irréversible. Le compte, ses annonces, son historique et sa comptabilité sont
+            supprimés pour toujours -- contrairement à un blocage, il n'y a aucun retour en arrière possible.
+          </p>
+
+          {deleteError && <p className="text-sm text-red-700 mb-4">{deleteError}</p>}
+
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" fullWidth onClick={() => setDeleteConfirmTarget(null)} disabled={deleting}>
+              Annuler
+            </Button>
+            <Button variant="danger" fullWidth loading={deleting} onClick={() => confirmDelete(deleteConfirmTarget)}>
+              Supprimer définitivement
+            </Button>
+          </div>
+        </Modal>
+      )}
+
       {detailTarget && (
         <Modal onClose={() => setDetailTarget(null)} size="md">
           <div className="flex items-center justify-between mb-5">
@@ -479,6 +588,32 @@ export default function AdminUsersPage() {
           </div>
 
           {detailError && <p className="text-sm text-red-700 mb-4">{detailError}</p>}
+
+          {/* Section IDENTITE : seul le nom est modifiable (full_name), via
+              admin_set_user_full_name -- jamais un update direct (RLS reste
+              limitee a auth.uid() = id pour authenticated). Independante des
+              sections suivantes. */}
+          <div className="mb-5">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Identité</p>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-dark-400 border border-gray-200 rounded-xl p-3">
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder="Nom complet"
+                className="flex-1 bg-surface border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={detailWorking === 'name'}
+                disabled={renameValue.trim() === (detailTarget.full_name || '')}
+                onClick={() => saveFullName(detailTarget)}
+              >
+                Renommer
+              </Button>
+            </div>
+          </div>
 
           {/* Section 1/3 -- PROGRAMME : simple etiquette, n'accorde aucun
               privilege. Reste independante des deux sections ci-dessous. */}
