@@ -103,8 +103,14 @@ function matchConsidererRepublication(listing: Listing, ctx: EngineContext): Rep
   return null;
 }
 
+// Corrige le 2026-08-29 (positionnement "bouclier anti-bannissement") :
+// l'ancien texte presentait la republication en un clic comme une
+// fonctionnalite manquante ("pas encore disponible") -- alors qu'elle
+// existe reellement (cta: {type: 'open_vinted'} ci-dessous declenche le
+// vrai flux assiste, voir PublishConfirmationModal.tsx). Reformule en
+// instruction positive, coherente avec le reste du produit.
 const REPUBLICATION_DISCLAIMER =
-  " La republication automatique n'est pas encore disponible dans ResellOS — tu peux la refaire toi-même sur Vinted.";
+  ' Republie-la en un clic depuis ResellOS — c\'est toujours toi qui valides sur Vinted, jamais un robot.';
 
 // -----------------------------------------------------------------------
 // Regle 3 : baisser_prix -- jamais sur l'age seul, jamais si vues/favoris

@@ -52,8 +52,13 @@ const PRINCIPLES = [
   {
     icon: Layers,
     title: 'Automatisation prudente',
+    // Corrige le 2026-08-29 (positionnement "bouclier anti-bannissement") :
+    // l'ancienne version presentait la publication automatique comme une
+    // fonctionnalite "en pause" qui reviendrait -- l'exact inverse du choix
+    // assume desormais partout ailleurs (FAQ.tsx, HeroComparison.tsx,
+    // PublishConfirmationModal.tsx). Meme voix, meme raison, partout.
     description:
-      "Modifier une annonce reste, aujourd'hui, une action que l'utilisateur declenche et confirme -- jamais un robot qui agit seul sur un compte Vinted. La publication automatique suivra le meme principe des sa reactivation (temporairement en pause le temps d'un correctif). C'est un choix deliberement plus lent, pour rester fiable et respecter les regles de la plateforme.",
+      "Modifier ou publier une annonce reste une action que l'utilisateur declenche et confirme lui-meme -- jamais un robot qui agit seul sur un compte Vinted. Ce n'est pas une limite temporaire : c'est un choix deliberement plus lent, pour proteger le compte des verifications anti-bot de la plateforme.",
   },
 ];
 
@@ -66,7 +71,7 @@ const COULISSES = [
   { icon: Bot, title: 'IA de génération', description: "Analyse une photo et rédige titre, description, catégorie, taille et état." },
   { icon: DiscordIcon, title: 'Communauté Discord', description: "Un espace pour échanger en direct avec les premiers utilisateurs de ResellOS." },
   { icon: Globe, title: 'Domaine & hébergement', description: "Nom de domaine, hébergement, base de données -- tout tourne réellement en production." },
-  { icon: ShieldCheck, title: 'Confirmation manuelle', description: "Rien ne se modifie sur ton compte Vinted sans que tu le valides toi-même -- la publication automatique suivra le même principe dès sa réactivation." },
+  { icon: ShieldCheck, title: 'Confirmation manuelle', description: "Rien ne se modifie sur ton compte Vinted sans que tu le valides toi-même -- un choix assumé, pas une limite qu'on subit." },
 ];
 
 // Emplacements reserves pour de vraies captures (audit personnel utilisateur,

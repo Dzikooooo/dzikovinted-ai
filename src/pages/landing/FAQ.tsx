@@ -9,11 +9,26 @@ const FAQS = [
   },
   {
     q: "Ai-je besoin d'installer quelque chose en plus du site ?",
-    a: "Oui, une extension navigateur gratuite qui se connecte à ton compte Vinted pour synchroniser tes annonces et, quand tu le décides, modifier une annonce à ta place. La publication automatique est temporairement désactivée le temps d'un correctif, elle revient bientôt.",
+    // "elle revient bientôt" retire le 2026-08-29 : promettait un retour de
+    // l'automatisation totale, l'exact inverse du positionnement "bouclier
+    // anti-bannissement" acte ce round (voir la nouvelle question
+    // dediee ci-dessous). Cette reponse reste centree sur SA vraie
+    // question (faut-il installer quelque chose), sans redire tout le
+    // raisonnement -- deja porte par la question suivante.
+    a: "Oui, une extension navigateur gratuite qui se connecte à ton compte Vinted pour synchroniser tes annonces et, quand tu le décides, modifier une annonce à ta place. C'est toujours toi qui cliques sur Vinted, jamais l'extension à ta place.",
   },
   {
     q: 'Resell OS publie-t-il des annonces automatiquement, sans mon accord ?',
     a: "Jamais. Chaque publication ou modification sur Vinted est une action que tu déclenches et confirmes toi-même. Resell OS ne pilote pas ton compte Vinted en arrière-plan.",
+  },
+  {
+    // Nouvelle question (2026-08-29, positionnement "bouclier
+    // anti-bannissement") : assume explicitement le choix plutot que de le
+    // laisser deviner par la question precedente. Placee juste apres elle --
+    // les deux traitent de confiance/automatisation, meme regroupement
+    // thematique que le reste de la FAQ.
+    q: "Pourquoi Resell OS ne fait pas d'automatisation totale ?",
+    a: "C'est un choix assumé, pas une limite technique qu'on cache. Comme toute marketplace, Vinted surveille les comptes qui publient ou republient à un rythme robotique, et peut les suspendre. ResellOS prépare tout à ta place — titre, description, prix, photos — mais te laisse toujours cliquer toi-même sur le bouton final. Plus lent qu'une automatisation totale, et c'est voulu : ton compte reste sous ton contrôle, jamais celui d'un robot.",
   },
   {
     q: "Que se passe-t-il si j'atteins la limite du plan Free ?",

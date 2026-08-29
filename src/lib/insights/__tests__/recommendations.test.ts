@@ -129,7 +129,7 @@ describe('considerer_republication', () => {
     const ctx = buildContext([listing], [], []);
     const result = computeListingRecommendation(listing, ctx);
     expect(result).toMatchObject({ status: 'action', kind: 'considerer_republication', confidence: 'haute' });
-    expect(result && 'reason' in result ? result.reason : '').toContain('pas encore disponible dans ResellOS');
+    expect(result && 'reason' in result ? result.reason : '').toContain('jamais un robot');
   });
 
   it('chemin A : statut deleted -> action confiance haute', () => {

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Info } from 'lucide-react';
+import { AlertTriangle, Check, Info, ShieldCheck } from 'lucide-react';
 import ActionStepTimeline, { type ActionStepTimelineRow } from '../actions/ActionStepTimeline';
 import type { PublishStep } from '../../lib/actions/publishSteps';
 import { PUBLISH_STEP_ORDER, PUBLISH_STEP_LABELS } from '../../lib/actions/publishSteps';
@@ -99,6 +99,17 @@ export default function PublishProgressModal({
           <Info className="w-4 h-4 text-neon-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-neon-300">{hint}</p>
         </div>
+      )}
+
+      {/* Repositionnement "bouclier anti-bannissement" (2026-08-29) : ligne
+          discrete, jamais aussi appuyee que le hint d'action ci-dessus
+          (hierarchie primaire/secondaire, playbook C) -- rappelle POURQUOI
+          ce clic reste humain, sans repeter l'instruction du hint. */}
+      {!isTerminal && hint && (
+        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-500">
+          <ShieldCheck className="w-3 h-3 flex-shrink-0" />
+          Ce clic reste le tien — ResellOS ne publie jamais à ta place sur Vinted.
+        </p>
       )}
 
       {prefillSummary && (prefillSummary.confirmed.length > 0 || prefillSummary.pending.length > 0) && (

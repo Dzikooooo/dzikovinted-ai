@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Camera, Shirt, RefreshCw, ReceiptEuro, CheckSquare, MessageSquare, ExternalLink, Check, Clock } from "lucide-react";
+import { Camera, Shirt, RefreshCw, ReceiptEuro, CheckSquare, MessageSquare, ExternalLink, Check, Clock, Lightbulb } from "lucide-react";
 import { DiscordIcon } from '../../components/ui/DiscordIcon';
 
 import { BRAND_VIOLET } from "../../lib/brandColors";
@@ -15,6 +15,30 @@ const DISCORD_INVITE_URL = import.meta.env.VITE_DISCORD_INVITE_URL as string | u
 // reelles, "Communication" reste etiquetee "bientot" pour les points pas
 // encore construits.
 const FEATURES = [
+  // Repositionnement (2026-08-29, suite a l'analyse concurrentielle) :
+  // place en premier ("tete de gondole") -- actif par defaut au chargement
+  // (voir useState(0) plus bas), c'est desormais le premier module que
+  // tout visiteur voit. La generation IA par photo est devenue un standard
+  // du marche (plusieurs concurrents la proposent deja) ; ce moteur de
+  // recommandation/detection d'opportunites reste, a notre connaissance,
+  // absent des outils Vinted concurrents observes -- c'est lui qui porte
+  // l'argument de vente principal desormais, pas le Generateur. Meme nom
+  // ("Copilote") et meme icone (Lightbulb) que le bloc reel du dashboard
+  // (DashboardHome.tsx) -- coherence des noms/icones sur toute la landing,
+  // deja une regle etablie dans ce fichier.
+  {
+    icon: Lightbulb,
+    title: 'Copilote',
+    benefits: [
+      'Détecte ton stock qui dort, avant que ça ne devienne un problème',
+      'Recommandations concrètes : quoi republier, quoi ajuster',
+      'Score de performance sur chaque annonce',
+      'Scan des opportunités : ce qui se vend, à quel prix, sur le marché',
+      'Comparaison entre tes comptes Vinted',
+      'Fiable même avec un stock de plusieurs centaines d\'articles',
+    ],
+    visual: 'insights' as const,
+  },
   {
     icon: DiscordIcon,
     title: 'Communauté Discord',
@@ -95,6 +119,39 @@ const FEATURES = [
 // place, voir l'en-tete de ce fichier), plutot que deux jeux de chiffres
 // factices divergents pour la meme fonctionnalite.
 export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
+  // Meme discipline que les autres cas ci-dessous : representation fidele
+  // de vrais concepts produit (narration inter-comptes, alerte stock
+  // dormant nommee "AGING_STOCK_DAYS" cote code, score 0-100 -- voir
+  // useInsights.ts/DashboardHome.tsx), pas une illustration abstraite.
+  // Noms/prix/duree illustratifs, memes conventions que les autres visuels
+  // (playbook, Human feel #2 : vraies situations vendeur).
+  if (kind === 'insights') {
+    return (
+      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 space-y-3">
+        <div className="rounded-xl bg-white border border-gray-200 p-3">
+          <p className="text-xs text-gray-700">
+            <span className="font-bold" style={{ color: BRAND_VIOLET }}>matleshop</span> est ton compte le plus
+            performant ce mois-ci.
+          </p>
+        </div>
+        <div className="rounded-xl bg-white border border-gray-200 p-3 flex items-center gap-3">
+          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-md bg-amber-500/10 text-amber-700 flex-shrink-0">
+            Stock dormant
+          </span>
+          <span className="text-xs text-gray-700 flex-1">Jean Levi's 501 · 64 jours sans vente</span>
+        </div>
+        <div className="rounded-xl bg-white border border-gray-200 p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-gray-700">Sweat Nike gris</span>
+            <span className="text-[11px] font-bold" style={{ color: BRAND_VIOLET }}>82</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+            <div className="h-full rounded-full w-[82%]" style={{ backgroundColor: BRAND_VIOLET }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (kind === 'generator') {
     return (
       <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 space-y-4">

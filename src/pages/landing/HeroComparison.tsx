@@ -39,8 +39,17 @@ const PAIN_POINTS = [
   "Gérer l'URSSAF dans un tableur, sans outil dédié",
 ];
 
+// Repositionnement "bouclier anti-bannissement" (2026-08-29, suite a
+// l'analyse concurrentielle) : l'ancienne premiere ligne disait
+// "automatique, au choix" -- FAUX, et en contradiction directe avec le
+// vrai fonctionnement (clic humain toujours requis sur Vinted, voir
+// PublishConfirmationModal.tsx/PublishProgressModal.tsx). Reformule en
+// benefice reel plutot que corrige en silence : le clic manuel n'est pas
+// une limite qu'on cache, c'est ce qui protege le compte -- justement ce
+// que la republication "100% automatique" vendue par plusieurs concurrents
+// ne peut pas garantir face aux verifications anti-bot de Vinted.
 const BENEFITS = [
-  'Republication programmée ou automatique, au choix',
+  "Republication programmée, confirmée d'un clic — jamais un robot qui clique à ta place sur ton compte",
   'Message automatique aux favoris (bientôt)',
   'SKU généré automatiquement, sur chaque annonce',
   "Vraie vue sur ta comptabilité : dépenses, bénéfice, chiffre d'affaires",

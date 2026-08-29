@@ -93,7 +93,13 @@ export const PLANS: Record<Plan, PlanDefinition> = {
       `${PLAN_WATCHLIST_LIMITS.pro} recherches Watchlist actives`,
       'Comptabilité et aide déclaration URSSAF',
       'Relance favoris assistée',
-      'Republication automatique',
+      // Corrige le 2026-08-29 (positionnement "bouclier anti-bannissement") :
+      // "Republication automatique" etait faux -- la republication reste
+      // un clic humain sur Vinted (voir PublishConfirmationModal.tsx),
+      // jamais une automatisation silencieuse. Meme discipline que
+      // HeroComparison.tsx/FAQ.tsx : le mecanisme reel devient l'argument,
+      // pas une promesse qu'on ne tient pas.
+      'Republication assistée et sécurisée en 1 clic',
     ],
     highlighted: true,
   }),

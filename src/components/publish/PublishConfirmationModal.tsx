@@ -157,14 +157,20 @@ export default function PublishConfirmationModal({
             plusieurs semaines. Ce texte est une promesse GENERALE avant
             tentative (ecran de confirmation, pas de resultat encore connu) --
             le vrai bilan champ par champ (confirme/a completer) arrive apres
-            coup dans PublishProgressModal, jamais ici. */}
+            coup dans PublishProgressModal, jamais ici.
+            Derniere phrase reformulee (2026-08-29, positionnement "bouclier
+            anti-bannissement") : le fait etait deja correct ("c'est toujours
+            toi qui cliques"), seul le cadrage manquait -- ce n'est pas une
+            limite qu'on subit, c'est une protection deliberee contre les
+            controles anti-bot Vinted qui ciblent les outils 100%
+            automatiques (voir l'analyse concurrentielle de ce round). */}
         <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
           <Info className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-gray-500 leading-relaxed">
             ResellOS ouvre Vinted et tente de préremplir titre, description, prix, photos, catégorie, marque, taille,
             couleur et état. Si un champ ne peut pas être prérempli automatiquement, tu devras le compléter
-            toi-même sur Vinted -- et c'est toujours toi qui cliques sur le bouton final, ResellOS ne publie jamais
-            automatiquement à ta place.
+            toi-même sur Vinted. Et c'est volontaire : c'est toujours toi qui cliques sur le bouton final, jamais
+            ResellOS à ta place — la meilleure protection contre un compte signalé pour activité suspecte.
           </p>
         </div>
         {isRepublish && (
