@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useVintedAccountFilter } from '../contexts/VintedAccountFilterContext';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/supabaseExhaustiveFetch';
 import { computeInsights } from '../lib/insights/engine';
 import { ACTION_RETRY_COOLDOWN_DAYS, PRICE_CHANGE_COOLDOWN_DAYS } from '../lib/insights/constants';
 import { syncRecommendationLog } from '../lib/recommendationLogSync';
@@ -62,6 +63,7 @@ export function useInsights() {
   const { accounts, selectedAccountId } = useVintedAccountFilter();
   const [report, setReport] = useState<InsightsReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // requestIdRef remplace le flag `ignore` par-effet -- necessaire car
   // fetchInsights() est desormais aussi appelable manuellement (refetch,
@@ -77,64 +79,81 @@ export function useInsights() {
     if (!user) return;
     const requestId = ++requestIdRef.current;
     setLoading(true);
+    setError(null);
     const historyStart = new Date(Date.now() - SNAPSHOT_HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-      const actionsStart = new Date(Date.now() - RECENT_ACTIONS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const actionsStart = new Date(Date.now() - RECENT_ACTIONS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-      const [{ data: allListings }, { data: snapshots }, { data: recentActionRows }] = await Promise.all([
-        supabase
-          .from('listings')
-          .select('*')
-          .eq('user_id', user.id)
-          .or('vinted_status.neq.deleted,vinted_status.is.null'),
-        supabase.from('listing_metric_snapshots').select('*').gte('captured_at', historyStart),
-        supabase
-          .from('action_log')
-          .select('id, listing_id, kind, completed_at, payload')
-          .eq('user_id', user.id)
-          .eq('status', 'success')
-          .in('kind', RECENT_ACTION_KINDS)
-          .gte('completed_at', actionsStart),
+    let listings: Listing[];
+    let listingSnapshots: ListingMetricSnapshot[];
+    let rawActionRows: RawActionLogRow[];
+    try {
+      [listings, listingSnapshots, rawActionRows] = await Promise.all([
+        fetchAllRows<Listing>((rangeStart, rangeEnd) =>
+          supabase
+            .from('listings')
+            .select('*')
+            .eq('user_id', user.id)
+            .or('vinted_status.neq.deleted,vinted_status.is.null')
+            .range(rangeStart, rangeEnd)
+        ),
+        fetchAllRows<ListingMetricSnapshot>((rangeStart, rangeEnd) =>
+          supabase.from('listing_metric_snapshots').select('*').gte('captured_at', historyStart).range(rangeStart, rangeEnd)
+        ),
+        fetchAllRows<RawActionLogRow>((rangeStart, rangeEnd) =>
+          supabase
+            .from('action_log')
+            .select('id, listing_id, kind, completed_at, payload')
+            .eq('user_id', user.id)
+            .eq('status', 'success')
+            .in('kind', RECENT_ACTION_KINDS)
+            .gte('completed_at', actionsStart)
+            .range(rangeStart, rangeEnd)
+        ),
       ]);
-
+    } catch (err) {
       if (requestIdRef.current !== requestId) return;
+      console.error(err);
+      setError('Impossible de calculer tes recommandations. Réessaie plus tard.');
+      setLoading(false);
+      return;
+    }
 
-      const listings = (allListings ?? []) as Listing[];
-      const listingSnapshots = (snapshots ?? []) as ListingMetricSnapshot[];
-      const rawActionRows = (recentActionRows ?? []) as RawActionLogRow[];
-      const recentActions = rawActionRows.map(mapRecentAction).filter((a): a is RecentActionSummary => a !== null);
-      const resolvableActions = rawActionRows.map(mapResolvableAction).filter((a): a is ResolvableAction => a !== null);
+    if (requestIdRef.current !== requestId) return;
 
-      // Les recommandations/alertes/priorites/scores sont calcules sur le
-      // sous-ensemble du compte selectionne (coherent avec le badge "Vue :
-      // {compte}" deja etabli en Phase B) ; les narrations restent calculees
-      // sur TOUT l'inventaire pour permettre les comparaisons inter-comptes
-      // ("matleshop est votre compte le plus performant") meme quand un
-      // compte precis est filtre a l'ecran.
-      const scopedListings =
-        selectedAccountId === 'all' ? listings : listings.filter((l) => l.vinted_account_id === selectedAccountId);
-      const scopedListingIds = new Set(scopedListings.map((l) => l.id));
-      const scopedSnapshots = listingSnapshots.filter((s) => scopedListingIds.has(s.listing_id));
+    const recentActions = rawActionRows.map(mapRecentAction).filter((a): a is RecentActionSummary => a !== null);
+    const resolvableActions = rawActionRows.map(mapResolvableAction).filter((a): a is ResolvableAction => a !== null);
 
-      const scopedReport = computeInsights(scopedListings, accounts, scopedSnapshots, recentActions);
-      const fullReport =
-        selectedAccountId === 'all'
-          ? scopedReport
-          : computeInsights(listings, accounts, listingSnapshots, recentActions);
+    // Les recommandations/alertes/priorites/scores sont calcules sur le
+    // sous-ensemble du compte selectionne (coherent avec le badge "Vue :
+    // {compte}" deja etabli en Phase B) ; les narrations restent calculees
+    // sur TOUT l'inventaire pour permettre les comparaisons inter-comptes
+    // ("matleshop est votre compte le plus performant") meme quand un
+    // compte precis est filtre a l'ecran.
+    const scopedListings =
+      selectedAccountId === 'all' ? listings : listings.filter((l) => l.vinted_account_id === selectedAccountId);
+    const scopedListingIds = new Set(scopedListings.map((l) => l.id));
+    const scopedSnapshots = listingSnapshots.filter((s) => scopedListingIds.has(s.listing_id));
 
-      if (requestIdRef.current === requestId) {
-        setReport({ ...scopedReport, narratives: fullReport.narratives });
-        setLoading(false);
-      }
+    const scopedReport = computeInsights(scopedListings, accounts, scopedSnapshots, recentActions);
+    const fullReport =
+      selectedAccountId === 'all'
+        ? scopedReport
+        : computeInsights(listings, accounts, listingSnapshots, recentActions);
 
-      // Persistance des recommandations (Lot "Suivi des annonces", voir
-      // LOT_SUIVI_ANNONCES_SPEC.md) -- best effort, jamais attendue avant
-      // setReport/setLoading ci-dessus : une erreur d'ecriture ne doit
-      // jamais retarder ni casser l'affichage des insights. Sourcee sur
-      // `fullReport.listingRecommendations` (TOUJOURS l'ensemble complet
-      // des annonces, meme quand un compte precis est filtre a l'ecran) --
-      // jamais `scopedReport`, qui ne couvrirait pas les annonces des
-      // comptes non selectionnes et laisserait leurs episodes ouverts
-      // orphelins.
+    if (requestIdRef.current === requestId) {
+      setReport({ ...scopedReport, narratives: fullReport.narratives });
+      setLoading(false);
+    }
+
+    // Persistance des recommandations (Lot "Suivi des annonces", voir
+    // LOT_SUIVI_ANNONCES_SPEC.md) -- best effort, jamais attendue avant
+    // setReport/setLoading ci-dessus : une erreur d'ecriture ne doit
+    // jamais retarder ni casser l'affichage des insights. Sourcee sur
+    // `fullReport.listingRecommendations` (TOUJOURS l'ensemble complet
+    // des annonces, meme quand un compte precis est filtre a l'ecran) --
+    // jamais `scopedReport`, qui ne couvrirait pas les annonces des
+    // comptes non selectionnes et laisserait leurs episodes ouverts
+    // orphelins.
     void syncRecommendationLog(user.id, listings, fullReport.listingRecommendations, groupByListingId(resolvableActions), new Date());
   }, [user, accounts, selectedAccountId]);
 
@@ -145,5 +164,5 @@ export function useInsights() {
     void fetchInsights();
   }, [fetchInsights]);
 
-  return { report, loading, refetch: fetchInsights };
+  return { report, loading, error, refetch: fetchInsights };
 }

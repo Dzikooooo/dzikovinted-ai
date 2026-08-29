@@ -18,7 +18,11 @@ vi.mock('../../../lib/supabase', () => ({
     from: () => {
       const result = Promise.resolve({ data: listingsRows, error: null });
       const chain: Record<string, unknown> = {};
-      for (const m of ['select', 'eq', 'order', 'limit']) chain[m] = () => chain;
+      // 'range' ajoute par le chantier #3 (2026-08-28, pagination serveur
+      // exhaustive via fetchAllRows -- voir AccountingPage.tsx) : sans lui,
+      // le premier appel a .range() de la boucle jetterait "is not a
+      // function" et casserait TOUS les tests de ce fichier.
+      for (const m of ['select', 'eq', 'order', 'limit', 'range']) chain[m] = () => chain;
       Object.assign(chain, { then: result.then.bind(result) });
       return chain;
     },

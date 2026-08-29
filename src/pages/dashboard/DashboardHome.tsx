@@ -5,6 +5,7 @@ import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContex
 import { useInsights } from '../../hooks/useInsights';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/supabaseExhaustiveFetch';
 import type { DashboardPage, Listing } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { AGING_STOCK_DAYS } from '../../lib/insights/constants';
@@ -136,15 +137,38 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
       // un neq seul exclurait aussi les articles jamais lies a Vinted
       // (vinted_status null), pas seulement les annonces reellement
       // supprimees - voir StockPage.tsx pour la meme regle.
-      let listingsQuery = supabase
-        .from('listings')
-        .select('*')
-        .eq('user_id', user.id)
-        .or('vinted_status.neq.deleted,vinted_status.is.null')
-        .order('created_at', { ascending: false });
-      if (selectedAccountId !== 'all') {
-        listingsQuery = listingsQuery.eq('vinted_account_id', selectedAccountId);
-      }
+      //
+      // Chantier #3 "Affinage stock & performance" (2026-08-28) : ces
+      // listings alimentent les KPIs financiers (CA, benefice, valeur du
+      // stock, voir `metrics` ci-dessous) -- un select() sans .range() serait
+      // silencieusement tronque a 1000 lignes par PostgREST des qu'un
+      // vendeur depasse ce volume, faussant des chiffres financiers sans
+      // aucun signal. `fetchAllRows` (meme pattern que useInsights.ts,
+      // chantier #2) boucle jusqu'a epuisement. Enveloppe en promesse
+      // {data,error} pour garder EXACTEMENT le meme contrat de
+      // destructuring/gestion d'erreur que les 3 autres requetes ci-dessous,
+      // et pour que les 4 requetes restent lancees en parallele (pas de perte
+      // de temps de chargement).
+      const listingsPromise = (async (): Promise<{ data: Listing[] | null; error: unknown }> => {
+        try {
+          const rows = await fetchAllRows<Listing>((rangeStart, rangeEnd) => {
+            let q = supabase
+              .from('listings')
+              .select('*')
+              .eq('user_id', user.id)
+              .or('vinted_status.neq.deleted,vinted_status.is.null')
+              .order('created_at', { ascending: false })
+              .range(rangeStart, rangeEnd);
+            if (selectedAccountId !== 'all') {
+              q = q.eq('vinted_account_id', selectedAccountId);
+            }
+            return q;
+          });
+          return { data: rows, error: null };
+        } catch (err) {
+          return { data: null, error: err };
+        }
+      })();
 
       const [
         { data: allListings, error: listingsError },
@@ -152,7 +176,7 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
         { count: oppTodayCount, error: oppTodayError },
         { data: oppStatsRows, error: oppStatsError },
       ] = await Promise.all([
-        listingsQuery,
+        listingsPromise,
         supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', dayAgo),
         supabase.from('market_opportunities').select('*', { count: 'exact', head: true }).gte('created_at', todayStart),
         // market_opportunities est integralement recreee a chaque scan

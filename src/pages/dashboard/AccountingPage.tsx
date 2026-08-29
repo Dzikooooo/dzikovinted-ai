@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useExpenses } from '../../hooks/useExpenses';
 import { supabase } from '../../lib/supabase';
+import { fetchAllRows } from '../../lib/supabaseExhaustiveFetch';
 import type { Listing } from '../../lib/types';
 import { StatCard } from '../../components/ui/StatCard';
 import { ProgressBarRow } from '../../components/ui/ProgressBar';
@@ -60,18 +61,28 @@ export default function AccountingPage() {
     if (!user) return;
     (async () => {
       setListingsLoading(true);
-      let listingsQuery = supabase.from('listings').select('*').eq('user_id', user.id);
-      if (selectedAccountId !== 'all') {
-        listingsQuery = listingsQuery.eq('vinted_account_id', selectedAccountId);
-      }
-      const { data: l, error: listingsError } = await listingsQuery;
-      if (listingsError) {
-        console.error(listingsError);
-        setLoadError('Impossible de charger la comptabilité. Réessaie plus tard.');
-      } else {
+      // Chantier #3 "Affinage stock & performance" (2026-08-28) : ces
+      // listings alimentent chiffre d'affaires/marge/benefice/ROI (voir
+      // `stats` ci-dessous) -- un select() sans .range() serait
+      // silencieusement tronque a 1000 lignes par PostgREST des qu'un
+      // vendeur depasse ce volume, faussant des chiffres financiers sans
+      // aucun signal. Meme pattern que useInsights.ts (chantier #2) :
+      // fetchAllRows boucle sur .range() jusqu'a epuisement.
+      try {
+        const rows = await fetchAllRows<Listing>((rangeStart, rangeEnd) => {
+          let q = supabase.from('listings').select('*').eq('user_id', user.id).range(rangeStart, rangeEnd);
+          if (selectedAccountId !== 'all') {
+            q = q.eq('vinted_account_id', selectedAccountId);
+          }
+          return q;
+        });
         setLoadError(null);
+        setListings(rows);
+      } catch (err) {
+        console.error(err);
+        setLoadError('Impossible de charger la comptabilité. Réessaie plus tard.');
+        setListings([]);
       }
-      setListings((l ?? []) as Listing[]);
       setListingsLoading(false);
     })();
   }, [user, selectedAccountId]);

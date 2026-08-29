@@ -4,10 +4,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../../contexts/VintedAccountFilterContext';
+import { useToast } from '../../../contexts/ToastContext';
 import { useInsights } from '../../../hooks/useInsights';
 import { useActionEngine } from '../../../hooks/useActionEngine';
 import { useIsAdmin } from '../../../hooks/useIsAdmin';
 import { supabase } from '../../../lib/supabase';
+import { fetchAllRows } from '../../../lib/supabaseExhaustiveFetch';
 import type { Listing } from '../../../lib/types';
 import { PLAN_PHOTO_LIMITS } from '../../../lib/types';
 import { StatCard } from '../../../components/ui/StatCard';
@@ -120,6 +122,7 @@ interface ListingsManagementSectionProps {
 // Supprimer sont reellement groupables : ils ne touchent que ResellOS.
 export function ListingsManagementSection({ onViewAction }: ListingsManagementSectionProps) {
   const { user, profile } = useAuth();
+  const { showToast } = useToast();
   const isAdmin = useIsAdmin();
   const photoLimit = isAdmin ? PLAN_PHOTO_LIMITS.pro : PLAN_PHOTO_LIMITS[profile?.plan ?? 'free'];
   const { accounts, selectedAccountId, selectedAccount, refresh: refreshAccounts } = useVintedAccountFilter();
@@ -131,8 +134,36 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   const [tab, setTab] = useState<ManagementTab>('annonces');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
+  // `visibleCount` reste utilise UNIQUEMENT par l'onglet Republication (voir
+  // plus bas, pagination client-side inchangee sur ce petit sous-ensemble).
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Phase 2 "Affinage stock & performance" (2026-08-28) : PAGINATION SERVEUR
+  // pour l'onglet "Annonces" -- select('*') sans limite (voir `load()`
+  // ci-dessous) se heurterait silencieusement au plafond 1000 lignes de
+  // PostgREST des qu'un vendeur depasse ce volume. Perimetre VOLONTAIREMENT
+  // borne a cet onglet : "Republication" reste sur son mecanisme actuel
+  // (derive de `items`, petit sous-ensemble par construction -- traduire
+  // needsRepublish() en filtre SQL merite sa propre passe, pas precipitee
+  // ici). `items`/`load()` restent eux aussi INCHANGES : ils n'alimentent
+  // plus que les 4 StatCards du haut et le badge de l'onglet Republication --
+  // leur propre passage a une agregation serveur est un chantier separe et
+  // plus delicat (ce sont des chiffres financiers), deliberement pas celui-ci.
+  const [pageItems, setPageItems] = useState<Listing[]>([]);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [hasMorePages, setHasMorePages] = useState(false);
+
+  // Recherche debouncee (300ms) : devient une vraie requete reseau a chaque
+  // changement (recherche server-side sur l'onglet Annonces) plutot qu'un
+  // simple filtre en memoire -- sans debounce, chaque frappe declencherait
+  // sa propre requete.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const [sellingItem, setSellingItem] = useState<Listing | null>(null);
   const [soldPrice, setSoldPrice] = useState('');
@@ -240,25 +271,38 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     })();
   }, []);
 
+  // Chantier #3 "Affinage stock & performance" (2026-08-28), derniere brique :
+  // `items`/`load()` alimente les 4 StatCards du haut (dont stockValue et
+  // revenue, des chiffres financiers) et le badge de l'onglet Republication
+  // -- un select() sans .range() serait silencieusement tronque a 1000
+  // lignes par PostgREST des qu'un vendeur depasse ce volume. Meme pattern
+  // que useInsights.ts/DashboardHome.tsx/AccountingPage.tsx : fetchAllRows
+  // boucle sur .range() jusqu'a epuisement. `loadGridPage` (chantier #1)
+  // reste inchange -- deux besoins distincts sur la meme table : lui pagine
+  // pour l'affichage (30 lignes/page), celui-ci doit rester exhaustif pour
+  // que les totaux soient exacts.
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    let query = supabase
-      .from('listings')
-      .select('*')
-      .eq('user_id', user.id)
-      .or('vinted_status.neq.deleted,vinted_status.is.null')
-      .order('created_at', { ascending: false });
-    if (selectedAccountId !== 'all') {
-      query = query.eq('vinted_account_id', selectedAccountId);
-    }
-    const { data, error } = await query;
-    if (error) {
-      console.error(error);
-      setLoadError('Impossible de charger tes annonces. Réessaie plus tard.');
-    } else {
+    try {
+      const rows = await fetchAllRows<Listing>((rangeStart, rangeEnd) => {
+        let query = supabase
+          .from('listings')
+          .select('*')
+          .eq('user_id', user.id)
+          .or('vinted_status.neq.deleted,vinted_status.is.null')
+          .order('created_at', { ascending: false })
+          .range(rangeStart, rangeEnd);
+        if (selectedAccountId !== 'all') {
+          query = query.eq('vinted_account_id', selectedAccountId);
+        }
+        return query;
+      });
       setLoadError(null);
-      setItems((data ?? []) as Listing[]);
+      setItems(rows);
+    } catch (err) {
+      console.error(err);
+      setLoadError('Impossible de charger tes annonces. Réessaie plus tard.');
     }
     setLoading(false);
   }, [user, selectedAccountId]);
@@ -266,6 +310,81 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   useEffect(() => {
     load();
   }, [load]);
+
+  // Requete server-side reelle pour la grille de l'onglet Annonces --
+  // recherche/filtre/pagination traduits en filtres Supabase plutot qu'en
+  // `.filter()`/`.slice()` sur un tableau deja entierement rapatrie. `offset`
+  // est passe explicitement (jamais lu depuis `pageItems.length` a
+  // l'interieur du callback) : sinon `loadGridPage` changerait d'identite a
+  // chaque page chargee, et l'inclure dans les dependances de l'effet de
+  // reinitialisation plus bas boucleraient indefiniment (fetch -> pageItems
+  // change -> loadGridPage change -> effet redeclenche -> fetch...).
+  const loadGridPage = useCallback(
+    async (offset: number, mode: 'reset' | 'append') => {
+      if (!user || tab !== 'annonces') return;
+      setPageLoading(true);
+      let query = supabase
+        .from('listings')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .or('vinted_status.neq.deleted,vinted_status.is.null')
+        .neq('status', 'vendu')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (selectedAccountId !== 'all') {
+        query = query.eq('vinted_account_id', selectedAccountId);
+      }
+      if (filter !== 'all') {
+        query = query.eq('vinted_status', filter);
+      }
+      const q = debouncedSearch.trim();
+      if (q) {
+        // Un DEUXIEME .or() ANDe naturellement avec le premier -- chaque
+        // appel ajoute son propre parametre `or=`, et PostgREST combine tous
+        // les parametres de requete par ET, exactement comme .eq()/.neq()
+        // chaines. Pas une supposition : c'est le mecanisme standard de
+        // filtrage PostgREST, deja ce que fait CHAQUE filtre de cette meme
+        // requete.
+        query = query.or(`title.ilike.%${q}%,brand.ilike.%${q}%,category.ilike.%${q}%`);
+      }
+
+      const { data, error, count } = await query;
+      if (error) {
+        console.error(error);
+        setPageError('Impossible de charger tes annonces. Réessaie plus tard.');
+        setPageLoading(false);
+        return;
+      }
+      setPageError(null);
+      const rows = (data ?? []) as Listing[];
+      setPageItems((prev) => (mode === 'reset' ? rows : [...prev, ...rows]));
+      setHasMorePages(count !== null && offset + rows.length < count);
+      setPageLoading(false);
+    },
+    [user, tab, selectedAccountId, filter, debouncedSearch]
+  );
+
+  // Reinitialise la page ET la selection a chaque changement de contexte
+  // (recherche/filtre/compte/onglet) -- meme discipline que l'ancien effet
+  // (visibleCount+selected), etendue au rechargement server-side reel de la
+  // grille Annonces. Sur l'onglet Republication, loadGridPage() est un
+  // no-op (garde interne ci-dessus) -- seul visibleCount/selected comptent
+  // alors, exactement comme avant.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+    setSelected(new Set());
+    void loadGridPage(0, 'reset');
+  }, [debouncedSearch, filter, selectedAccountId, tab, loadGridPage]);
+
+  // Rafraichit a la fois les totaux (StatCards, badge Republication) et la
+  // page actuelle de la grille -- remplace tous les anciens `await load()`
+  // isoles après une mutation (vente, suppression groupee, brouillon,
+  // action Vinted reussie/echouee) : les deux sources doivent rester
+  // coherentes entre elles apres une ecriture.
+  const refreshAll = useCallback(async () => {
+    await load();
+    await loadGridPage(0, 'reset');
+  }, [load, loadGridPage]);
 
   // Mission "ROUND 2 -- PERSISTANCE APP" (2026-08-20) : recharge les
   // programmations actives de l'utilisateur au montage (et si `user`
@@ -314,11 +433,6 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     loadOutcomes();
   }, [loadActiveSchedules, loadOutcomes]);
 
-  useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-    setSelected(new Set());
-  }, [search, filter, selectedAccountId, tab]);
-
   const markAsSold = async () => {
     if (!sellingItem || sellSaving) return;
     setSellSaving(true);
@@ -338,11 +452,12 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       setSellSaving(false);
     } else {
       if (user) void notifySale(user.id, sellingItem.title, Number(soldPrice || 0));
+      showToast('Vente enregistrée !', 'success');
       setSellingItem(null);
       setSoldPrice('');
       setFees('0');
       setSellSaving(false);
-      await load();
+      await refreshAll();
     }
   };
 
@@ -530,7 +645,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         readyToSubmit,
         awaitingOldListingDeletion,
       });
-      await load();
+      await refreshAll();
       // Sans ce refetch, la recommandation affichee restait celle calculee
       // avant l'action (perimee jusqu'a la prochaine synchro passive) --
       // useInsights() n'a aucun moyen de savoir qu'une action vient de
@@ -568,7 +683,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         awaitingOldListingDeletion,
       });
     } else if (result.outcome.status === 'error') {
-      await load();
+      await refreshAll();
       // Simplifie le seul cas "clic manuel non detecte" pour l'affichage
       // client (audit RC, 2026-08-05) -- le detail technique original reste
       // visible juste au-dessus, deja logue sans changement (devLog "retour
@@ -827,19 +942,35 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       // Une synchro partielle a quand meme pu ecrire des annonces sures
       // (voir recordListings(), lot 1) -- rafraichir dans tous les cas ou
       // un traitement reel a eu lieu (ok:true), jamais sur un echec pur.
+      //
+      // Phase 2 (2026-08-28) : refreshAccounts()/load() n'avaient aucune
+      // gestion d'erreur -- un echec ici (reseau, Supabase) laissait
+      // l'utilisateur voir "Synchronisation reussie" (deja affiche juste
+      // au-dessus) alors que la grille d'annonces et la fraicheur affichee
+      // restaient perimees en silence, sans aucune trace hors console.
       if (result.ok) {
-        await refreshAccounts();
-        await load();
+        try {
+          await refreshAccounts();
+          await refreshAll();
+        } catch (err) {
+          console.error('[ResellOS][sync] echec du rafraichissement post-synchro', err);
+          setSyncTone('warning');
+          setSyncHint(
+            "Synchronisation effectuée, mais l'affichage n'a pas pu être actualisé. Recharge la page pour voir tes annonces à jour."
+          );
+        }
       }
     });
   };
 
   const accountLabel = (vintedAccountId: string | null) => accounts.find((a) => a.id === vintedAccountId)?.label ?? '?';
 
+  // Badge de l'onglet + base de l'onglet Republication : INCHANGE, derive
+  // toujours de `items` (petit sous-ensemble, pagination client-side
+  // conservee -- voir la note au-dessus de `pageItems`).
   const republicationList = items.filter(needsRepublish);
-  const baseList = tab === 'republication' ? republicationList : items.filter((l) => l.status !== 'vendu');
-  const filtered = baseList.filter((item) => {
-    const q = search.toLowerCase();
+  const filteredRepublicationList = republicationList.filter((item) => {
+    const q = debouncedSearch.toLowerCase();
     const matchesSearch =
       !q ||
       item.title?.toLowerCase().includes(q) ||
@@ -848,8 +979,15 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     const matchesFilter = filter === 'all' || item.vinted_status === filter;
     return matchesSearch && matchesFilter;
   });
-  const visibleItems = filtered.slice(0, visibleCount);
-  const hasMoreItems = filtered.length > visibleCount;
+
+  // Annonces : `pageItems` vient directement de loadGridPage() (recherche/
+  // filtre/pagination deja appliques server-side) -- plus aucun .filter()/
+  // .slice() en memoire ici. Republication : mecanisme client-side inchange.
+  const isServerPaginated = tab === 'annonces';
+  const displayedItems = isServerPaginated ? pageItems : filteredRepublicationList.slice(0, visibleCount);
+  const hasMore = isServerPaginated ? hasMorePages : filteredRepublicationList.length > visibleCount;
+  const isGridLoading = isServerPaginated ? pageLoading : loading;
+  const gridError = isServerPaginated ? pageError : null;
 
   const stockItems = items.filter(isActivelyInStock);
   const soldItems = items.filter((item) => item.status === 'vendu');
@@ -898,16 +1036,16 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
     });
   };
 
-  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((i) => selected.has(i.id));
+  const allVisibleSelected = displayedItems.length > 0 && displayedItems.every((i) => selected.has(i.id));
   const toggleSelectAll = () => {
     setSelected((prev) => {
       if (allVisibleSelected) {
         const next = new Set(prev);
-        visibleItems.forEach((i) => next.delete(i.id));
+        displayedItems.forEach((i) => next.delete(i.id));
         return next;
       }
       const next = new Set(prev);
-      visibleItems.forEach((i) => next.add(i.id));
+      displayedItems.forEach((i) => next.add(i.id));
       return next;
     });
   };
@@ -923,6 +1061,9 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   const runBulkDelete = async () => {
     setBulkDeleting(true);
     setBulkError(null);
+    // Capture AVANT setSelected(new Set()) plus bas -- selected.size vaudrait
+    // 0 si on le lisait apres, le toast annoncerait "0 annonce supprimee".
+    const count = selected.size;
     const { error } = await supabase.from('listings').delete().in('id', Array.from(selected));
     setBulkDeleting(false);
     if (error) {
@@ -930,14 +1071,16 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       setBulkError('La suppression a échoué pour certaines annonces. Réessaie.');
       return;
     }
+    showToast(`${count} annonce${count > 1 ? 's supprimées' : ' supprimée'}.`, 'success');
     setConfirmBulkDelete(false);
     setSelected(new Set());
-    await load();
+    await refreshAll();
   };
 
   const runBulkDraft = async () => {
     setBulkDrafting(true);
     setBulkError(null);
+    const count = selected.size;
     const { error } = await supabase.from('listings').update({ status: 'draft' as const }).in('id', Array.from(selected));
     setBulkDrafting(false);
     if (error) {
@@ -945,8 +1088,9 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       setBulkError('Le passage en brouillon a échoué pour certaines annonces. Réessaie.');
       return;
     }
+    showToast(`${count} annonce${count > 1 ? 's passées' : ' passée'} en brouillon.`, 'success');
     setSelected(new Set());
-    await load();
+    await refreshAll();
   };
 
   return (
@@ -1025,6 +1169,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       </div>
 
       {loadError && <ErrorBanner message={loadError} className="mb-4" />}
+      {gridError && <ErrorBanner message={gridError} className="mb-4" />}
       {bulkError && <ErrorBanner message={bulkError} className="mb-4" />}
       {activeSchedulesLoadError && (
         <ErrorBanner message={`Impossible de charger tes programmations : ${activeSchedulesLoadError}`} className="mb-4" />
@@ -1102,7 +1247,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         </select>
         <button
           onClick={toggleSelectAll}
-          disabled={visibleItems.length === 0}
+          disabled={displayedItems.length === 0}
           className="flex items-center justify-center gap-1.5 text-xs font-bold text-neon-500 border border-neon-500/30 bg-transparent px-3 py-2.5 rounded-xl hover:border-neon-500/70 hover:bg-neon-500/5 transition-all disabled:opacity-40 disabled:pointer-events-none flex-shrink-0"
         >
           <Layers className="w-3.5 h-3.5" />
@@ -1110,11 +1255,11 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         </button>
       </div>
 
-      {loading ? (
+      {isGridLoading && displayedItems.length === 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} shape="block" className="h-64" />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : displayedItems.length === 0 ? (
         <EmptyState
           icon={tab === 'republication' ? RefreshCw : Sparkles}
           title={tab === 'republication' ? 'Rien à republier' : 'Aucun article'}
@@ -1127,7 +1272,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {visibleItems.map((item) => (
+            {displayedItems.map((item) => (
               <ListingCard
                 key={item.id}
                 item={item}
@@ -1158,8 +1303,18 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
               />
             ))}
           </div>
-          {hasMoreItems && (
-            <Button variant="secondary" size="sm" fullWidth className="mt-4" onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}>
+          {hasMore && (
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              className="mt-4"
+              loading={isServerPaginated && pageLoading}
+              onClick={() => {
+                if (isServerPaginated) void loadGridPage(pageItems.length, 'append');
+                else setVisibleCount((v) => v + PAGE_SIZE);
+              }}
+            >
               Charger plus
             </Button>
           )}
