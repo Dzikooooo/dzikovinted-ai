@@ -72,7 +72,11 @@ const FEATURES = [
 // hauteurs en % fragile pour un <img>/<video> (element remplace) -- les
 // mockups sans media (generator/discord/accounting), eux, peuvent se
 // permettre h-full + justify-center sans risque, pour centrer leur contenu
-// si la carte s'etire un peu plus haut que sa voisine.
+// si la carte s'etire un peu plus haut que sa voisine. min-h-[11rem] sur
+// ces 3 mockups (retour 2026-08-29, point 1) : sans plancher, un contenu
+// court + une carte etiree pouvait donner un cadre disproportionne "tout en
+// longueur" -- desormais regroupes ENTRE EUX (voir Features()) pour ne plus
+// s'etirer contre une capture d'ecran bien plus haute qu'eux.
 export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
   if (kind === 'insights') {
     return <CopiloteVisual />;
@@ -80,7 +84,7 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   if (kind === 'generator') {
     return (
       <BrowserFrame className="h-full">
-        <div className="bg-gray-50 p-6 space-y-4 h-full flex flex-col justify-center">
+        <div className="bg-gray-50 p-6 space-y-4 h-full min-h-[11rem] flex flex-col justify-center">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center">
               <Camera className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
@@ -101,7 +105,7 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   if (kind === 'discord') {
     return (
       <BrowserFrame className="h-full">
-        <div className="bg-gray-50 p-6 text-center h-full flex flex-col justify-center">
+        <div className="bg-gray-50 p-6 text-center h-full min-h-[11rem] flex flex-col justify-center">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-white border border-gray-200">
             <DiscordIcon className="w-6 h-6" style={{ color: BRAND_VIOLET }} />
           </div>
@@ -150,7 +154,7 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   }
   return (
     <BrowserFrame className="h-full">
-      <div className="bg-gray-50 p-6 grid grid-cols-2 gap-3 h-full content-center">
+      <div className="bg-gray-50 p-6 grid grid-cols-2 gap-3 h-full min-h-[11rem] content-center">
         {[
           ['1 240 €', "Chiffre d'affaires"],
           ['+326 €', 'Bénéfice net'],
@@ -208,7 +212,11 @@ function CopiloteVisual() {
 // carte (playbook, Design principles #9 : composant reutilisable). "group"
 // porte le survol jusqu'au BrowserFrame imbrique (voir son propre
 // commentaire group-hover) : la carte entiere reagit, pas seulement le
-// pixel du cadre.
+// pixel du cadre. min-h-[6.5rem] sur le bloc icone+titre+ligne (retour
+// 2026-08-29, point 2) : sans plancher commun, une tagline sur 1 ligne vs 2
+// lignes decalait le point de depart du cadre visuel d'une carte a l'autre
+// dans la meme rangee -- desormais toutes les cartes secondaires demarrent
+// leur visuel a la meme hauteur, quelle que soit la longueur de leur texte.
 function BentoCard({ feature, large = false, className = '' }: { feature: (typeof FEATURES)[number]; large?: boolean; className?: string }) {
   const Icon = feature.icon;
 
@@ -216,7 +224,7 @@ function BentoCard({ feature, large = false, className = '' }: { feature: (typeo
     <div
       className={`group h-full flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-6 transition-colors duration-300 hover:border-gray-300 ${large ? 'lg:flex-row lg:items-center lg:gap-10' : ''} ${className}`}
     >
-      <div className={large ? 'lg:w-[38%] lg:flex-shrink-0' : ''}>
+      <div className={large ? 'lg:w-[38%] lg:flex-shrink-0' : 'min-h-[6.5rem]'}>
         <div className="flex items-center gap-2.5 mb-2.5">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-gray-50 border border-gray-200 flex-shrink-0">
             <Icon className="w-4.5 h-4.5" style={{ color: BRAND_VIOLET }} />
@@ -251,20 +259,26 @@ export function Features() {
 
         {/* Grille bento asymetrique (retour design 2026-08-29) : remplace
             l'ancien systeme d'onglets. Copilote en carte hero pleine largeur
-            (argument de vente principal), puis deux rangees de largeurs
-            variees pour casser la monotonie -- pas de glow decoratif
-            (playbook, anti-pattern #1), asymetrie portee par la largeur des
-            cartes plutot que par un effet visuel ajoute. */}
+            (argument de vente principal) -- pas de glow decoratif (playbook,
+            anti-pattern #1), asymetrie portee par le NOMBRE de colonnes par
+            rangee plutot que par un effet visuel ajoute.
+            Regroupement par poids visuel (correctif 2026-08-29, point 1) :
+            les 2 captures d'ecran reelles (memes proportions) partagent une
+            rangee ; les 3 mockups sans capture (memes proportions, plus
+            compactes) partagent l'autre. Melanger les deux etirait les
+            petites cartes (CSS Grid align-items: stretch) contre une
+            capture bien plus haute -- un cadre macOS "tout en longueur",
+            jamais une fenetre d'application compacte. */}
         <div className="flex flex-col gap-6">
           <BentoCard feature={hero} large />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <BentoCard feature={generator} />
             <BentoCard feature={stock} />
+            <BentoCard feature={communication} />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-            <BentoCard feature={communication} className="sm:col-span-2" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <BentoCard feature={generator} />
             <BentoCard feature={accounting} />
             <BentoCard feature={discord} />
           </div>
