@@ -12,28 +12,20 @@ import screenshotInsights from "../../assets/screenshot-insights.png";
 // message honnete si la variable d'env n'est pas configuree.
 const DISCORD_INVITE_URL = import.meta.env.VITE_DISCORD_INVITE_URL as string | undefined;
 
-// Refonte Bento Grid (2026-08-29) : l'ancien systeme d'onglets + listes de
-// puces (5-6 par module) devient une phrase unique ultra-directe par carte.
-// "tagline" doit rester factuelle (playbook, Copywriting section F : le
-// benefice s'ajoute a l'info, ne la remplace jamais) -- Communication garde
-// sa distinction honnete "aujourd'hui vs bientot" a l'interieur de SA seule
-// ligne plutot que de la perdre (retour beta 2026-08-28 : ne plus sous-
-// vendre ce qui marche deja ni survendre ce qui ne marche pas).
+// "tagline" reste factuelle (playbook, Copywriting section F : le benefice
+// s'ajoute a l'info, ne la remplace jamais) -- Communication garde sa
+// distinction honnete "aujourd'hui vs bientot" a l'interieur de SA seule
+// ligne (retour beta 2026-08-28 : ne plus sous-vendre ce qui marche deja ni
+// survendre ce qui ne marche pas).
 const FEATURES = [
   // Copilote reste en tete (repositionnement 2026-08-29, analyse
-  // concurrentielle) et devient la carte hero de la grille -- meme nom/
-  // icone que le bloc reel du dashboard (DashboardHome.tsx).
+  // concurrentielle) -- meme nom/icone que le bloc reel du dashboard
+  // (DashboardHome.tsx).
   {
     icon: Lightbulb,
     title: 'Copilote',
     tagline: "Détecte le stock qui dort et les opportunités du marché, avant que tu n'y penses.",
     visual: 'insights' as const,
-  },
-  {
-    icon: DiscordIcon,
-    title: 'Communauté Discord',
-    tagline: "Alertes en direct, entraide entre revendeurs, accès à l'équipe ResellOS.",
-    visual: 'discord' as const,
   },
   {
     icon: Shirt,
@@ -59,35 +51,33 @@ const FEATURES = [
     tagline: 'Chiffre d\'affaires, marge et TVA estimés, calculés en temps réel.',
     visual: 'accounting' as const,
   },
+  {
+    icon: DiscordIcon,
+    title: 'Communauté Discord',
+    tagline: "Alertes en direct, entraide entre revendeurs, accès à l'équipe ResellOS.",
+    visual: 'discord' as const,
+  },
 ];
 
-// Retour d'un pro du design web (2026-08-29, plusieurs tours) : captures
-// reelles pour 'insights'/'communication'/'stock' (playbook, Human feel #1 :
-// jamais de maquette vide) -- 'generator'/'discord'/'accounting' restent des
-// mockups stylises, memes raisons que toujours (voir le tri fait avant
-// integration : generateur vide, comptabilite a 0 €, communaute a 4 membres
-// -- aucune n'aurait servi l'objectif).
-// Sidebar de l'app recadree DANS LES FICHIERS SOURCE (2026-08-29) : les 3
-// captures reelles incluaient la sidebar laterale de ResellOS (~190px,
-// meme composant partout) -- a l'aspect ratio d'une carte bento, object-fit:
-// cover ne rognait quasi rien en largeur (le crop se faisait en hauteur),
-// donc la sidebar restait entierement visible. Corrige a la source (crop
-// PNG, pas de CSS) : plus robuste qu'un object-position/transform qui
-// aurait du etre recalibre a chaque breakpoint -- desormais SEUL le
-// contenu applicatif peut jamais apparaitre, quel que soit le gabarit de
-// carte. Affectait aussi 'insights' (carte hero), pas seulement les 2
-// signalees -- meme composant, meme defaut.
-// Hauteur de media fixe (h-56/h-72/
-// h-80 selon le gabarit de carte), jamais une hauteur en % : une carte de
-// grille bento etirable (CSS Grid align-items: stretch) rend une chaine de
-// hauteurs en % fragile pour un <img>/<video> (element remplace) -- les
-// mockups sans media (generator/discord/accounting), eux, peuvent se
-// permettre h-full + justify-center sans risque, pour centrer leur contenu
-// si la carte s'etire un peu plus haut que sa voisine. min-h-[11rem] sur
-// ces 3 mockups (retour 2026-08-29, point 1) : sans plancher, un contenu
-// court + une carte etiree pouvait donner un cadre disproportionne "tout en
-// longueur" -- desormais regroupes ENTRE EUX (voir Features()) pour ne plus
-// s'etirer contre une capture d'ecran bien plus haute qu'eux.
+// Retour "audit VintyResell" (2026-08-29) : le bento (6 cartes simultanees
+// de ~300px) faisait lire la section comme des vignettes, jamais comme un
+// produit -- diagnostic : aucun module n'avait jamais la pleine largeur
+// d'ecran, contrairement au concurrent qui ne montre qu'UN module a la
+// fois, en grand. Retour a un panneau unique (onglets, useState(0) dans
+// Features()) mais a une echelle et dans une mise en scene tres
+// differentes de l'ancienne version tabs : cadre beaucoup plus grand
+// (h-full sur un parent de 340-480px selon le viewport, pose ICI au niveau
+// du parent -- voir Features()) et fond de SECTION sombre (voir Features())
+// pour que le cadre macOS (deja sombre) cesse de flotter isole sur blanc.
+// Pas de glow ni de degrade sur ce fond (playbook, anti-pattern #1) --
+// juste un gris tres sombre uni, sobre.
+// Captures reelles pour 'insights'/'communication'/'stock' (playbook, Human
+// feel #1 : jamais de maquette vide) -- 'generator'/'discord'/'accounting'
+// restent des mockups stylises (voir le tri fait avant integration :
+// generateur vide, comptabilite a 0 €, communaute a 4 membres -- aucune
+// n'aurait servi l'objectif). Sidebar de l'app recadree dans les fichiers
+// source (2026-08-29) : les 3 captures reelles n'incluent plus la sidebar
+// laterale de ResellOS.
 export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
   if (kind === 'insights') {
     return <CopiloteVisual />;
@@ -95,19 +85,19 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   if (kind === 'generator') {
     return (
       <BrowserFrame className="h-full">
-        <div className="bg-gray-50 p-6 space-y-4 h-full min-h-[11rem] flex flex-col justify-center">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center">
-              <Camera className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
+        <div className="bg-gray-50 p-8 sm:p-12 space-y-6 h-full flex flex-col justify-center">
+          <div className="flex items-center gap-4 max-w-md mx-auto w-full">
+            <div className="w-16 h-16 rounded-2xl bg-white border border-gray-200 flex items-center justify-center flex-shrink-0">
+              <Camera className="w-7 h-7" style={{ color: BRAND_VIOLET }} />
             </div>
-            <div className="h-2 flex-1 rounded-full bg-gray-200 overflow-hidden">
+            <div className="h-2.5 flex-1 rounded-full bg-gray-200 overflow-hidden">
               <div className="h-full w-[70%] rounded-full" style={{ backgroundColor: BRAND_VIOLET }} />
             </div>
           </div>
-          <div className="rounded-xl bg-white border border-gray-200 p-4">
-            <p className="font-semibold text-sm text-gray-900">Polo Ralph Lauren homme bleu marine taille L</p>
-            <p className="text-xs text-gray-500 mt-1">Ralph Lauren · Polos · Taille L · Très bon état</p>
-            <p className="font-black mt-3" style={{ color: BRAND_VIOLET }}>35 €</p>
+          <div className="rounded-2xl bg-white border border-gray-200 p-6 max-w-md mx-auto w-full">
+            <p className="font-semibold text-lg text-gray-900">Polo Ralph Lauren homme bleu marine taille L</p>
+            <p className="text-sm text-gray-500 mt-1.5">Ralph Lauren · Polos · Taille L · Très bon état</p>
+            <p className="font-black text-2xl mt-4" style={{ color: BRAND_VIOLET }}>35 €</p>
           </div>
         </div>
       </BrowserFrame>
@@ -116,12 +106,12 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   if (kind === 'discord') {
     return (
       <BrowserFrame className="h-full">
-        <div className="bg-gray-50 p-6 text-center h-full min-h-[11rem] flex flex-col justify-center">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-white border border-gray-200">
-            <DiscordIcon className="w-6 h-6" style={{ color: BRAND_VIOLET }} />
+        <div className="bg-gray-50 p-8 text-center h-full flex flex-col justify-center items-center">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 bg-white border border-gray-200">
+            <DiscordIcon className="w-8 h-8" style={{ color: BRAND_VIOLET }} />
           </div>
-          <p className="font-semibold text-sm mb-1.5 text-gray-900">Discord ResellOS</p>
-          <p className="text-xs text-gray-500 mb-5">
+          <p className="font-semibold text-xl mb-2 text-gray-900">Discord ResellOS</p>
+          <p className="text-sm text-gray-500 mb-6 max-w-xs">
             Échange en direct avec les autres revendeurs et l'équipe ResellOS.
           </p>
           {DISCORD_INVITE_URL ? (
@@ -129,13 +119,13 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
               href={DISCORD_INVITE_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 text-xs font-bold px-4 py-2.5 rounded-lg border transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-sm font-bold px-5 py-3 rounded-lg border transition-colors"
               style={{ color: BRAND_VIOLET, backgroundColor: `${BRAND_VIOLET}1A`, borderColor: `${BRAND_VIOLET}33` }}
             >
-              Rejoindre Discord <ExternalLink className="w-3.5 h-3.5" />
+              Rejoindre Discord <ExternalLink className="w-4 h-4" />
             </a>
           ) : (
-            <p className="text-[11px] text-gray-500">Lien Discord pas encore configuré.</p>
+            <p className="text-xs text-gray-500">Lien Discord pas encore configuré.</p>
           )}
         </div>
       </BrowserFrame>
@@ -143,38 +133,38 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   }
   if (kind === 'communication') {
     return (
-      <BrowserFrame>
+      <BrowserFrame className="h-full">
         <img
           src={screenshotCommunication}
           alt="Relance favoris : messages préparés avec offres -5 %/-10 %, prêts à copier sur Vinted"
-          className="w-full h-56 object-cover object-top block"
+          className="w-full h-full object-cover object-top block"
         />
       </BrowserFrame>
     );
   }
   if (kind === 'stock') {
     return (
-      <BrowserFrame>
+      <BrowserFrame className="h-full">
         <img
           src={screenshotStock}
           alt="Mes annonces : statuts réels, valeur du stock et chiffre d'affaires à jour"
-          className="w-full h-56 object-cover object-top block"
+          className="w-full h-full object-cover object-top block"
         />
       </BrowserFrame>
     );
   }
   return (
     <BrowserFrame className="h-full">
-      <div className="bg-gray-50 p-6 grid grid-cols-2 gap-3 h-full min-h-[11rem] content-center">
+      <div className="bg-gray-50 p-8 sm:p-12 grid grid-cols-2 gap-4 h-full content-center max-w-lg mx-auto">
         {[
           ['1 240 €', "Chiffre d'affaires"],
           ['+326 €', 'Bénéfice net'],
           ['18 %', 'ROI moyen'],
           ['796 €', 'Valeur du stock'],
         ].map(([value, label]) => (
-          <div key={label} className="rounded-xl bg-white border border-gray-200 p-4">
-            <p className="text-lg font-black" style={{ color: BRAND_VIOLET }}>{value}</p>
-            <p className="text-gray-500 text-[11px] mt-1">{label}</p>
+          <div key={label} className="rounded-xl bg-white border border-gray-200 p-5">
+            <p className="text-2xl font-black" style={{ color: BRAND_VIOLET }}>{value}</p>
+            <p className="text-gray-500 text-sm mt-1.5">{label}</p>
           </div>
         ))}
       </div>
@@ -192,20 +182,20 @@ function CopiloteVisual() {
 
   if (!hasVideo) {
     return (
-      <BrowserFrame>
+      <BrowserFrame className="h-full">
         <img
           src={screenshotInsights}
           alt="Scan d'opportunités du Copilote : 211 détectées, +58 € de profit moyen, +116 % de ROI moyen"
-          className="w-full h-72 lg:h-80 object-cover object-top block"
+          className="w-full h-full object-cover object-top block"
         />
       </BrowserFrame>
     );
   }
 
   return (
-    <BrowserFrame>
+    <BrowserFrame className="h-full">
       <video
-        className="w-full h-72 lg:h-80 object-cover object-top block"
+        className="w-full h-full object-cover object-top block"
         autoPlay
         muted
         loop
@@ -218,81 +208,74 @@ function CopiloteVisual() {
   );
 }
 
-// Carte bento -- un composant unique pour les 6 modules, decline en deux
-// gabarits (hero large / secondaire) plutot que du markup duplique par
-// carte (playbook, Design principles #9 : composant reutilisable). "group"
-// porte le survol jusqu'au BrowserFrame imbrique (voir son propre
-// commentaire group-hover) : la carte entiere reagit, pas seulement le
-// pixel du cadre. min-h-[6.5rem] sur le bloc icone+titre+ligne (retour
-// 2026-08-29, point 2) : sans plancher commun, une tagline sur 1 ligne vs 2
-// lignes decalait le point de depart du cadre visuel d'une carte a l'autre
-// dans la meme rangee -- desormais toutes les cartes secondaires demarrent
-// leur visuel a la meme hauteur, quelle que soit la longueur de leur texte.
-function BentoCard({ feature, large = false, className = '' }: { feature: (typeof FEATURES)[number]; large?: boolean; className?: string }) {
+export function Features() {
+  // Panneau unique (retour audit VintyResell, 2026-08-29) : un module a la
+  // fois, jamais 6 en meme temps -- c'est le changement d'onglet qui EST le
+  // changement d'etat justifiant l'animation d'entree (rise-in), pas une
+  // rotation automatique (deja tranche le 2026-08-26, raison inchangee).
+  const [active, setActive] = useState(0);
+  const feature = FEATURES[active];
   const Icon = feature.icon;
 
   return (
-    <div
-      className={`group h-full flex flex-col gap-5 rounded-2xl border border-gray-200 bg-white p-6 transition-colors duration-300 hover:border-gray-300 ${large ? 'lg:flex-row lg:items-center lg:gap-10' : ''} ${className}`}
-    >
-      <div className={large ? 'lg:w-[38%] lg:flex-shrink-0' : 'min-h-[6.5rem]'}>
-        <div className="flex items-center gap-2.5 mb-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-gray-50 border border-gray-200 flex-shrink-0">
-            <Icon className="w-4.5 h-4.5" style={{ color: BRAND_VIOLET }} />
-          </div>
-          <h3 className={large ? 'text-2xl sm:text-3xl font-black text-gray-900' : 'text-lg font-black text-gray-900'}>
-            {feature.title}
-          </h3>
-        </div>
-        <p className={large ? 'text-base text-gray-600 leading-snug' : 'text-sm text-gray-600 leading-snug'}>
-          {feature.tagline}
-        </p>
-      </div>
-      <div className={large ? 'lg:flex-1' : 'flex-1'}>
-        <FeatureVisual kind={feature.visual} />
-      </div>
-    </div>
-  );
-}
-
-export function Features() {
-  const [hero, discord, generator, stock, communication, accounting] = FEATURES;
-
-  return (
-    <section id="features" className="py-16 sm:py-24">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-14">
-          <h2 className="text-4xl sm:text-5xl font-black mb-4 text-gray-900">Tout ce dont vous avez besoin pour revendre.</h2>
-          <p className="text-gray-600 text-lg max-w-xl mx-auto">
+    // Fond de section sombre (retour audit VintyResell, point P0-2) : les
+    // captures reelles sont blanches, la page l'etait aussi -- le cadre
+    // macOS (deja sombre) etait la SEULE zone de contraste de toute la
+    // section, un rectangle isole plutot qu'une mise en scene. gray-950 uni,
+    // sans glow ni degrade (playbook, anti-pattern #1) -- juste un fond qui
+    // laisse le cadre et son contenu se detacher naturellement.
+    <section id="features" className="py-20 sm:py-28 bg-gray-950">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <div className="text-center mb-12">
+          <h2 className="text-4xl sm:text-5xl font-black mb-4 text-white">Tout ce dont vous avez besoin pour revendre.</h2>
+          <p className="text-gray-400 text-lg max-w-xl mx-auto">
             De la création d'annonce jusqu'à la comptabilité, tout est réuni dans une seule plateforme.
           </p>
         </div>
 
-        {/* Grille bento asymetrique (retour design 2026-08-29) : remplace
-            l'ancien systeme d'onglets. Copilote en carte hero pleine largeur
-            (argument de vente principal) -- pas de glow decoratif (playbook,
-            anti-pattern #1), asymetrie portee par le NOMBRE de colonnes par
-            rangee plutot que par un effet visuel ajoute.
-            Regroupement par poids visuel (correctif 2026-08-29, point 1) :
-            les 2 captures d'ecran reelles (memes proportions) partagent une
-            rangee ; les 3 mockups sans capture (memes proportions, plus
-            compactes) partagent l'autre. Melanger les deux etirait les
-            petites cartes (CSS Grid align-items: stretch) contre une
-            capture bien plus haute -- un cadre macOS "tout en longueur",
-            jamais une fenetre d'application compacte. */}
-        <div className="flex flex-col gap-6">
-          <BentoCard feature={hero} large />
+        {/* Selecteur d'onglet -- variante sombre du meme composant deja
+            utilise avant le bento. L'icone inactive reste grise : colorer
+            les six en violet donnerait six accents de meme poids, donc
+            aucune indication d'etat (meme regle qu'avant). */}
+        <div role="tablist" aria-label="Modules ResellOS" className="flex flex-wrap justify-center gap-2 mb-10">
+          {FEATURES.map(({ title, icon: TabIcon }, i) => {
+            const isActive = i === active;
+            return (
+              <button
+                key={title}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActive(i)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors border"
+                style={
+                  isActive
+                    ? { color: '#fff', backgroundColor: `${BRAND_VIOLET}33`, borderColor: `${BRAND_VIOLET}66` }
+                    : { color: '#9CA3AF', borderColor: 'transparent' }
+                }
+              >
+                <TabIcon className="w-5 h-5" style={{ color: isActive ? BRAND_VIOLET : '#6B7280' }} />
+                {title}
+              </button>
+            );
+          })}
+        </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <BentoCard feature={stock} />
-            <BentoCard feature={communication} />
+        {/* Panneau -- cadre agrandi (340px -> 480px selon le viewport,
+            contre 224-320px sur l'ancien bento) : c'est le levier d'echelle
+            identifie dans l'audit, pas juste un habillage. "group" porte le
+            survol jusqu'au BrowserFrame imbrique (zoom + bordure eclaircie,
+            voir son propre commentaire). */}
+        <div key={active} className="group rise-in">
+          <div className="h-[340px] sm:h-[420px] lg:h-[480px]">
+            <FeatureVisual kind={feature.visual} />
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <BentoCard feature={generator} />
-            <BentoCard feature={accounting} />
-            <BentoCard feature={discord} />
+          <div className="flex items-center gap-3 mt-8 mb-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/5 border border-white/10 flex-shrink-0">
+              <Icon className="w-5 h-5" style={{ color: BRAND_VIOLET }} />
+            </div>
+            <h3 className="text-2xl sm:text-3xl font-black text-white">{feature.title}</h3>
           </div>
+          <p className="text-gray-400 text-base sm:text-lg max-w-2xl leading-snug">{feature.tagline}</p>
         </div>
       </div>
     </section>
