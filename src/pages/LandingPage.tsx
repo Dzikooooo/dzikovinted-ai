@@ -31,8 +31,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <HeroComparison />
       <Features />
       <Pricing onNavigate={onNavigate} />
-      <FAQ />
       <Founder />
+      <FAQ />
       <CTABanner onNavigate={onNavigate} />
       <Footer onNavigate={onNavigate} />
     </div>

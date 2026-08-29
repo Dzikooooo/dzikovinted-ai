@@ -44,29 +44,38 @@ const SECTIONS: { id: SectionId; icon: LucideIcon; label: string }[] = [
 
 const INTERESTS = ['Musique', 'Audiovisuel', 'Informatique', 'Skate', 'Littérature', 'Social', 'Art'];
 
+// Titres/paragraphes reecrits (retour 2026-08-29) : memes principes reels
+// qu'avant (concentration sur Vinted, communication avec les acheteurs,
+// action toujours confirmee par l'utilisateur), formules courtes et sans
+// tirets, orientees benefice plutot que description defensive.
 const PRINCIPLES = [
   {
     icon: Target,
-    title: 'Un seul marketplace, bien fait',
+    title: 'Tout au même endroit',
     description:
-      "Resell OS ne cherche pas a couvrir tous les marketplaces a la fois. Il se concentre sur Vinted, pour construire des outils qui collent vraiment a ses regles, ses prix et ses usages -- plutot qu'une couche generique qui fait tout a moitie.",
+      "Générateur, stock, communication, comptabilité : tout ce dont tu as besoin pour revendre sur Vinted est réuni dans une seule plateforme, pas une couche générique qui couvre tous les marketplaces à moitié.",
   },
   {
     icon: ShieldCheck,
-    title: 'Jamais de donnee inventee',
+    title: 'Le relationnel client',
+    // Reoriente de "jamais de donnee inventee" (honnetete sur les chiffres,
+    // toujours vraie, voir Human feel #7 du playbook) vers la communication
+    // avec les acheteurs (module Communication reel, voir Features.tsx) --
+    // demande explicite 2026-08-29, changement de sujet assume, pas un
+    // simple renommage.
     description:
-      "Chaque prix, chaque estimation, chaque recommandation affichee dans Resell OS est soit une donnee reelle observee sur le marche, soit clairement etiquetee comme une estimation. Le produit prefere dire \"je ne sais pas\" plutot que d'afficher un chiffre invente avec assurance.",
+      "Des modèles de message et une relance des favoris en un clic, prix suggéré inclus. Rester disponible pour tes acheteurs ne devrait pas prendre des heures chaque semaine.",
   },
   {
     icon: Layers,
-    title: 'Automatisation prudente',
+    title: 'Gagner en efficacité',
     // Corrige le 2026-08-29 (positionnement "bouclier anti-bannissement") :
     // l'ancienne version presentait la publication automatique comme une
     // fonctionnalite "en pause" qui reviendrait -- l'exact inverse du choix
     // assume desormais partout ailleurs (FAQ.tsx, HeroComparison.tsx,
     // PublishConfirmationModal.tsx). Meme voix, meme raison, partout.
     description:
-      "Modifier ou publier une annonce reste une action que l'utilisateur declenche et confirme lui-meme -- jamais un robot qui agit seul sur un compte Vinted. Ce n'est pas une limite temporaire : c'est un choix deliberement plus lent, pour proteger le compte des verifications anti-bot de la plateforme.",
+      "Publier ou republier une annonce reste une action que tu déclenches et confirmes toi-même, jamais un robot qui agit seul sur ton compte Vinted. Un choix volontairement plus lent sur ce point précis, pour protéger ton compte, sans rien perdre du temps gagné sur le reste.",
   },
 ];
 
@@ -74,12 +83,12 @@ const PRINCIPLES = [
 // prend de faire tourner le produit -- pas seulement les briques
 // techniques du coeur du produit, aussi la communaute et l'infra.
 const COULISSES = [
-  { icon: Code2, title: 'Développement solo', description: "Chaque écran, chaque ligne de code, chaque correction de bug -- une seule personne, sans équipe." },
-  { icon: Puzzle, title: 'Extension Chrome', description: "Parle réellement à Vinted -- lit et écrit sur la vraie plateforme, pas une simulation." },
+  { icon: Code2, title: 'Développement solo', description: "Chaque écran, chaque ligne de code, chaque correction de bug, une seule personne, sans équipe." },
+  { icon: Puzzle, title: 'Extension Chrome', description: "Parle réellement à Vinted, lit et écrit sur la vraie plateforme, pas une simulation." },
   { icon: Bot, title: 'IA de génération', description: "Analyse une photo et rédige titre, description, catégorie, taille et état." },
   { icon: DiscordIcon, title: 'Communauté Discord', description: "Un espace pour échanger en direct avec les premiers utilisateurs de ResellOS." },
-  { icon: Globe, title: 'Domaine & hébergement', description: "Nom de domaine, hébergement, base de données -- tout tourne réellement en production." },
-  { icon: ShieldCheck, title: 'Confirmation manuelle', description: "Rien ne se modifie sur ton compte Vinted sans que tu le valides toi-même -- un choix assumé, pas une limite qu'on subit." },
+  { icon: Globe, title: 'Domaine & hébergement', description: "Nom de domaine, hébergement, base de données... tout tourne réellement en production." },
+  { icon: ShieldCheck, title: 'Confirmation manuelle', description: "Rien ne se modifie sur ton compte Vinted sans que tu le valides toi-même, un choix assumé, pas une limite qu'on subit." },
 ];
 
 // Timeline retracant le parcours -- ages precis (retour utilisateur
@@ -164,7 +173,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
     e.preventDefault();
     setTeamSubmitting(true);
 
-    const subject = encodeURIComponent('Candidature -- rejoindre les coulisses de Resell OS');
+    const subject = encodeURIComponent('Candidature : rejoindre les coulisses de Resell OS');
     const body = encodeURIComponent(
       [
         'Candidature "rejoindre les coulisses" depuis la page A propos de Resell OS.',
@@ -199,7 +208,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
           <div className="text-center mb-16">
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight mb-4">À propos</h1>
             <p className="text-lg text-zinc-400 leading-relaxed">
-              Dziko — la personne derrière Resell OS.
+              Dziko, la personne derrière Resell OS.
             </p>
           </div>
 
@@ -418,7 +427,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                 <div>
                   <h2 className="text-2xl font-black mb-4">Les coulisses du développement</h2>
                   <p className="max-w-3xl text-gray-700 leading-8 mb-12">
-                    Resell OS est construit sans équipe -- juste moi, tout seul. Voici ce que ça prend
+                    Resell OS est construit sans équipe, juste moi, tout seul. Voici ce que ça prend
                     vraiment pour faire tourner le produit au quotidien, du code jusqu'à la communauté :
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6 mb-12">
@@ -448,7 +457,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     <h3 className="text-xl font-black mb-2">Envie de rejoindre l'équipe ?</h3>
                     <p className="text-sm text-gray-500 mb-6">
                       Resell OS reste construit seul aujourd'hui, mais ça pourrait changer. Si l'aventure
-                      t'intéresse, laisse tes coordonnées -- je recontacte chaque candidature moi-même,
+                      t'intéresse, laisse tes coordonnées, je recontacte chaque candidature moi-même,
                       pas de réponse automatique.
                     </p>
 
@@ -457,7 +466,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                         <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
                         <span>
                           Ton client mail s'est ouvert avec ta candidature déjà remplie. Vérifie qu'un message est
-                          bien prêt à partir vers resellosapp@gmail.com -- si rien ne s'est ouvert, écris-nous
+                          bien prêt à partir vers resellosapp@gmail.com. Si rien ne s'est ouvert, écris-nous
                           directement à cette adresse.
                         </span>
                       </div>
@@ -533,7 +542,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     <div className="flex items-center justify-between gap-3 mb-5">
                       <p className="text-xs font-mono uppercase tracking-wider text-neon-500 font-bold">Dernières mises à jour</p>
                       <span className="text-[10px] font-mono text-gray-500" title="Sélection mise à jour manuellement, pas un flux automatique">
-                        Aperçu figé — {UPDATES_SNAPSHOT_DATE}
+                        Mise à jour : {UPDATES_SNAPSHOT_DATE}
                       </span>
                     </div>
                     <ul className="space-y-3.5 mb-6">
