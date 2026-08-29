@@ -50,7 +50,11 @@ export default function AccountingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>('month');
 
-  const { expenses, loading: expensesLoading, error: expensesError, addExpense, deleteExpense } = useExpenses();
+  // Fermeture P0 #7 (2026-08-29) : les depenses suivent desormais le meme
+  // filtre de compte que `listings` ci-dessus (selectedAccountId), au lieu
+  // d'etre toujours integralement soustraites du benefice d'un seul compte
+  // affiche.
+  const { expenses, loading: expensesLoading, error: expensesError, addExpense, deleteExpense } = useExpenses(selectedAccountId);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseCategory, setExpenseCategory] = useState(EXPENSE_CATEGORIES[0]);
   const [expenseAmount, setExpenseAmount] = useState('');

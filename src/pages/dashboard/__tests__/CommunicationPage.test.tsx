@@ -10,11 +10,14 @@ import userEvent from '@testing-library/user-event';
 // apparait (jamais confondu avec un choix reel de l'utilisateur).
 
 let listingsRows: Array<Record<string, unknown>> = [];
+// P0 #9 : configurable pour prouver qu'une erreur reseau/requete ne se
+// confond plus avec "aucune annonce" (voir describe dedie plus bas).
+let listingsQueryError: { message: string } | null = null;
 
 vi.mock('../../../lib/supabase', () => ({
   supabase: {
     from: () => {
-      const result = Promise.resolve({ data: listingsRows, error: null });
+      const result = Promise.resolve({ data: listingsQueryError ? null : listingsRows, error: listingsQueryError });
       const chain: Record<string, unknown> = {};
       for (const m of ['select', 'eq', 'not', 'or', 'order']) chain[m] = () => chain;
       Object.assign(chain, { then: result.then.bind(result) });
@@ -58,6 +61,7 @@ function makeListing(over: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   listingsRows = [];
+  listingsQueryError = null;
   templateRows = [];
   createTemplate.mockClear();
 });
@@ -142,5 +146,22 @@ describe('CommunicationPage -- au moins un modèle personnel existe', () => {
 
     expect(screen.getByText('+ Relance favoris')).toBeTruthy();
     expect(screen.getByText('+ Baisse de prix')).toBeTruthy();
+  });
+});
+
+describe('CommunicationPage -- P0 #9 : une erreur de chargement des annonces ne se confond plus avec "aucune annonce"', () => {
+  it("affiche un message d'erreur honnête au lieu d'ignorer silencieusement l'échec de la requête", async () => {
+    listingsQueryError = { message: 'network down' };
+    await renderPage();
+
+    // Avant le correctif, `useListingOptions()` ne destructurait que `data`
+    // -- un vrai echec reseau retombait sur `data ?? []` sans qu'aucun
+    // signal n'apparaisse nulle part sur la page (FavouritesFollowUp.tsx
+    // affiche toujours son EmptyState pour une liste vide, avec ou sans
+    // erreur -- meme convention que le reste du dashboard, ex.
+    // ListingsManagementSection.tsx : banniere d'erreur ET etat vide
+    // peuvent coexister, l'important est que l'erreur soit VISIBLE quelque
+    // part, ce qu'elle n'etait pas du tout avant ce correctif).
+    expect(await screen.findByText(/impossible de charger tes annonces/i)).toBeInTheDocument();
   });
 });

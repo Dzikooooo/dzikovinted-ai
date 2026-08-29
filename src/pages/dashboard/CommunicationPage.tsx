@@ -38,17 +38,24 @@ interface ListingOption {
   favourites: number | null;
 }
 
+// Fermeture P0 #9 (audit pre-lancement 2026-07-10) : `error` etait jusqu'ici
+// ignore ({ data } seul destructure) -- un vrai echec reseau/requete
+// retombait silencieusement sur `data ?? []`, indiscernable de "aucune
+// annonce eligible". FavouritesFollowUp.tsx affichait alors son EmptyState
+// ("Aucun favori à relancer") meme en cas d'erreur reelle, jamais un
+// message d'erreur -- exactement le defaut signale par l'audit.
 function useListingOptions() {
   const { user } = useAuth();
   const [listings, setListings] = useState<ListingOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     let ignore = false;
     (async () => {
       setLoading(true);
-      const { data } = await supabase
+      const { data, error: loadError } = await supabase
         .from('listings')
         .select('id, title, brand, category, size, price, vinted_url, favourites')
         .eq('user_id', user.id)
@@ -56,7 +63,13 @@ function useListingOptions() {
         .or('vinted_status.neq.deleted,vinted_status.is.null')
         .order('title');
       if (!ignore) {
-        setListings((data ?? []) as ListingOption[]);
+        if (loadError) {
+          console.error(loadError);
+          setError('Impossible de charger tes annonces. Réessaie plus tard.');
+        } else {
+          setError(null);
+          setListings((data ?? []) as ListingOption[]);
+        }
         setLoading(false);
       }
     })();
@@ -65,7 +78,7 @@ function useListingOptions() {
     };
   }, [user]);
 
-  return { listings, loading };
+  return { listings, loading, error };
 }
 
 // Retour bêta-testeur reel (Albin, 2026-08-11, retour 3) : "message aux
@@ -172,7 +185,7 @@ export default function CommunicationPage() {
   const { templates, loading: templatesLoading, error, createTemplate, updateTemplate, deleteTemplate } =
     useMessageTemplates();
   const { showToast } = useToast();
-  const { listings, loading: listingsLoading } = useListingOptions();
+  const { listings, loading: listingsLoading, error: listingsError } = useListingOptions();
 
   const [formTemplate, setFormTemplate] = useState<MessageTemplate | 'new' | null>(null);
   const [formPrefill, setFormPrefill] = useState<{ name: string; body: string } | null>(null);
@@ -223,6 +236,7 @@ export default function CommunicationPage() {
       />
 
       {error && <ErrorBanner message={error} className="mb-6" />}
+      {listingsError && <ErrorBanner message={listingsError} className="mb-6" />}
 
       {/* `items-start` : sans lui, les deux colonnes s'etirent a la hauteur de
           la plus haute. Le panneau de droite n'a rien a montrer tant qu'aucune

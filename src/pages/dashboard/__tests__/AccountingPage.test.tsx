@@ -61,7 +61,7 @@ function isoDaysAgo(days: number): string {
 const OLD_EXPENSE_DATE = isoDaysAgo(40);
 
 function makeExpense(over: Partial<Expense> = {}): Expense {
-  return { id: 'e1', category: 'Emballage', amount: 10, note: '', expenseDate: isoDaysAgo(0), ...over };
+  return { id: 'e1', category: 'Emballage', amount: 10, note: '', expenseDate: isoDaysAgo(0), vintedAccountId: null, ...over };
 }
 
 beforeEach(() => {

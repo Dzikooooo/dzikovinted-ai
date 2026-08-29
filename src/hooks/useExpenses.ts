@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 export interface Expense {
@@ -7,19 +7,32 @@ export interface Expense {
   amount: number;
   note: string;
   expenseDate: string;
+  vintedAccountId: string | null;
 }
 
-export function useExpenses() {
+// Fermeture P0 #7 (audit pre-lancement 2026-07-10, encore ouvert le
+// 2026-08-29) : AccountingPage.tsx filtre deja le CA/la marge par compte
+// Vinted selectionne, mais les depenses n'etaient jamais filtrees --
+// soustraites en integralite du benefice d'un seul compte affiche, un
+// chiffre faux. `accountId` suit la meme convention que
+// VintedAccountFilterContext ('all' = tous les comptes, sinon un uuid
+// precis) -- l'appelant (AccountingPage.tsx) passe deja cette valeur pour
+// filtrer `listings`, il suffit de la propager ici.
+export function useExpenses(accountId: string) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadExpenses() {
+  const loadExpenses = useCallback(async () => {
     setLoading(true);
-    const { data, error: loadError } = await supabase
+    let query = supabase
       .from("expenses")
       .select("*")
       .order("expense_date", { ascending: false });
+    if (accountId !== "all") {
+      query = query.eq("vinted_account_id", accountId);
+    }
+    const { data, error: loadError } = await query;
     if (loadError) {
       console.error(loadError);
       setError("Impossible de charger les dépenses. Réessaie plus tard.");
@@ -34,18 +47,25 @@ export function useExpenses() {
         amount: Number(expense.amount),
         note: expense.note ?? "",
         expenseDate: expense.expense_date,
+        vintedAccountId: expense.vinted_account_id ?? null,
       }))
     );
     setLoading(false);
-  }
+  }, [accountId]);
 
   useEffect(() => {
     loadExpenses();
-  }, []);
+  }, [loadExpenses]);
 
   // Retourne un booleen de succes (meme motif que WatchlistPage.tsx::handleSubmit,
   // 2026-07-24) : l'appelant ne doit fermer/reinitialiser son formulaire que si
   // l'ecriture a reellement reussi, jamais inconditionnellement.
+  //
+  // Rattache la depense au compte actuellement filtre (accountId), ou a
+  // aucun compte precis si "Tous les comptes" est selectionne -- pas de
+  // nouveau champ dans le formulaire : le filtre de compte deja visible en
+  // haut de page communique deja ce contexte, une depense ajoutee en
+  // filtrant sur un compte precis lui appartient naturellement.
   async function addExpense(category: string, amount: number, note: string): Promise<boolean> {
     const { data } = await supabase.auth.getUser();
     if (!data.user) {
@@ -57,6 +77,7 @@ export function useExpenses() {
       category,
       amount,
       note,
+      vinted_account_id: accountId !== "all" ? accountId : null,
     });
     if (insertError) {
       console.error(insertError);
