@@ -41,6 +41,12 @@ export function NotificationBell({ onNavigate }: { onNavigate: (page: DashboardP
   const handleOpenNotification = (n: AppNotification) => {
     void markRead(n.id);
     if (n.target_page) {
+      // Deep-link vers l'onglet Messages (meme technique que
+      // resellos:blogSection/resellos:dashboardPage) : une notification
+      // "nouveau message" cible deja target_page='admin' (voir
+      // notify_on_user_ticket_message) -- ouvre directement le bon onglet
+      // plutot que de laisser l'admin chercher dans Administration.
+      if (n.target_page === 'admin') sessionStorage.setItem('resellos:adminTab', 'messages');
       onNavigate(n.target_page);
       setOpen(false);
     }

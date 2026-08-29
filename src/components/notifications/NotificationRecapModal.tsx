@@ -23,7 +23,11 @@ export function NotificationRecapModal({ onNavigate }: NotificationRecapModalPro
 
   const handleView = (n: AppNotification) => {
     markRead(n.id);
-    if (n.target_page) onNavigate(n.target_page);
+    if (n.target_page) {
+      // Meme deep-link que NotificationBell.tsx -- voir son commentaire.
+      if (n.target_page === 'admin') sessionStorage.setItem('resellos:adminTab', 'messages');
+      onNavigate(n.target_page);
+    }
     setDismissed(true);
   };
 
