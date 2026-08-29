@@ -1,6 +1,7 @@
 import { Check, Puzzle, Sparkles, RefreshCw } from 'lucide-react';
 import type { DashboardPage } from '../../lib/types';
 import { BRAND_VIOLET } from '../../lib/brandColors';
+import { Card } from '../../components/ui/Card';
 
 // FTUE minimal (audit 2026-08-28, section 3 "UX/Produit" -- "aucun flux de
 // premiere utilisation guide n'existe"). Deux etapes reelles seulement,
@@ -24,7 +25,7 @@ export function OnboardingChecklist({ hasAccount, hasAnyListing, onNavigate }: O
   if (hasAccount && hasAnyListing) return null;
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-surface p-5 mb-6">
+    <Card className="mb-6">
       <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Pour démarrer</p>
       <div className="space-y-3">
         <Step
@@ -50,7 +51,7 @@ export function OnboardingChecklist({ hasAccount, hasAnyListing, onNavigate }: O
           onSecondaryAction={() => onNavigate('generator')}
         />
       </div>
-    </div>
+    </Card>
   );
 }
 

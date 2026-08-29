@@ -14,6 +14,7 @@ import { needsRepublish } from '../../../lib/listingStatus';
 import { formatScheduleLabel, isoToLocalDateTime, type RepublishSchedule } from '../../../lib/republishSchedule';
 import { explainRepublishFailure } from '../../../lib/republishOutcome';
 import type { RepublishOutcomeRow } from '../../../services/republishSchedules';
+import { Card } from '../../../components/ui/Card';
 
 // Extrait de ListingsManagementSection.tsx (audit 2026-08-28, Phase 2 --
 // "renforcer le coeur avant d'empiler dessus") : ListingCard etait defini
@@ -66,7 +67,11 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
   const roi = hasCost && Number(item.purchase_price) > 0 ? Math.round((margin / Number(item.purchase_price)) * 100) : 0;
 
   return (
-    <div
+    <Card
+      padding="none"
+      background="alt"
+      interactive
+      selected={selected}
       role="button"
       tabIndex={0}
       onClick={onOpenDetail}
@@ -77,9 +82,11 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
         }
       }}
       aria-label={`Voir le détail de ${item.title}`}
-      className={`group bg-surface-alt rounded-2xl border overflow-hidden transition-all duration-300 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-neon-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-500 ${
-        selected ? 'border-neon-500/60 shadow-[0_0_0_1px_rgba(124,92,255,0.3),0_20px_50px_rgba(0,0,0,0.35)]' : 'border-gray-200 hover:border-neon-500/30'
-      }`}
+      // Card ne porte que la bordure/l'ombre/le hover (etat interactive/
+      // selected) -- le focus-ring reste ici, specifique a cette carte
+      // precise agissant comme un bouton clavier (role="button"), pas une
+      // generalisation que tout Card interactif devrait porter.
+      className="group overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-neon-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-500"
     >
       <div className="relative h-32 bg-dark-400 border-b border-gray-200 overflow-hidden">
         {item.image_urls?.[0] ? (
@@ -283,7 +290,7 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 

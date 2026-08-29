@@ -7,6 +7,7 @@ import { FavouritesFollowUp } from './communication/FavouritesFollowUp';
 import { ErrorBanner } from '../../components/ui/ErrorBanner';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { supabase } from '../../lib/supabase';
 import { useMessageTemplates, type MessageTemplateInput } from '../../hooks/useMessageTemplates';
 import { resolveMessageTemplate, MESSAGE_TEMPLATE_VARIABLES } from '../../lib/messageTemplate';
@@ -170,6 +171,7 @@ function TemplateFormModal({
 export default function CommunicationPage() {
   const { templates, loading: templatesLoading, error, createTemplate, updateTemplate, deleteTemplate } =
     useMessageTemplates();
+  const { showToast } = useToast();
   const { listings, loading: listingsLoading } = useListingOptions();
 
   const [formTemplate, setFormTemplate] = useState<MessageTemplate | 'new' | null>(null);
@@ -439,7 +441,12 @@ export default function CommunicationPage() {
           initial={formTemplate === 'new' ? null : formTemplate}
           prefill={formTemplate === 'new' ? formPrefill : null}
           onClose={() => { setFormTemplate(null); setFormPrefill(null); }}
-          onSave={(input) => (formTemplate === 'new' ? createTemplate(input) : updateTemplate(formTemplate.id, input))}
+          onSave={async (input) => {
+            const ok =
+              formTemplate === 'new' ? await createTemplate(input) : await updateTemplate(formTemplate.id, input);
+            if (ok) showToast(formTemplate === 'new' ? 'Modèle créé !' : 'Modèle mis à jour !', 'success');
+            return ok;
+          }}
         />
       )}
 
@@ -458,7 +465,8 @@ export default function CommunicationPage() {
                 const id = confirmDeleteId;
                 setConfirmDeleteId(null);
                 if (selectedTemplateId === id) setSelectedTemplateId('');
-                await deleteTemplate(id);
+                const ok = await deleteTemplate(id);
+                if (ok) showToast('Modèle supprimé.', 'success');
               }}
             >
               Supprimer

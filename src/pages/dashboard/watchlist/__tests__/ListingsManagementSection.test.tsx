@@ -111,6 +111,10 @@ vi.mock('../../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: STABLE_USER, profile: STABLE_PROFILE }),
 }));
 
+vi.mock('../../../../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn() }),
+}));
+
 vi.mock('../../../../contexts/VintedAccountFilterContext', () => ({
   useVintedAccountFilter: () => ({
     accounts: STABLE_ACCOUNTS,

@@ -95,6 +95,10 @@ vi.mock('../../../../contexts/AuthContext', () => ({
   useAuth: () => ({ user: STABLE_USER, profile: STABLE_PROFILE }),
 }));
 
+vi.mock('../../../../contexts/ToastContext', () => ({
+  useToast: () => ({ showToast: vi.fn() }),
+}));
+
 vi.mock('../../../../contexts/VintedAccountFilterContext', () => ({
   useVintedAccountFilter: () => ({
     accounts: STABLE_ACCOUNTS,
@@ -254,6 +258,29 @@ describe('ListingsManagementSection -- bouton Synchroniser maintenant (SYNC_VINT
       await waitFor(() => expect(button).toBeEnabled());
       // Un echec pur ne doit jamais declencher de rafraichissement optimiste.
       expect(stableRefresh).not.toHaveBeenCalled();
+    },
+    TEST_TIMEOUT_MS
+  );
+
+  it(
+    'Phase 2 (2026-08-28) : refreshAccounts() qui rejette apres une synchro reussie -- avertit honnetement plutot que de laisser croire a un affichage a jour',
+    async () => {
+      mockSyncVintedAccount.mockResolvedValue(okResult({ created: 2, updated: 1, deletedMarked: 0 }));
+      stableRefresh.mockRejectedValue(new Error('réseau indisponible'));
+
+      const user = userEvent.setup();
+      render(<ListingsManagementSection />);
+
+      const button = await getSyncButton();
+      await user.click(button);
+
+      expect(await screen.findByText(/n'a pas pu être actualisé/i)).toBeInTheDocument();
+      // Le message de succes initial ("3 annonce(s) synchronisée(s)") ne
+      // doit jamais rester affiche seul une fois qu'on sait que le
+      // rafraichissement a echoue -- l'utilisateur ne doit pas croire que ce
+      // qu'il voit a l'ecran est a jour.
+      expect(screen.queryByText(/^\d+ annonce\(s\) synchronisée\(s\)$/i)).not.toBeInTheDocument();
+      await waitFor(() => expect(button).toBeEnabled());
     },
     TEST_TIMEOUT_MS
   );

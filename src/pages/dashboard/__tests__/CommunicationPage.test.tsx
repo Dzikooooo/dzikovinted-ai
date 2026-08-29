@@ -25,6 +25,7 @@ vi.mock('../../../lib/supabase', () => ({
 // Objet STABLE : `user` est dans les dependances de useListingOptions.
 const AUTH = { user: { id: 'u1' } };
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => AUTH }));
+vi.mock('../../../contexts/ToastContext', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
 
 let templateRows: Array<{ id: string; name: string; body: string }> = [];
 const createTemplate = vi.fn().mockResolvedValue(true);
