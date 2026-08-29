@@ -329,6 +329,28 @@ export interface GeneratedListing {
   market_freshness: 'recent' | 'acceptable' | 'old' | 'stale' | null;
 }
 
+// Pricer Pro -- audit d'une annonce DEJA PUBLIEE (2026-08-29, voir
+// supabase/functions/audit-listing/index.ts). Distinct de GeneratedListing :
+// pas de photo/couleur/taille/matiere (l'annonce existe deja avec ces
+// champs), uniquement ce que Gemini peut honnetement evaluer en texte seul
+// (titre/description/SEO) + le Market Engine partage pour le prix. `price`
+// est `null` des que brand ou category manque sur l'annonce (jamais de
+// pricing invente sans donnee).
+export interface ListingAudit {
+  suggested_title: string;
+  suggested_description: string;
+  keywords: string[];
+  category_note: string;
+  photo_note: string;
+  price: {
+    tier: 'strong' | 'broad' | 'none';
+    comparablesCount: number;
+    freshness: 'recent' | 'acceptable' | 'old' | 'stale' | null;
+    pricing: { price: number; quickPrice: number; premiumPrice: number; dispersion: number | null } | null;
+    confidence: { score: number; level: 'elevee' | 'moyenne' | 'faible' | 'ia_uniquement'; reasons: string[] };
+  } | null;
+}
+
 export interface UsageRecord {
   id: string;
   user_id: string;

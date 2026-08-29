@@ -2,6 +2,7 @@
 import {
   X, Sparkles, RefreshCw, Pencil, UploadCloud, Trash2, FileEdit, Layers,
 } from 'lucide-react';
+import { ListingAuditModal } from '../../../components/listings/ListingAuditModal';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../../contexts/VintedAccountFilterContext';
 import { useToast } from '../../../contexts/ToastContext';
@@ -200,6 +201,9 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   // l'erreur DANS PublishConfirmationModal, voir handleSchedule).
   const [scheduleCancelError, setScheduleCancelError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Listing | null>(null);
+  // Pricer Pro (2026-08-29) : annonce en cours d'audit -- distincte de
+  // editingItem (formulaire d'edition classique), ouvre ListingAuditModal.
+  const [auditingItem, setAuditingItem] = useState<Listing | null>(null);
   // Fiche annonce (Lot "Suivi des annonces") -- distincte de editingItem
   // (formulaire d'edition) : ouvre une vue lecture-seule (etat courant +
   // historique), jamais un formulaire.
@@ -1194,6 +1198,16 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           <Button
             variant="secondary"
             size="sm"
+            icon={<Sparkles className="w-3.5 h-3.5" />}
+            disabled={!singleSelected}
+            title={!singleSelected ? 'Sélectionne une seule annonce pour lancer Pricer Pro' : undefined}
+            onClick={() => singleSelected && setAuditingItem(singleSelected)}
+          >
+            Pricer Pro
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             icon={<UploadCloud className="w-3.5 h-3.5" />}
             disabled={!singleSelected}
             title={!singleSelected ? 'Sélectionne une seule annonce pour la republier' : undefined}
@@ -1492,6 +1506,16 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           onEditListing={() => {
             setEditingItem(detailItem);
             setDetailItem(null);
+          }}
+        />
+      )}
+
+      {auditingItem && (
+        <ListingAuditModal
+          listing={auditingItem}
+          onClose={() => setAuditingItem(null)}
+          onApplied={() => {
+            void refreshAll();
           }}
         />
       )}
