@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
 import { PaintedWord } from './PaintedWord';
@@ -15,6 +16,14 @@ import { PaintedWord } from './PaintedWord';
 //   point sec juste apres "Prends une photo"), taille reduite (etait plus
 //   gros que necessaire pour un sous-texte).
 export function Hero({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
+  // Finition Haute Qualite (2026-08-29) : premier enregistrement d'ecran pas
+  // encore tourne -- le <video> est cable des maintenant (public/videos/
+  // hero-demo.mp4) pour ne pas refaire ce travail plus tard, mais reste
+  // invisible tant que le fichier n'existe pas (onError). Jamais de cadre
+  // video casse pour un vrai visiteur (playbook, Human feel #6 : aucune
+  // anticipation presentee comme acquise).
+  const [hasVideo, setHasVideo] = useState(true);
+
   return (
     <section className="pt-40 pb-28 sm:pt-48 sm:pb-40">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
@@ -51,6 +60,24 @@ export function Hero({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
           </button>
           <p className="text-sm text-gray-600">Sans carte bancaire · 10 annonces offertes</p>
         </div>
+
+        {hasVideo && (
+          <div className="mt-20 max-w-4xl mx-auto">
+            {/* Cadre style navigateur/macOS : encadre un VRAI enregistrement
+                d'ecran du produit, jamais une illustration decorative
+                (playbook, Design principles #2). */}
+            <div className="rounded-xl border border-white/10 shadow-2xl overflow-hidden bg-gray-950">
+              <div className="flex items-center gap-1.5 px-4 py-3">
+                <span className="w-3 h-3 rounded-full bg-red-500/70" aria-hidden="true" />
+                <span className="w-3 h-3 rounded-full bg-yellow-500/70" aria-hidden="true" />
+                <span className="w-3 h-3 rounded-full bg-green-500/70" aria-hidden="true" />
+              </div>
+              <video className="w-full h-auto block" autoPlay muted loop playsInline onError={() => setHasVideo(false)}>
+                <source src="/videos/hero-demo.mp4" type="video/mp4" />
+              </video>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

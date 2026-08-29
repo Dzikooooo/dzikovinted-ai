@@ -128,11 +128,13 @@ const FEATURES = [
 export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
   if (kind === 'insights') {
     return (
-      <img
-        src={screenshotInsights}
-        alt="Scan d'opportunités du Copilote : 211 détectées, +58 € de profit moyen, +116 % de ROI moyen"
-        className="rounded-2xl border border-gray-200 w-full h-72 object-cover object-top"
-      />
+      <div className="rounded-2xl border border-gray-200 overflow-hidden">
+        <img
+          src={screenshotInsights}
+          alt="Scan d'opportunités du Copilote : 211 détectées, +58 € de profit moyen, +116 % de ROI moyen"
+          className="w-full h-72 object-cover object-top transition-transform duration-500 ease-out hover:scale-105"
+        />
+      </div>
     );
   }
   if (kind === 'generator') {
@@ -182,20 +184,24 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
   }
   if (kind === 'communication') {
     return (
-      <img
-        src={screenshotCommunication}
-        alt="Relance favoris : messages préparés avec offres -5 %/-10 %, prêts à copier sur Vinted"
-        className="rounded-2xl border border-gray-200 w-full h-72 object-cover object-top"
-      />
+      <div className="rounded-2xl border border-gray-200 overflow-hidden">
+        <img
+          src={screenshotCommunication}
+          alt="Relance favoris : messages préparés avec offres -5 %/-10 %, prêts à copier sur Vinted"
+          className="w-full h-72 object-cover object-top transition-transform duration-500 ease-out hover:scale-105"
+        />
+      </div>
     );
   }
   if (kind === 'stock') {
     return (
-      <img
-        src={screenshotStock}
-        alt="Mes annonces : statuts réels, valeur du stock et chiffre d'affaires à jour"
-        className="rounded-2xl border border-gray-200 w-full h-72 object-cover object-top"
-      />
+      <div className="rounded-2xl border border-gray-200 overflow-hidden">
+        <img
+          src={screenshotStock}
+          alt="Mes annonces : statuts réels, valeur du stock et chiffre d'affaires à jour"
+          className="w-full h-72 object-cover object-top transition-transform duration-500 ease-out hover:scale-105"
+        />
+      </div>
     );
   }
   return (
