@@ -18,26 +18,47 @@ import "./popup.css";
 // est deja true (voir pairing.ts::getStatus -- le cas non-apparie renvoie
 // toujours lastError: null), donc le controler en premier ne masque jamais
 // le cas "jamais apparie".
+// Bug live 2026-08-29 : le popup restait bloque sur "Verification du
+// statut" MEME apres le correctif de timeout cote background (session.ts/
+// pairing.ts). Cause distincte trouvee ici : `refresh()` n'avait AUCUNE
+// gestion d'erreur autour de chrome.runtime.sendMessage() lui-meme. Le
+// correctif de timeout protege ce qui se passe A L'INTERIEUR du handler
+// GET_STATUS (getStatus() qui pend) -- il ne protege rien si le MESSAGE
+// n'atteint jamais un handler actif du tout (service worker pas encore
+// pret, ou rejet immediat type "Could not establish connection"/
+// "Extension context invalidated" apres un rechargement). Dans ce cas,
+// `await chrome.runtime.sendMessage(...)` REJETTE avant meme d'atteindre
+// `setLoading(false)` -- sans try/catch/finally, le popup restait bloque
+// en `loading: true` pour toujours, un symptome IDENTIQUE mais une cause
+// totalement differente du bug deja corrige cote background.
 function useStatus() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [communicationError, setCommunicationError] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
-    const response = (await chrome.runtime.sendMessage({ type: "GET_STATUS" })) as StatusResponse;
-    setStatus(response);
-    setLoading(false);
+    setCommunicationError(false);
+    try {
+      const response = (await chrome.runtime.sendMessage({ type: "GET_STATUS" })) as StatusResponse;
+      setStatus(response);
+    } catch (err) {
+      logger.error("GET_STATUS (popup) : sendMessage a echoue", err instanceof Error ? err.message : String(err));
+      setCommunicationError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     void refresh();
   }, []);
 
-  return { status, loading, refresh };
+  return { status, loading, communicationError, refresh };
 }
 
 export default function Popup() {
-  const { status, loading, refresh } = useStatus();
+  const { status, loading, communicationError, refresh } = useStatus();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [working, setWorking] = useState(false);
 
@@ -47,7 +68,11 @@ export default function Popup() {
 
   const handleUnpair = async () => {
     setWorking(true);
-    await chrome.runtime.sendMessage({ type: "UNPAIR" });
+    try {
+      await chrome.runtime.sendMessage({ type: "UNPAIR" });
+    } catch (err) {
+      logger.error("UNPAIR (popup) : sendMessage a echoue", err instanceof Error ? err.message : String(err));
+    }
     await refresh();
     setWorking(false);
   };
@@ -76,9 +101,23 @@ export default function Popup() {
         </div>
       )}
 
-      {!loading && status && <StatusSection status={status} />}
+      {!loading && communicationError && (
+        <StatusCard
+          icon={AlertTriangle}
+          tone="warning"
+          title="Communication impossible"
+          description="Impossible de contacter l'extension en arrière-plan. Recharge l'extension depuis chrome://extensions, puis réessaie."
+        />
+      )}
+      {!loading && communicationError && (
+        <PopupButton variant="ghost" onClick={() => void refresh()}>
+          Réessayer
+        </PopupButton>
+      )}
 
-      {!loading && status?.paired && (
+      {!loading && !communicationError && status && <StatusSection status={status} />}
+
+      {!loading && !communicationError && status?.paired && (
         <PopupButton variant="danger" loading={working} onClick={() => void handleUnpair()}>
           Déconnecter l'extension
         </PopupButton>
