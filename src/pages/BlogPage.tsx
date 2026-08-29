@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import {
   User, Sparkles, Code2, Rss, Newspaper,
   Target, ShieldCheck, Layers, Mail, ArrowRight, Check, X,
-  Puzzle, Bot, ImageIcon, LayoutDashboard, Globe, Phone, Send, CheckCircle2,
+  Puzzle, Bot, Globe, Phone, Send, CheckCircle2,
   type LucideIcon,
 } from 'lucide-react';
 import type { AppPage } from '../lib/types';
@@ -82,17 +82,6 @@ const COULISSES = [
   { icon: ShieldCheck, title: 'Confirmation manuelle', description: "Rien ne se modifie sur ton compte Vinted sans que tu le valides toi-même -- un choix assumé, pas une limite qu'on subit." },
 ];
 
-// Emplacements reserves pour de vraies captures (audit personnel utilisateur,
-// 2026-08-03) -- design pret des maintenant, jamais de fausse capture
-// generee en attendant. Libelles precises (retour du 2026-08-04) : chaque
-// emplacement dit precisement ce qu'il accueillera plus tard.
-const COULISSES_PREVIEWS = [
-  { icon: LayoutDashboard, label: 'Dashboard' },
-  { icon: Puzzle, label: 'Extension Chrome' },
-  { icon: Bot, label: "Résultat généré par l'IA" },
-  { icon: Code2, label: "Aperçu de l'environnement de développement" },
-];
-
 // Timeline retracant le parcours -- ages precis (retour utilisateur
 // 2026-08-04, remplace la version generique) : mêmes faits que "Qui je
 // suis" ci-dessous, juste une lecture rapide en complement du texte.
@@ -144,8 +133,6 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
   const [teamForm, setTeamForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [teamSubmitted, setTeamSubmitted] = useState(false);
-  const [teamError, setTeamError] = useState<string | null>(null);
-
   // Deep-link vers l'onglet Changelog de l'espace Communaute -- meme
   // technique que resellos:blogSection (sessionStorage lu une seule fois au
   // montage de DashboardLayout, cf. la meme note StrictMode). Corrige un bug
@@ -160,21 +147,47 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
     onNavigate('dashboard');
   };
 
+  // Corrige le 2026-08-29 : l'insert Supabase seul ne routait vers AUCUNE
+  // boite mail -- aucun trigger/webhook/Edge Function n'etait branche sur
+  // team_applications (verifie dans supabase/migrations et supabase/
+  // functions), et la table n'a qu'une policy INSERT, jamais de lecture
+  // cote client. La candidature dormait donc dans une table que personne
+  // ne consultait automatiquement. Meme technique que ContactModal.tsx
+  // (seul mecanisme d'envoi d'email deja fonctionnel dans ce repo, aucun
+  // service tiers a payer/configurer) : un mailto: prerempli, ouvert dans
+  // le client mail de la personne qui postule -- ca fait reellement
+  // arriver le message sur resellosapp@gmail.com des aujourd'hui.
+  // L'insert Supabase est conserve comme trace durable en plus (best-
+  // effort, jamais bloquant : si Supabase est indisponible, le mail part
+  // quand meme, c'est desormais le canal principal).
   const handleTeamApplicationSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setTeamSubmitting(true);
-    setTeamError(null);
+
+    const subject = encodeURIComponent('Candidature -- rejoindre les coulisses de Resell OS');
+    const body = encodeURIComponent(
+      [
+        'Candidature "rejoindre les coulisses" depuis la page A propos de Resell OS.',
+        '',
+        `Prénom : ${teamForm.firstName.trim()}`,
+        `Nom : ${teamForm.lastName.trim()}`,
+        `Email : ${teamForm.email.trim()}`,
+        `Téléphone : ${teamForm.phone.trim() || '-'}`,
+      ].join('\n')
+    );
+    window.location.href = `mailto:resellosapp@gmail.com?subject=${subject}&body=${body}`;
+
     const { error } = await supabase.from('team_applications').insert({
       first_name: teamForm.firstName.trim(),
       last_name: teamForm.lastName.trim(),
       email: teamForm.email.trim(),
       phone: teamForm.phone.trim() || null,
     });
-    setTeamSubmitting(false);
     if (error) {
-      setTeamError("Impossible d'envoyer ta candidature pour le moment. Réessaie plus tard.");
-      return;
+      console.error('team_applications insert failed', error);
     }
+
+    setTeamSubmitting(false);
     setTeamSubmitted(true);
   };
 
@@ -420,21 +433,12 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     ))}
                   </div>
 
-                  {/* Emplacement reserve pour de vraies captures, pas encore
-                      integrees (demande produit 2026-08-03). */}
-                  <p className="text-xs font-mono uppercase tracking-wider text-gray-500 font-bold mb-5">Aperçus à venir</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {COULISSES_PREVIEWS.map(({ icon: Icon, label }) => (
-                      <div
-                        key={label}
-                        className="aspect-[4/3] rounded-2xl border border-dashed border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-2.5 text-center px-3"
-                      >
-                        <Icon className="w-5 h-5 text-gray-500" />
-                        <ImageIcon className="w-3.5 h-3.5 text-gray-700" />
-                        <p className="text-[11px] text-gray-500">{label}</p>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Grille "Apercus a venir" retiree (retour 2026-08-29) :
+                      des cadres en pointilles + icone image lisaient comme
+                      des vignettes cassees plutot que comme des emplacements
+                      reserves assumes -- retire plutot que redesigne, cf.
+                      Features.tsx qui porte deja les vraies captures produit
+                      pour les modules qui en ont. */}
 
                   {/* Candidature "rejoindre les coulisses" -- capture reelle,
                       traitement manuel par email (demande produit
@@ -449,9 +453,13 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                     </p>
 
                     {teamSubmitted ? (
-                      <div className="flex items-center gap-3 text-sm text-neon-500 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3.5">
-                        <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                        Candidature envoyée -- je reviens vers toi par email.
+                      <div className="flex items-start gap-3 text-sm text-neon-500 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3.5">
+                        <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                        <span>
+                          Ton client mail s'est ouvert avec ta candidature déjà remplie. Vérifie qu'un message est
+                          bien prêt à partir vers resellosapp@gmail.com -- si rien ne s'est ouvert, écris-nous
+                          directement à cette adresse.
+                        </span>
                       </div>
                     ) : (
                       <form onSubmit={handleTeamApplicationSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -498,8 +506,6 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
                             className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
                           />
                         </div>
-
-                        {teamError && <p className="sm:col-span-2 text-sm text-red-700">{teamError}</p>}
 
                         <button
                           type="submit"
