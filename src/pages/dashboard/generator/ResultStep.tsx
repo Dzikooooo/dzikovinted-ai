@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowLeft, CheckCircle2, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Sparkles, Star, Tag, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Sparkles, Star, Tag, TrendingUp } from 'lucide-react';
 import type { GeneratedListing } from '../../../lib/types';
 import { CopyBtn } from '../../../components/ui/CopyBtn';
 import { FieldCard } from '../../../components/ui/FieldCard';
@@ -14,11 +14,18 @@ interface ResultStepProps {
   onSave: () => void;
   saving: boolean;
   saved: boolean;
+  // "En attente" (2026-08-30) : action secondaire distincte de "Sauvegarder"
+  // -- ecrit listings.status='en_attente' au lieu du comportement normal
+  // (voir GeneratorPage.tsx::handleSave). saved/saving restent reserves a la
+  // sauvegarde complete classique, jamais melanges avec cet etat.
+  onSavePending: () => void;
+  savingPending: boolean;
+  savedPending: boolean;
   onGoToStock: () => void;
   onCreateNew: () => void;
 }
 
-export function ResultStep({ result, images, error, onReset, onEdit, onSave, saving, saved, onGoToStock, onCreateNew }: ResultStepProps) {
+export function ResultStep({ result, images, error, onReset, onEdit, onSave, saving, saved, onSavePending, savingPending, savedPending, onGoToStock, onCreateNew }: ResultStepProps) {
   const handleCopyAll = () => {
     const t = [
       result.title, '',
@@ -57,6 +64,16 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
             Modifier
           </Button>
           <Button
+            variant={savedPending ? 'success' : 'secondary'}
+            size="sm"
+            icon={<Clock className="w-4 h-4" />}
+            loading={savingPending}
+            disabled={saved}
+            onClick={onSavePending}
+          >
+            {savedPending ? 'En attente !' : savingPending ? 'Enregistrement...' : 'Enregistrer en attente'}
+          </Button>
+          <Button
             variant={saved ? 'success' : 'primary'}
             size="sm"
             icon={<Save className="w-4 h-4" />}
@@ -80,11 +97,13 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           principales plutot que laisser l'utilisateur seul face a
           l'annonce deja enregistree (decision produit validee le
           2026-07-24, audit du parcours Generateur). */}
-      {saved && (
+      {(saved || savedPending) && (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-neon-500/10 border border-neon-500/20 rounded-xl px-4 py-3.5 mb-6">
           <div className="flex items-center gap-3">
             <CheckCircle2 className="w-4 h-4 text-neon-500 flex-shrink-0" />
-            <p className="text-sm text-neon-500">Annonce enregistrée dans Mes annonces.</p>
+            <p className="text-sm text-neon-500">
+              {savedPending ? 'Annonce enregistrée en attente dans Mes annonces.' : 'Annonce enregistrée dans Mes annonces.'}
+            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Button size="sm" icon={<Package className="w-3.5 h-3.5" />} onClick={onGoToStock}>

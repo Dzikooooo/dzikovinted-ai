@@ -21,6 +21,8 @@ function renderStep(over: Partial<React.ComponentProps<typeof UploadStep>> = {})
     credits: 8,
     limit: 10,
     unlimitedCredits: false,
+    backgroundStyle: 'original',
+    onBackgroundStyleChange: vi.fn(),
     onGenerate: noop,
     ...over,
   };
@@ -158,5 +160,29 @@ describe('UploadStep -- grille et action', () => {
 
     const msg = screen.getByText('Analyse impossible');
     expect(msg.className).toContain('text-red-700');
+  });
+});
+
+describe('UploadStep -- fond de photo genere (2026-08-30)', () => {
+  it("n'affiche aucun avertissement de latence sur 'original' (defaut)", () => {
+    renderStep({ images: ['blob:a'] });
+
+    expect(screen.queryByText(/réellement généré par IA/i)).toBeNull();
+  });
+
+  it('avertit du cout/latence des qu\'un vrai fond est choisi', () => {
+    renderStep({ images: ['blob:a'], backgroundStyle: 'blanc_studio' });
+
+    expect(screen.getByText(/réellement généré par IA/i)).toBeTruthy();
+  });
+
+  it('propage le changement de fond selectionne', async () => {
+    const onBackgroundStyleChange = vi.fn();
+    const user = userEvent.setup();
+    renderStep({ images: ['blob:a'], onBackgroundStyleChange });
+
+    await user.selectOptions(screen.getByLabelText('Fond des photos'), 'marbre_clair');
+
+    expect(onBackgroundStyleChange).toHaveBeenCalledWith('marbre_clair');
   });
 });

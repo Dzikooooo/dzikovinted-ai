@@ -260,7 +260,11 @@ export interface Listing {
 purchase_date: string | null;
 purchase_location: string | null;
 
-status: 'draft' | 'en_stock' | 'vendu';
+// 'en_attente' (2026-08-30) : annonce en construction depuis le Generateur
+// (bouton "Enregistrer en attente"), jamais publiee, distincte du brouillon
+// 'draft' (deja existant) -- voir migration 20260830100000 et
+// src/lib/listingStatus.ts::isActivelyInStock pour la semantique complete.
+status: 'draft' | 'en_stock' | 'vendu' | 'en_attente';
 
 sold_price: number | null;
 sold_date: string | null;
@@ -334,28 +338,49 @@ export interface GeneratedListing {
   market_confidence_level: 'elevee' | 'moyenne' | 'faible' | 'ia_uniquement';
   market_confidence_score: number;
   market_freshness: 'recent' | 'acceptable' | 'old' | 'stale' | null;
+  // Fond de photo genere (2026-08-30, voir supabase/functions/analyze-clothing/
+  // backgroundStyles.ts) -- `null` tant qu'aucune edition de fond n'a ete
+  // demandee (valeur par defaut 'original'), sinon les photos REELLEMENT
+  // editees (memes URL data: base64 que les originales), dans le meme ordre
+  // que `images` cote GeneratorPage.tsx.
+  edited_image_urls: string[] | null;
 }
 
-// Pricer Pro -- audit d'une annonce DEJA PUBLIEE (2026-08-29, voir
-// supabase/functions/audit-listing/index.ts). Distinct de GeneratedListing :
-// pas de photo/couleur/taille/matiere (l'annonce existe deja avec ces
-// champs), uniquement ce que Gemini peut honnetement evaluer en texte seul
-// (titre/description/SEO) + le Market Engine partage pour le prix. `price`
-// est `null` des que brand ou category manque sur l'annonce (jamais de
-// pricing invente sans donnee).
-export interface ListingAudit {
-  suggested_title: string;
-  suggested_description: string;
-  keywords: string[];
-  category_note: string;
-  photo_note: string;
-  price: {
-    tier: 'strong' | 'broad' | 'none';
-    comparablesCount: number;
-    freshness: 'recent' | 'acceptable' | 'old' | 'stale' | null;
-    pricing: { price: number; quickPrice: number; premiumPrice: number; dispersion: number | null } | null;
-    confidence: { score: number; level: 'elevee' | 'moyenne' | 'faible' | 'ia_uniquement'; reasons: string[] };
-  } | null;
+export type BackgroundStyle = 'original' | 'blanc_studio' | 'lifestyle_neutre' | 'beige_gres' | 'marbre_clair';
+
+// Audit du compte Vinted (2026-08-30, remplace Pricer Pro) -- voir
+// supabase/functions/audit-account/{stats,prompt,index}.ts. `stats` est
+// deterministe (calcule en code cote serveur, jamais devine par Gemini) ;
+// `summary`/`recommendations` sont le texte genere par Gemini a partir de
+// `stats` uniquement.
+export interface AccountAuditStats {
+  totalListings: number;
+  activeCount: number;
+  draftCount: number;
+  pendingCount: number;
+  soldCount: number;
+  missingDescriptionCount: number;
+  noPhotoCount: number;
+  singlePhotoCount: number;
+  agingActiveCount: number;
+  needsRepublishCount: number;
+  avgPhotoCount: number;
+  topCategory: string | null;
+  topBrand: string | null;
+  score: number;
+}
+
+export interface AccountAuditRecommendation {
+  category: string;
+  severity: 'haute' | 'moyenne' | 'basse';
+  message: string;
+}
+
+export interface AccountAudit {
+  generated_at: string;
+  stats: AccountAuditStats;
+  summary: string;
+  recommendations: AccountAuditRecommendation[];
 }
 
 export interface UsageRecord {

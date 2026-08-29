@@ -1,8 +1,7 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
 import {
-  X, Sparkles, RefreshCw, Pencil, UploadCloud, Trash2, FileEdit, Layers,
+  X, Sparkles, RefreshCw, Pencil, UploadCloud, Trash2, FileEdit, Layers, Clock,
 } from 'lucide-react';
-import { ListingAuditModal } from '../../../components/listings/ListingAuditModal';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../../contexts/VintedAccountFilterContext';
 import { useToast } from '../../../contexts/ToastContext';
@@ -25,6 +24,7 @@ import PublishConfirmationModal, { type PackageSize } from '../../../components/
 import PublishProgressModal from '../../../components/publish/PublishProgressModal';
 import { EditListingModal } from '../../../components/stock/EditListingModal';
 import { ListingDetailModal } from '../../../components/listings/ListingDetailModal';
+import { AccountAuditModal } from '../../../components/listings/AccountAuditModal';
 import { isExtensionConfigured, pingExtension, RUN_ACTION_TIMEOUT_ERROR, syncVintedAccount, type SyncStep } from '../../../lib/extensionBridge';
 import { describeSyncResult } from '../../../lib/syncResultMessage';
 import { formatRelativeSync } from '../../../lib/formatRelativeTime';
@@ -71,7 +71,7 @@ function toUiSchedule(row: RepublishScheduleRow | undefined): RepublishSchedule 
   return { mode: 'scheduled', date, time, packageSize: row.package_size };
 }
 
-type ManagementTab = 'annonces' | 'republication';
+type ManagementTab = 'annonces' | 'republication' | 'en_attente';
 type StatusFilter = 'all' | 'online' | 'reserved' | 'sold_pending' | 'sold_completed' | 'draft' | 'hidden' | 'unknown';
 
 const FILTERS: { key: StatusFilter; label: string }[] = [
@@ -201,9 +201,10 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   // l'erreur DANS PublishConfirmationModal, voir handleSchedule).
   const [scheduleCancelError, setScheduleCancelError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Listing | null>(null);
-  // Pricer Pro (2026-08-29) : annonce en cours d'audit -- distincte de
-  // editingItem (formulaire d'edition classique), ouvre ListingAuditModal.
-  const [auditingItem, setAuditingItem] = useState<Listing | null>(null);
+  // Audit du compte Vinted (2026-08-30, remplace Pricer Pro) : action de
+  // niveau compte, jamais dependante d'une selection -- distincte de
+  // auditingItem (qui n'existe plus).
+  const [auditingAccount, setAuditingAccount] = useState(false);
   // Fiche annonce (Lot "Suivi des annonces") -- distincte de editingItem
   // (formulaire d'edition) : ouvre une vue lecture-seule (etat courant +
   // historique), jamais un formulaire.
@@ -325,21 +326,34 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   // change -> loadGridPage change -> effet redeclenche -> fetch...).
   const loadGridPage = useCallback(
     async (offset: number, mode: 'reset' | 'append') => {
-      if (!user || tab !== 'annonces') return;
+      if (!user || (tab !== 'annonces' && tab !== 'en_attente')) return;
       setPageLoading(true);
       let query = supabase
         .from('listings')
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
-        .or('vinted_status.neq.deleted,vinted_status.is.null')
-        .neq('status', 'vendu')
         .order('created_at', { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
-      if (selectedAccountId !== 'all') {
-        query = query.eq('vinted_account_id', selectedAccountId);
-      }
-      if (filter !== 'all') {
-        query = query.eq('vinted_status', filter);
+
+      if (tab === 'en_attente') {
+        // Rubrique "En attente" (2026-08-30) : jamais publiees, donc jamais
+        // rattachees a un compte Vinted precis -- le filtre de compte du
+        // bandeau du haut ne s'applique pas ici (sinon selectionner un
+        // compte precis viderait systematiquement cet onglet, puisque
+        // vinted_account_id y est toujours NULL). Meme raison pour le pilote
+        // de statut Vinted (FILTERS), masque cote UI pour cet onglet.
+        query = query.eq('status', 'en_attente');
+      } else {
+        query = query
+          .or('vinted_status.neq.deleted,vinted_status.is.null')
+          .neq('status', 'vendu')
+          .neq('status', 'en_attente');
+        if (selectedAccountId !== 'all') {
+          query = query.eq('vinted_account_id', selectedAccountId);
+        }
+        if (filter !== 'all') {
+          query = query.eq('vinted_status', filter);
+        }
       }
       const q = debouncedSearch.trim();
       if (q) {
@@ -987,7 +1001,8 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
   // Annonces : `pageItems` vient directement de loadGridPage() (recherche/
   // filtre/pagination deja appliques server-side) -- plus aucun .filter()/
   // .slice() en memoire ici. Republication : mecanisme client-side inchange.
-  const isServerPaginated = tab === 'annonces';
+  const pendingCount = items.filter((item) => item.status === 'en_attente').length;
+  const isServerPaginated = tab === 'annonces' || tab === 'en_attente';
   const displayedItems = isServerPaginated ? pageItems : filteredRepublicationList.slice(0, visibleCount);
   const hasMore = isServerPaginated ? hasMorePages : filteredRepublicationList.length > visibleCount;
   const isGridLoading = isServerPaginated ? pageLoading : loading;
@@ -1166,10 +1181,24 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             onClick={() => setTab('republication')}
             icon={<RefreshCw className="w-3.5 h-3.5" />}
           />
+          <FilterPill
+            label={`En attente${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+            active={tab === 'en_attente'}
+            onClick={() => setTab('en_attente')}
+            icon={<Clock className="w-3.5 h-3.5" />}
+          />
         </div>
         {/* "Tout selectionner" a rejoint la barre d'outils unifiee plus bas :
             il y est aux cotes de la recherche et du filtre, avec lesquels il
             partage le meme perimetre (ce qui est visible a l'ecran). */}
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Sparkles className="w-3.5 h-3.5" />}
+          onClick={() => setAuditingAccount(true)}
+        >
+          Auditer mon compte
+        </Button>
       </div>
 
       {loadError && <ErrorBanner message={loadError} className="mb-4" />}
@@ -1194,16 +1223,6 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
             onClick={() => singleSelected && setEditingItem(singleSelected)}
           >
             Modifier
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Sparkles className="w-3.5 h-3.5" />}
-            disabled={!singleSelected}
-            title={!singleSelected ? 'Sélectionne une seule annonce pour lancer Pricer Pro' : undefined}
-            onClick={() => singleSelected && setAuditingItem(singleSelected)}
-          >
-            Pricer Pro
           </Button>
           <Button
             variant="secondary"
@@ -1248,17 +1267,25 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           placeholder="Rechercher un article..."
           className="flex-1 min-w-0"
         />
-        <label className="sr-only" htmlFor="listing-status-filter">Filtrer par statut</label>
-        <select
-          id="listing-status-filter"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as StatusFilter)}
-          className="bg-surface border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 sm:w-48 flex-shrink-0"
-        >
-          {FILTERS.map(({ key, label }) => (
-            <option key={key} value={key}>{label}</option>
-          ))}
-        </select>
+        {/* Pilote un statut Vinted (vinted_status) -- sans objet pour l'onglet
+            "En attente" : ces annonces ne sont jamais encore publiees, donc
+            n'ont jamais de vinted_status (voir loadGridPage, qui ignore deja
+            ce filtre pour cet onglet cote requete). */}
+        {tab !== 'en_attente' && (
+          <>
+            <label className="sr-only" htmlFor="listing-status-filter">Filtrer par statut</label>
+            <select
+              id="listing-status-filter"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as StatusFilter)}
+              className="bg-surface border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 sm:w-48 flex-shrink-0"
+            >
+              {FILTERS.map(({ key, label }) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </>
+        )}
         <button
           onClick={toggleSelectAll}
           disabled={displayedItems.length === 0}
@@ -1275,12 +1302,14 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         </div>
       ) : displayedItems.length === 0 ? (
         <EmptyState
-          icon={tab === 'republication' ? RefreshCw : Sparkles}
-          title={tab === 'republication' ? 'Rien à republier' : 'Aucun article'}
+          icon={tab === 'republication' ? RefreshCw : tab === 'en_attente' ? Clock : Sparkles}
+          title={tab === 'republication' ? 'Rien à republier' : tab === 'en_attente' ? 'Rien en attente' : 'Aucun article'}
           description={
             tab === 'republication'
               ? 'Toutes tes annonces en stock sont déjà en ligne sur Vinted.'
-              : 'Ajoute un article depuis le générateur, ou synchronise un compte Vinted.'
+              : tab === 'en_attente'
+                ? 'Enregistre une annonce "en attente" depuis le Générateur IA pour la retrouver ici.'
+                : 'Ajoute un article depuis le générateur, ou synchronise un compte Vinted.'
           }
         />
       ) : (
@@ -1510,15 +1539,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         />
       )}
 
-      {auditingItem && (
-        <ListingAuditModal
-          listing={auditingItem}
-          onClose={() => setAuditingItem(null)}
-          onApplied={() => {
-            void refreshAll();
-          }}
-        />
-      )}
+      {auditingAccount && <AccountAuditModal onClose={() => setAuditingAccount(false)} />}
 
       {pendingUpdate && (
         <Modal onClose={() => setPendingUpdate(null)} size="sm">

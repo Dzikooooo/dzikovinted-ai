@@ -123,8 +123,8 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
         <p className="text-xs text-gray-500 truncate">{[item.brand, item.category, item.size].filter(Boolean).join(' · ') || '—'}</p>
 
         <div className="flex items-center gap-2 mt-2 flex-wrap">
-          <span className={`text-[11px] ${isSold ? 'text-green-700' : 'text-neon-500'}`}>
-            {isSold ? 'Vendu' : item.status === 'draft' ? 'Brouillon' : 'En stock'}
+          <span className={`text-[11px] ${isSold ? 'text-green-700' : item.status === 'en_attente' ? 'text-amber-700' : 'text-neon-500'}`}>
+            {isSold ? 'Vendu' : item.status === 'draft' ? 'Brouillon' : item.status === 'en_attente' ? 'En attente' : 'En stock'}
           </span>
           {aging && (
             <span className="flex items-center gap-1 text-[11px] text-amber-700">

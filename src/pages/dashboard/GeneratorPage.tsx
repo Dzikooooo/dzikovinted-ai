@@ -6,7 +6,7 @@ import { analyzeWithAI } from '../../lib/aiService';
 import { uploadListingPhotos } from '../../lib/storage';
 import { stripSkuSuffix } from '../../lib/sku';
 import { translateGeneratorError } from '../../lib/errorMessages';
-import type { DashboardPage, GeneratedListing } from '../../lib/types';
+import type { BackgroundStyle, DashboardPage, GeneratedListing } from '../../lib/types';
 import { PLAN_LIMITS, PLAN_PHOTO_LIMITS } from '../../lib/types';
 import { UploadStep } from './generator/UploadStep';
 import { LoadingStep } from './generator/LoadingStep';
@@ -24,16 +24,23 @@ interface GeneratorPageProps {
 export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPageProps) {
   const [step, setStep] = useState<GenStep>('upload');
   const [images, setImages] = useState<string[]>([]);
-  // Reglages non encore branches cote backend (voir UploadStep.tsx) --
-  // valeurs fixes plutot que du state editable tant qu'ils n'ont aucun
-  // effet reel sur la generation.
+  // photo_style/enhance_photo restent des reglages fixes, jamais branches a
+  // une UI -- contrairement a backgroundStyle ci-dessous (refonte
+  // Generateur, 2026-08-30), c'est le seul des deux qui produit un vrai
+  // effet (edition reelle de la photo, voir analyze-clothing/backgroundStyles.ts).
   const photoStyle = 'white';
   const enhancePhoto = true;
+  const [backgroundStyle, setBackgroundStyle] = useState<BackgroundStyle>('original');
   const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<GeneratedListing | null>(null);
   const [editForm, setEditForm] = useState<GeneratedListing | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // "En attente" (2026-08-30) : distingue laquelle des deux actions a
+  // produit l'etat `saved` actuel, pour afficher le bon libelle de
+  // confirmation cote ResultStep.tsx sans dupliquer saved/saving.
+  const [savedAsPending, setSavedAsPending] = useState(false);
+  const [savingPending, setSavingPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Cible de la mise a jour (update) plutot que d'une nouvelle insertion
   // une fois le premier enregistrement reussi -- evite la creation d'un
@@ -112,7 +119,19 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         photoStyle,
         enhancePhoto,
         geminiKey: openaiKey,
+        backgroundStyle,
       });
+      // Fond de photo genere (2026-08-30) : remplace les photos LOCALES par
+      // les versions reellement editees des que le serveur en renvoie --
+      // ResultStep/EditStep (via `images`) et la sauvegarde (uploadListingPhotos,
+      // handleSave ci-dessous) utilisent alors directement ces nouvelles
+      // photos, jamais les originales. `durableImageUrls` reste `null` ici
+      // (jamais pose avant ce point) : le premier upload ci-dessous portera
+      // donc bien les photos editees, pas les originales deja affichees puis
+      // remplacees.
+      if (generated.edited_image_urls && generated.edited_image_urls.length > 0) {
+        setImages(generated.edited_image_urls);
+      }
       setResult(generated);
       setEditForm({ ...generated });
       setStep('result');
@@ -130,9 +149,20 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
     }
   };
 
-  const handleSave = async () => {
+  // asPending (2026-08-30, rubrique "En attente") : true uniquement quand
+  // l'utilisateur choisit explicitement "Enregistrer en attente" -- ecrit
+  // status='en_attente' a l'insertion. Sur une mise a jour (savedListingId
+  // deja pose), `status` ne fait PAS partie de `fields` par defaut : omettre
+  // la cle dans un .update() Supabase laisse la valeur existante intacte,
+  // jamais ecrasee silencieusement -- une annonce deja publiee (status
+  // 'en_stock') qu'on re-sauvegarde depuis l'ecran d'edition ne peut donc
+  // jamais retomber en 'en_attente' par ce chemin. asPending force malgre
+  // tout la cle sur l'UPDATE aussi : re-cliquer "Enregistrer en attente"
+  // apres un premier passage doit rester coherent avec ce qu'il affiche.
+  const handleSave = async (asPending = false) => {
     if (!editForm || !user) return;
-    setSaving(true);
+    if (asPending) setSavingPending(true);
+    else setSaving(true);
     setError(null);
     try {
       const imageUrls = durableImageUrls ?? (await uploadListingPhotos(user.id, images));
@@ -157,6 +187,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         keywords: editForm.keywords,
         vinted_filters: editForm.vinted_filters,
         image_urls: imageUrls,
+        ...(asPending ? { status: 'en_attente' as const } : {}),
       };
 
       if (savedListingId) {
@@ -183,12 +214,14 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         setSavedListingId(data.id);
       }
       setSaved(true);
+      setSavedAsPending(asPending);
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Erreur lors de l\'envoi des photos';
       console.error('Photo upload error:', raw);
       setError(translateGeneratorError(raw));
     } finally {
       setSaving(false);
+      setSavingPending(false);
     }
   };
 
@@ -201,6 +234,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
     // de champ via ce handler invalide l'etat "sauvegarde", pas les autres
     // interactions de l'ecran d'edition (ex. ouvrir "Modifier" seul).
     setSaved(false);
+    setSavedAsPending(false);
   };
 
   const resetAll = () => {
@@ -209,6 +243,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
     setResult(null);
     setEditForm(null);
     setSaved(false);
+    setSavedAsPending(false);
     setError(null);
     setSavedListingId(null);
     setDurableImageUrls(null);
@@ -225,6 +260,8 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         credits={credits}
         limit={limit}
         unlimitedCredits={unlimitedCredits}
+        backgroundStyle={backgroundStyle}
+        onBackgroundStyleChange={setBackgroundStyle}
         onGenerate={handleGenerate}
       />
     );
@@ -261,9 +298,12 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
           error={error}
           onReset={resetAll}
           onEdit={() => setStep('edit')}
-          onSave={handleSave}
+          onSave={() => handleSave(false)}
           saving={saving}
-          saved={saved}
+          saved={saved && !savedAsPending}
+          onSavePending={() => handleSave(true)}
+          savingPending={savingPending}
+          savedPending={saved && savedAsPending}
           onGoToStock={() => onNavigate('watchlist')}
           onCreateNew={resetAll}
         />

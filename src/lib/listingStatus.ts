@@ -8,8 +8,12 @@ import type { Listing } from './types';
 // par article qui doivent continuer a l'afficher.
 const NOT_ACTIVELY_IN_STOCK: ReadonlySet<string> = new Set(['reserved', 'sold_pending']);
 
+// 'en_attente' (2026-08-30) : annonce encore en construction depuis le
+// Generateur, jamais publiee -- ne represente aucun stock reel tant qu'elle
+// n'a pas ete finalisee/publiee (voir GeneratorPage.tsx), exclue des memes
+// KPI que 'vendu' (valeur du stock, articles en ligne...).
 export function isActivelyInStock(item: Listing): boolean {
-  return item.status !== 'vendu' && !NOT_ACTIVELY_IN_STOCK.has(item.vinted_status ?? '');
+  return item.status !== 'vendu' && item.status !== 'en_attente' && !NOT_ACTIVELY_IN_STOCK.has(item.vinted_status ?? '');
 }
 
 // Annonces jamais publiees ou plus visibles sur Vinted, mais toujours en

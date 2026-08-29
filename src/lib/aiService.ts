@@ -1,4 +1,4 @@
-import type { GeneratedListing } from './types';
+import type { BackgroundStyle, GeneratedListing } from './types';
 import { supabase } from './supabase';
 
 async function blobUrlToBase64(blobUrl: string): Promise<string> {
@@ -19,6 +19,10 @@ type AnalyzeOptions = {
   photoStyle: string;
   enhancePhoto: boolean;
   geminiKey?: string;
+  // Fond de photo genere (2026-08-30) : 'original' (ou absent) = aucune
+  // edition, comportement inchange -- voir backgroundStyles.ts cote Deno
+  // pour l'allowlist complete.
+  backgroundStyle?: BackgroundStyle;
 };
 
 export async function analyzeWithAI({
@@ -26,6 +30,7 @@ export async function analyzeWithAI({
   photoStyle,
   enhancePhoto,
   geminiKey,
+  backgroundStyle,
 }: AnalyzeOptions): Promise<GeneratedListing> {
   const base64Images = await Promise.all(
     imageUrls.map((url) => blobUrlToBase64(url))
@@ -47,6 +52,7 @@ export async function analyzeWithAI({
           gemini_key: geminiKey || undefined,
           photo_style: photoStyle,
           enhance_photo: enhancePhoto,
+          background_style: backgroundStyle && backgroundStyle !== 'original' ? backgroundStyle : undefined,
         }),
       });
 
@@ -93,6 +99,7 @@ export async function analyzeWithAI({
         market_freshness: ['recent', 'acceptable', 'old', 'stale'].includes(listing.market_freshness)
           ? listing.market_freshness
           : null,
+        edited_image_urls: Array.isArray(listing.edited_image_urls) ? listing.edited_image_urls : null,
       };
     } catch (err) {
       console.error('Edge function call failed:', err);

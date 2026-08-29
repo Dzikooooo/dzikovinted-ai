@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isMetered } from "../_shared/credits.ts";
 import { buildMarketContext } from "../_shared/marketEngine.ts";
+import { buildBackgroundEditInstruction, isKnownBackgroundStyle } from "./backgroundStyles.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +16,10 @@ interface AnalyzeRequest {
   platform?: string;
   photo_style?: string;
   enhance_photo?: boolean;
+  // Fond de photo genere (2026-08-30) : cle de BACKGROUND_STYLES
+  // (backgroundStyles.ts), ou absent/"original" pour aucune edition -- voir
+  // ce fichier pour l'allowlist complete et la justification.
+  background_style?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -85,6 +90,7 @@ Deno.serve(async (req: Request) => {
       platform = "vinted",
       photo_style = "white",
       enhance_photo = true,
+      background_style,
     }: AnalyzeRequest = await req.json();
 
     if (!image_urls || !Array.isArray(image_urls) || image_urls.length === 0) {
@@ -167,6 +173,71 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Fond de photo genere (2026-08-30) : appelle un modele Gemini D'IMAGE
+    // distinct (gemini-2.5-flash-image, responseModalities ["TEXT","IMAGE"])
+    // AVANT l'analyse texte ci-dessous -- le modele texte utilise plus bas
+    // (gemini-2.5-flash) n'a physiquement aucun moyen de modifier des
+    // pixels, contrairement a celui-ci qui EDITE reellement chaque photo.
+    // Volontairement dans la MEME reservation de credit que l'analyse (pas
+    // de reserve_credit separe) : un echec ici rembourse exactement comme
+    // n'importe quel autre echec de cette fonction, jamais un cout invisible
+    // pour l'utilisateur. Analyse texte plus bas continue de recevoir les
+    // photos ORIGINALES (jamais les versions editees) : un modele generatif
+    // d'image reste moins fiable qu'une lecture directe des photos source
+    // pour extraire marque/taille/etat, autant ne jamais faire dependre
+    // l'un de l'autre. Seul le champ `edited_image_urls` de la reponse porte
+    // les versions eventuellement editees, pour affichage/sauvegarde cote
+    // client (voir aiService.ts).
+    let editedImageUrls: string[] | null = null;
+    if (isKnownBackgroundStyle(background_style)) {
+      const instruction = buildBackgroundEditInstruction(background_style);
+      try {
+        editedImageUrls = await Promise.all(
+          image_urls.map(async (url) => {
+            const match = url.match(/^data:(image\/\w+);base64,(.+)$/);
+            if (!match) throw new Error("Format de photo invalide pour l'édition de fond");
+            const [, mimeType, base64Data] = match;
+
+            const editRes = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ text: instruction }, { inline_data: { mime_type: mimeType, data: base64Data } }],
+                    },
+                  ],
+                  generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+                }),
+              }
+            );
+
+            if (!editRes.ok) {
+              const errText = await editRes.text();
+              throw new Error(`Gemini image API error (${editRes.status}): ${errText.slice(0, 300)}`);
+            }
+
+            const editData = await editRes.json();
+            const parts = editData.candidates?.[0]?.content?.parts ?? [];
+            const imagePart = parts.find((p: { inlineData?: { data?: string } }) => p.inlineData?.data);
+            if (!imagePart) throw new Error("Aucune image renvoyée par le modèle d'édition de fond");
+
+            return `data:${imagePart.inlineData.mimeType || mimeType};base64,${imagePart.inlineData.data}`;
+          })
+        );
+      } catch (editError) {
+        if (reservationId) await supabaseAdmin.rpc("refund_credit_reservation", { p_reservation_id: reservationId, p_user_id: user.id });
+        const message = editError instanceof Error ? editError.message : "Échec de l'édition du fond de photo";
+        return new Response(JSON.stringify({ error: message }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Retour bêta-testeur reel (Albin, 2026-08-11, retour 4) : preference de
     // style optionnelle, injectee comme instruction supplementaire pour
     // Gemini -- jamais un remplacement de variables cote client. Gemini
@@ -203,6 +274,7 @@ RÈGLES IMPORTANTES :
 - Si la matière n'est pas visible, mets "Matière à vérifier".
 - Mentionne les défauts visibles.
 - Si la marque est incertaine, reste prudent sur le prix.
+- "price"/"quick_price"/"premium_price" : base ton estimation sur L'ENSEMBLE des attributs que tu identifies (marque, catégorie, mais aussi état, matière, taille et défauts visibles), pas seulement marque+catégorie -- un article "Neuf avec étiquette" ou en matière premium vaut objectivement plus qu'un "État satisfaisant" abîmé de la même marque. Ce raisonnement ne sert QUE de repli : dès qu'au moins 3 annonces comparables existent réellement pour cette marque+catégorie, ton estimation est remplacée par leur prix médian réel (voir Market Engine) -- ne t'en soucie pas, continue de proposer la meilleure estimation possible dans tous les cas.
 - Si la plateforme est Vinted, optimise le titre, les mots-clés et les filtres pour Vinted.
 - Le champ "condition" doit être EXACTEMENT l'une de ces 5 valeurs (taxonomie officielle Vinted, avec les accents) : "Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "État satisfaisant". Aucune autre formulation.
 ${styleInstructions}
@@ -289,6 +361,11 @@ Tous les textes doivent être en français correct.
     }
 
     const listing = JSON.parse(content);
+    // Fond de photo genere : `null` tant qu'aucune edition n'a ete demandee
+    // (isKnownBackgroundStyle a rendu false plus haut) -- jamais un tableau
+    // vide ambigu, le client (aiService.ts) distingue "pas demande" de
+    // "demande et vide".
+    listing.edited_image_urls = editedImageUrls;
 
     // Repli honnete par defaut : tant que le Market Engine ne trouve aucun
     // comparable exploitable ci-dessous, le prix reste l'estimation Gemini

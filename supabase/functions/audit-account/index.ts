@@ -1,8 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isMetered } from "../_shared/credits.ts";
-import { buildMarketContext } from "../_shared/marketEngine.ts";
-import { buildAuditPrompt } from "./prompt.ts";
+import { computeAccountStats, type AccountAuditListingRow } from "./stats.ts";
+import { buildAccountAuditPrompt } from "./prompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,26 +14,29 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-interface AuditRequest {
-  listing_id: string;
-  gemini_key?: string;
-}
+// Meme plafond que PostgREST par requete -- .range() boucle jusqu'a
+// epuisement, exactement comme fetchAllRows() cote client (src/lib/
+// supabaseExhaustiveFetch.ts) qu'on ne peut pas importer ici (frontiere de
+// build Vite/Deno, voir marketEngine.ts). En pratique tres au-dela du volume
+// reel d'un compte (des centaines d'annonces max a ce jour), mais correct
+// par construction plutot que suppose jamais atteint.
+const PAGE_SIZE = 1000;
 
-// Pricer Pro -- audit d'une annonce DEJA PUBLIEE (2026-08-29). Meme
-// squelette que analyze-clothing/index.ts (auth JWT -> client anon, credits
-// reserve/consume/refund via client service_role distinct, Market Engine
-// partage) -- fonction SEPAREE plutot qu'un mode ajoute a analyze-clothing :
-// contrat d'entree/sortie different (listing_id existant, pas des photos a
-// analyser), et ne jamais risquer de destabiliser le Generateur deja en
-// production pour ajouter cette fonctionnalite.
+// Audit du compte Vinted (2026-08-30) -- remplace Pricer Pro (audit
+// d'annonce isolee, retire). Perimetre VOLONTAIREMENT limite aux annonces
+// deja stockees en base pour ce premier lot (titre/description/categorie/
+// etat/prix/statuts) : ni la photo de profil ni la bio Vinted ne sont
+// analysees, faute de capacite de scraping existante pour les capturer (voir
+// stats.ts, prompt.ts). Meme squelette que analyze-clothing/index.ts (auth
+// JWT -> client anon, credits reserve/consume/refund via client service_role
+// distinct) -- fonction SEPAREE, meme raison que l'ancien audit-listing :
+// contrat d'entree/sortie different (aucun listing_id, tout le compte),
+// jamais de risque pour le Generateur deja en production.
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  // Meme discipline que analyze-clothing : declares hors du try pour rester
-  // visibles dans le catch (remboursement de la reservation en cas d'echec
-  // inattendu). reservationId n'est jamais inclus dans une Response.
   let supabase: ReturnType<typeof createClient> | null = null;
   let supabaseAdmin: ReturnType<typeof createClient> | null = null;
   let reservationId: string | null = null;
@@ -61,25 +64,8 @@ Deno.serve(async (req: Request) => {
 
     supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const { listing_id, gemini_key }: AuditRequest = await req.json();
-    if (!listing_id || typeof listing_id !== "string") {
-      return jsonResponse(400, { error: "listing_id is required" });
-    }
-
-    // Client anon+JWT (PAS supabaseAdmin) : la policy select_own_listings
-    // s'assure deja qu'on ne peut jamais auditer l'annonce de quelqu'un
-    // d'autre -- 0 ligne renvoyee plutot qu'un contournement possible.
-    // Aucune verification manuelle de propriete necessaire ici : la RLS EST
-    // la verification.
-    const { data: listing, error: listingError } = await supabase
-      .from("listings")
-      .select("title, description, category, brand, condition, image_urls")
-      .eq("id", listing_id)
-      .single();
-
-    if (listingError || !listing) {
-      return jsonResponse(404, { error: "Annonce introuvable" });
-    }
+    const body = await req.json().catch(() => ({}));
+    const geminiKeyOverride = typeof body?.gemini_key === "string" ? body.gemini_key : undefined;
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -111,20 +97,41 @@ Deno.serve(async (req: Request) => {
       reservationId = reserveData as string;
     }
 
-    const apiKey = gemini_key || Deno.env.get("GEMINI_API_KEY");
+    const apiKey = geminiKeyOverride || Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
       if (reservationId) await supabaseAdmin.rpc("refund_credit_reservation", { p_reservation_id: reservationId, p_user_id: user.id });
-      return jsonResponse(500, { error: "GEMINI_API_KEY manquante. Impossible d'auditer cette annonce." });
+      return jsonResponse(500, { error: "GEMINI_API_KEY manquante. Impossible d'auditer ce compte." });
     }
 
-    const prompt = buildAuditPrompt({
-      title: (listing.title as string) ?? "",
-      description: (listing.description as string | null) ?? null,
-      category: (listing.category as string | null) ?? null,
-      brand: (listing.brand as string | null) ?? null,
-      condition: (listing.condition as string | null) ?? null,
-      photoCount: Array.isArray(listing.image_urls) ? listing.image_urls.length : 0,
-    });
+    // Client anon+JWT (PAS supabaseAdmin) : la policy select_own_listings
+    // s'assure deja qu'on ne peut jamais lire les annonces de quelqu'un
+    // d'autre -- aucune verification manuelle de propriete necessaire.
+    const listings: AccountAuditListingRow[] = [];
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error: listingsError } = await supabase
+        .from("listings")
+        .select("id, title, description, category, brand, condition, price, image_urls, vinted_item_id, vinted_status, status, created_at")
+        .eq("user_id", user.id)
+        .or("vinted_status.neq.deleted,vinted_status.is.null")
+        .range(offset, offset + PAGE_SIZE - 1);
+
+      if (listingsError) {
+        if (reservationId) await supabaseAdmin.rpc("refund_credit_reservation", { p_reservation_id: reservationId, p_user_id: user.id });
+        return jsonResponse(500, { error: "Impossible de charger tes annonces pour cet audit." });
+      }
+
+      const rows = (data ?? []) as AccountAuditListingRow[];
+      listings.push(...rows);
+      if (rows.length < PAGE_SIZE) break;
+    }
+
+    if (listings.length === 0) {
+      if (reservationId) await supabaseAdmin.rpc("refund_credit_reservation", { p_reservation_id: reservationId, p_user_id: user.id });
+      return jsonResponse(422, { error: "Aucune annonce à auditer pour le moment. Ajoute au moins un article." });
+    }
+
+    const stats = computeAccountStats(listings);
+    const prompt = buildAccountAuditPrompt(stats);
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -134,12 +141,12 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.4,
+            temperature: 0.5,
             responseMimeType: "application/json",
-            maxOutputTokens: 1000,
+            maxOutputTokens: 1500,
             // gemini-2.5-flash est un modele "thinking" par defaut -- sans ce
-            // budget a 0, reponse vide (meme correctif que analyze-clothing,
-            // verifie en direct le 2026-07-11).
+            // budget a 0, reponse vide (meme correctif verifie en direct sur
+            // analyze-clothing le 2026-07-11).
             thinkingConfig: { thinkingBudget: 0 },
           },
         }),
@@ -159,19 +166,12 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(502, { error: "Empty response from Gemini" });
     }
 
-    const audit = JSON.parse(content);
+    const parsed = JSON.parse(content);
 
-    // Prix : le VRAI brand/category de l'annonce (jamais devine par Gemini
-    // ici, contrairement au Generateur qui n'a que des photos) -- meme
-    // Market Engine partage, aucune duplication.
-    const brand = typeof listing.brand === "string" ? listing.brand.trim() : "";
-    const category = typeof listing.category === "string" ? listing.category.trim() : "";
-    const priceContext = brand && category ? await buildMarketContext(supabase, { brand, category }) : null;
-
-    // Meme garde critique que analyze-clothing (revue du 2026-08-04) :
-    // consume_credit_reservation peut legitimement renvoyer false (double
-    // remboursement, retry concurrent...) -- dans ce cas, ne jamais renvoyer
-    // le resultat comme un succes, l'utilisateur a deja recupere son credit.
+    // GARDE CRITIQUE (meme discipline que analyze-clothing/audit-listing,
+    // revue du 2026-08-04) : consume_credit_reservation peut legitimement
+    // retourner false -- dans ce cas, ne jamais renvoyer le resultat comme un
+    // succes, l'utilisateur a deja recupere son credit.
     if (reservationId) {
       const { data: consumed, error: consumeError } = await supabaseAdmin.rpc("consume_credit_reservation", {
         p_reservation_id: reservationId,
@@ -189,19 +189,25 @@ Deno.serve(async (req: Request) => {
 
     const { error: usageEventError } = await supabaseAdmin.from("usage_events").insert({
       user_id: user.id,
-      event_type: "audit_completed",
-      metadata: { metered, listing_id, has_price_context: !!priceContext?.pricing },
+      event_type: "account_audit_completed",
+      metadata: { metered, listings_count: stats.totalListings, score: stats.score },
     });
     if (usageEventError) console.error("usage_events insert error:", usageEventError);
 
     return jsonResponse(200, {
       audit: {
-        suggested_title: typeof audit.suggested_title === "string" ? audit.suggested_title : listing.title,
-        suggested_description: typeof audit.suggested_description === "string" ? audit.suggested_description : "",
-        keywords: Array.isArray(audit.keywords) ? audit.keywords.filter((k: unknown) => typeof k === "string") : [],
-        category_note: typeof audit.category_note === "string" ? audit.category_note : "",
-        photo_note: typeof audit.photo_note === "string" ? audit.photo_note : "",
-        price: priceContext,
+        generated_at: new Date().toISOString(),
+        stats,
+        summary: typeof parsed.summary === "string" ? parsed.summary : "",
+        recommendations: Array.isArray(parsed.recommendations)
+          ? parsed.recommendations
+              .filter((r: unknown): r is Record<string, unknown> => typeof r === "object" && r !== null)
+              .map((r: Record<string, unknown>) => ({
+                category: typeof r.category === "string" ? r.category : "Général",
+                severity: r.severity === "haute" || r.severity === "moyenne" || r.severity === "basse" ? r.severity : "moyenne",
+                message: typeof r.message === "string" ? r.message : "",
+              }))
+          : [],
       },
     });
   } catch (error) {

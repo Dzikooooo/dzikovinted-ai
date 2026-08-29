@@ -2,6 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronUp, GripVertical, ImageIcon, Plus, Sparkles, Upload, X, Zap } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { PageHeader } from '../../../components/ui/PageHeader';
+import type { BackgroundStyle } from '../../../lib/types';
+
+// Fond de photo genere (2026-08-30) : options exposees cote UI, memes cles
+// que BACKGROUND_STYLES (supabase/functions/analyze-clothing/backgroundStyles.ts)
+// -- 'original' n'existe QUE cote client (aucune edition demandee, jamais
+// envoyee au serveur, voir aiService.ts).
+const BACKGROUND_STYLE_OPTIONS: { value: BackgroundStyle; label: string }[] = [
+  { value: 'original', label: 'Original (aucun changement)' },
+  { value: 'blanc_studio', label: 'Blanc studio' },
+  { value: 'lifestyle_neutre', label: 'Lifestyle neutre' },
+  { value: 'beige_gres', label: 'Beige grès' },
+  { value: 'marbre_clair', label: 'Marbre clair' },
+];
 
 interface UploadStepProps {
   images: string[];
@@ -16,6 +29,8 @@ interface UploadStepProps {
   // credits sont-ils a afficher comme illimites", jamais qui est
   // effectivement admin.
   unlimitedCredits: boolean;
+  backgroundStyle: BackgroundStyle;
+  onBackgroundStyleChange: (style: BackgroundStyle) => void;
   onGenerate: () => void;
 }
 
@@ -28,6 +43,8 @@ export function UploadStep({
   credits,
   limit,
   unlimitedCredits,
+  backgroundStyle,
+  onBackgroundStyleChange,
   onGenerate,
 }: UploadStepProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -296,6 +313,32 @@ export function UploadStep({
                 </div>
               )}
             </div>
+            {/* Fond de photo genere (2026-08-30) : 'original' (par defaut)
+                n'ajoute ni cout ni latence -- choisir un autre fond appelle
+                reellement un modele d'edition d'image par photo avant
+                l'analyse (voir backgroundStyles.ts), d'ou l'avertissement
+                explicite plutot qu'un select silencieux. */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-3 border-t border-gray-200 mb-3">
+              <label className="text-xs text-gray-500 flex-shrink-0" htmlFor="background-style-select">
+                Fond des photos
+              </label>
+              <select
+                id="background-style-select"
+                value={backgroundStyle}
+                onChange={(e) => onBackgroundStyleChange(e.target.value as BackgroundStyle)}
+                className="bg-surface border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 sm:w-56 flex-shrink-0"
+              >
+                {BACKGROUND_STYLE_OPTIONS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              {backgroundStyle !== 'original' && (
+                <p className="text-[11px] text-amber-700 flex-1">
+                  Le fond sera réellement généré par IA — ajoute quelques secondes par photo.
+                </p>
+              )}
+            </div>
+
             {/* Compteur explicite "n / max" plutot que "n photos
                 sélectionnées" : il dit d'un coup d'oeil combien il en reste,
                 information que l'ancienne formulation obligeait a deduire. */}
