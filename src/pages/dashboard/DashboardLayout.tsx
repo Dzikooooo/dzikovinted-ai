@@ -25,6 +25,7 @@ import AccountSwitcher from '../../components/ui/AccountSwitcher';
 import { Wordmark } from '../../components/ui/Wordmark';
 import { DzikoAiBubble } from '../../components/ui/DzikoAiBubble';
 import { NotificationRecapModal } from '../../components/notifications/NotificationRecapModal';
+import { NotificationBell } from '../../components/notifications/NotificationBell';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { isExtensionConfigured, pairExtension, getExtensionStatus } from '../../lib/extensionBridge';
@@ -413,6 +414,8 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
                 <Plus className="w-4 h-4" />
                 Nouvel article
               </button>
+
+              <NotificationBell onNavigate={navigateToPage} />
 
               <AccountAvatar label={profile?.full_name || profile?.email || 'U'} brand />
             </div>

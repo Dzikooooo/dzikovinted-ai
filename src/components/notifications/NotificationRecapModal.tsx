@@ -1,14 +1,9 @@
 import { useState } from 'react';
-import { Bot, TrendingUp, Megaphone, Bell, ArrowRight } from 'lucide-react';
+import { Bot, ArrowRight } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useNotifications } from '../../hooks/useNotifications';
-import type { AppNotification, DashboardPage, NotificationType } from '../../lib/types';
-
-const TYPE_STYLE: Record<NotificationType, { icon: typeof TrendingUp; bg: string; text: string }> = {
-  sale: { icon: TrendingUp, bg: 'bg-green-500/10', text: 'text-green-400' },
-  community: { icon: Megaphone, bg: 'bg-yellow-400/10', text: 'text-yellow-400' },
-  admin_broadcast: { icon: Bell, bg: 'bg-neon-500/10', text: 'text-neon-500' },
-};
+import { NOTIFICATION_TYPE_STYLE } from './notificationTypeStyle';
+import type { AppNotification, DashboardPage } from '../../lib/types';
 
 interface NotificationRecapModalProps {
   onNavigate: (page: DashboardPage) => void;
@@ -53,7 +48,7 @@ export function NotificationRecapModal({ onNavigate }: NotificationRecapModalPro
 
       <div className="space-y-2.5 max-h-80 overflow-y-auto mb-5">
         {unread.map((n) => {
-          const { icon: Icon, bg, text } = TYPE_STYLE[n.type];
+          const { icon: Icon, bg, text } = NOTIFICATION_TYPE_STYLE[n.type];
           return (
             <button
               key={n.id}

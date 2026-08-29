@@ -193,7 +193,11 @@ export interface Profile {
   discord_synced_at: string | null;
 }
 
-export type NotificationType = 'sale' | 'community' | 'admin_broadcast';
+// 'ticket_reply' et 'stock_alert' ajoutes le 2026-08-29 (centre de
+// notifications) -- voir la migration
+// 20260829130000_add_notification_types_and_ticket_reply_trigger.sql pour
+// le check constraint cote base (doit rester synchronise avec cette union).
+export type NotificationType = 'sale' | 'community' | 'admin_broadcast' | 'ticket_reply' | 'stock_alert';
 
 export interface AppNotification {
   id: string;

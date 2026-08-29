@@ -3,6 +3,7 @@ import { Sparkles, TrendingUp, Star, ArrowRight, Zap, Search, Package, Layers, L
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
 import { useInsights } from '../../hooks/useInsights';
+import { notifyStockAlert } from '../../hooks/useNotifications';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
 import { fetchAllRows } from '../../lib/supabaseExhaustiveFetch';
@@ -118,6 +119,21 @@ export default function DashboardHome({ onNavigate }: DashboardHomeProps) {
   const { profile, user } = useAuth();
   const { accounts, selectedAccountId, selectedAccount } = useVintedAccountFilter();
   const { report: insights } = useInsights();
+
+  // Alerte produit/stock dans le centre de notifications (demande
+  // 2026-08-29) : alerts.ts recalcule ces alertes a CHAQUE visite, sans
+  // identifiant stable -- notifyStockAlert() dedoublonne par titre + jour
+  // civil (voir son commentaire), donc revisiter le dashboard plusieurs
+  // fois par jour ne cree jamais plusieurs notifications pour la meme
+  // alerte. Seule 'dormant_stock' est reprise ici (la plus actionnable et
+  // la plus proche de l'exemple produit "tel article necessite ce
+  // changement") -- les autres alertes (low_stock, high_rotation...)
+  // restent affichees uniquement dans le Copilote, pas dans ce centre.
+  useEffect(() => {
+    if (!user || !insights) return;
+    const dormant = insights.alerts.find((a) => a.kind === 'dormant_stock');
+    if (dormant) void notifyStockAlert(user.id, 'Stock qui dort', dormant.message);
+  }, [user, insights]);
   const [listings, setListings] = useState<Listing[]>([]);
   const [newOpportunities, setNewOpportunities] = useState(0);
   const [opportunityStats, setOpportunityStats] = useState({ today: 0, avgRoi: 0, avgProfit: 0 });
