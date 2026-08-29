@@ -1,19 +1,20 @@
 import { useState } from "react";
-import { Camera, Shirt, RefreshCw, ReceiptEuro, CheckSquare, MessageSquare, ExternalLink, Check, Clock, Lightbulb } from "lucide-react";
+import { Camera, Shirt, RefreshCw, ReceiptEuro, MessageSquare, ExternalLink, Check, Lightbulb } from "lucide-react";
 import { DiscordIcon } from '../../components/ui/DiscordIcon';
 
 import { BRAND_VIOLET } from "../../lib/brandColors";
+import screenshotStock from "../../assets/screenshot-stock.png";
+import screenshotCommunication from "../../assets/screenshot-communication.png";
+import screenshotInsights from "../../assets/screenshot-insights.png";
 
 // Meme discipline que DiscordTab.tsx (Communaute) : pas de lien invente,
 // message honnete si la variable d'env n'est pas configuree.
 const DISCORD_INVITE_URL = import.meta.env.VITE_DISCORD_INVITE_URL as string | undefined;
 
-// Memes 5 modules et le meme ordre que ProductPreview.tsx (audit personnel
-// utilisateur, 2026-08-02) -- coherence des noms/icones sur toute la
-// landing. "benefits" : chaque module affiche plusieurs avantages concrets
-// d'un coup plutot qu'un seul paragraphe -- tous tires de fonctionnalites
-// reelles, "Communication" reste etiquetee "bientot" pour les points pas
-// encore construits.
+// "benefits" : chaque module affiche plusieurs avantages concrets d'un coup
+// plutot qu'un seul paragraphe -- tous tires de fonctionnalites reelles,
+// "Communication" reste etiquetee "bientot" pour les points pas encore
+// construits.
 const FEATURES = [
   // Repositionnement (2026-08-29, suite a l'analyse concurrentielle) :
   // place en premier ("tete de gondole") -- actif par defaut au chargement
@@ -113,43 +114,25 @@ const FEATURES = [
   },
 ];
 
-// Exporte (2026-08-28) pour reutilisation par ProductPreview.tsx (bento
-// grid) -- memes donnees REELLES/honnetes partout sur la landing (meme
-// discipline que "coherence des noms/icones sur toute la landing" deja en
-// place, voir l'en-tete de ce fichier), plutot que deux jeux de chiffres
-// factices divergents pour la meme fonctionnalite.
+// Retour d'un pro du design web (2026-08-29) : "ça se voit direct que
+// c'est un projet IA, 0 visuel réel". Les cas 'insights'/'communication'/
+// 'stock' ci-dessous sont desormais de VRAIES captures du produit reel
+// (playbook, Human feel #1 : jamais de maquette vide) -- 'generator'/
+// 'discord'/'accounting' (defaut) restent des mockups stylises en
+// attendant de meilleures captures (voir le tri fait avant d'integrer :
+// une capture "generateur" vide, une "comptabilite" a 0 € partout et une
+// "communaute" a 4 membres en ligne ont ete ecartees, pas cachees --
+// aucune n'aurait servi l'objectif). object-cover + object-position :
+// cadrage approximatif en CSS en l'absence d'un vrai recadrage du fichier
+// -- amelioration possible plus tard, pas un blocage aujourd'hui.
 export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visual'] }) {
-  // Meme discipline que les autres cas ci-dessous : representation fidele
-  // de vrais concepts produit (narration inter-comptes, alerte stock
-  // dormant nommee "AGING_STOCK_DAYS" cote code, score 0-100 -- voir
-  // useInsights.ts/DashboardHome.tsx), pas une illustration abstraite.
-  // Noms/prix/duree illustratifs, memes conventions que les autres visuels
-  // (playbook, Human feel #2 : vraies situations vendeur).
   if (kind === 'insights') {
     return (
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 space-y-3">
-        <div className="rounded-xl bg-white border border-gray-200 p-3">
-          <p className="text-xs text-gray-700">
-            <span className="font-bold" style={{ color: BRAND_VIOLET }}>matleshop</span> est ton compte le plus
-            performant ce mois-ci.
-          </p>
-        </div>
-        <div className="rounded-xl bg-white border border-gray-200 p-3 flex items-center gap-3">
-          <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-md bg-amber-500/10 text-amber-700 flex-shrink-0">
-            Stock dormant
-          </span>
-          <span className="text-xs text-gray-700 flex-1">Jean Levi's 501 · 64 jours sans vente</span>
-        </div>
-        <div className="rounded-xl bg-white border border-gray-200 p-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-gray-700">Sweat Nike gris</span>
-            <span className="text-[11px] font-bold" style={{ color: BRAND_VIOLET }}>82</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-            <div className="h-full rounded-full w-[82%]" style={{ backgroundColor: BRAND_VIOLET }} />
-          </div>
-        </div>
-      </div>
+      <img
+        src={screenshotInsights}
+        alt="Scan d'opportunités du Copilote : 211 détectées, +58 € de profit moyen, +116 % de ROI moyen"
+        className="rounded-2xl border border-gray-200 w-full h-72 object-cover object-top"
+      />
     );
   }
   if (kind === 'generator') {
@@ -198,67 +181,21 @@ export function FeatureVisual({ kind }: { kind: (typeof FEATURES)[number]['visua
     );
   }
   if (kind === 'communication') {
-    // Retour beta (2026-08-28) : remplace l'ancien "Bientôt disponible"
-    // generique -- la relance favoris (badges de prix qui copient un
-    // message pret) est REELLEMENT construite (voir CommunicationPage.tsx/
-    // FavouritesFollowUp.tsx), seule l'automatisation complete (envoi sans
-    // action de l'utilisateur) reste roadmap. Memes offres/prix que la
-    // vraie fonctionnalite (25 € -5 %/-10 %, euros entiers -- voir
-    // offerPricing.ts) plutot que des chiffres inventes pour ce visuel.
     return (
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6">
-        <p className="text-xs font-semibold text-gray-900">Sweat Nike gris</p>
-        <p className="text-xs text-gray-500 mb-3">25 €</p>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {[
-            { label: '-5 %', price: '24 €' },
-            { label: '-10 %', price: '23 €' },
-          ].map((offer) => (
-            <span
-              key={offer.label}
-              className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border bg-white"
-              style={{ color: BRAND_VIOLET, borderColor: `${BRAND_VIOLET}33` }}
-            >
-              {offer.label} · {offer.price}
-            </span>
-          ))}
-        </div>
-        <p className="text-xs text-gray-500 mb-3">Un clic sur un prix copie le message, prêt à coller sur Vinted.</p>
-        <p className="text-[11px] text-gray-500 flex items-center gap-1.5 pt-3 border-t border-gray-200">
-          <Clock className="w-3 h-3 flex-shrink-0" />
-          Réponses et envois automatiques : bientôt
-        </p>
-      </div>
+      <img
+        src={screenshotCommunication}
+        alt="Relance favoris : messages préparés avec offres -5 %/-10 %, prêts à copier sur Vinted"
+        className="rounded-2xl border border-gray-200 w-full h-72 object-cover object-top"
+      />
     );
   }
   if (kind === 'stock') {
     return (
-      <div className="rounded-2xl bg-gray-50 border border-gray-200 p-6 space-y-3">
-        {[
-          ['Sweat Nike gris', 'En ligne', true],
-          ["Jean Levi's 501", 'Vendue', false],
-          ['Chemise Sandro', 'Désactivée', false],
-        ].map(([name, status, selected]) => (
-          <div key={name as string} className="flex items-center gap-3 text-sm">
-            {selected ? (
-              <CheckSquare className="w-4 h-4 flex-shrink-0" style={{ color: BRAND_VIOLET }} />
-            ) : (
-              <span className="w-4 h-4 rounded border border-gray-300 flex-shrink-0" />
-            )}
-            <span className="text-gray-700 flex-1">{name}</span>
-            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-md bg-gray-100 text-gray-600">{status}</span>
-          </div>
-        ))}
-        <div className="flex items-center gap-2 pt-1">
-          <span className="text-[11px] text-gray-500">1 annonce sélectionnée</span>
-          <span
-            className="ml-auto text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-md border"
-            style={{ color: BRAND_VIOLET, backgroundColor: `${BRAND_VIOLET}1A`, borderColor: `${BRAND_VIOLET}33` }}
-          >
-            Republier
-          </span>
-        </div>
-      </div>
+      <img
+        src={screenshotStock}
+        alt="Mes annonces : statuts réels, valeur du stock et chiffre d'affaires à jour"
+        className="rounded-2xl border border-gray-200 w-full h-72 object-cover object-top"
+      />
     );
   }
   return (
