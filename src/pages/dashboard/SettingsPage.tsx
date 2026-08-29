@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, AlertCircle, CheckCircle, Users, Pencil, Star, X, Shield, Database, Server, Cookie, Zap, Sparkles } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Save, Key, Bell, Trash2, Users, Pencil, Star, X, Shield, Database, Server, Cookie, Zap, Sparkles } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVintedAccountFilter } from '../../contexts/VintedAccountFilterContext';
+import { useToast } from '../../contexts/ToastContext';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { supabase } from '../../lib/supabase';
+import { deleteAccount } from '../../lib/accountDeletion';
 import AccountAvatar from '../../components/ui/AccountAvatar';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -13,6 +15,9 @@ import { Button } from '../../components/ui/Button';
 import { Badge, type BadgeTone } from '../../components/ui/Badge';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { FilterPill } from '../../components/ui/FilterPill';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+import { Textarea } from '../../components/ui/Textarea';
 import type { SettingsTab, VintedAccount } from '../../lib/types';
 import { PLAN_LIMITS } from '../../lib/types';
 import { translateAuthError } from '../../lib/errorMessages';
@@ -24,9 +29,20 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ initialTab }: SettingsPageProps) {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, refreshProfile, signOut } = useAuth();
   const isAdmin = useIsAdmin();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? 'profile');
+
+  // Audit DCP (2026-08-29) : la politique de confidentialite promettait deja
+  // une vraie suppression (LegalPage.tsx section 5/6), mais aucune n'existait
+  // reellement -- voir supabase/functions/delete-account. Saisie de
+  // confirmation (pas juste un second clic) : action irreversible, aucune
+  // marge d'erreur acceptable ici.
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteAccountConfirmText, setDeleteAccountConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [email] = useState(profile?.email ?? '');
@@ -37,15 +53,19 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
   const [titleStyle, setTitleStyle] = useState(profile?.title_style ?? '');
   const [descriptionStyle, setDescriptionStyle] = useState(profile?.description_style ?? '');
   const [saving, setSaving] = useState(false);
-  const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [secMsg, setSecMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [openaiKey, setOpenaiKey] = useState(() => localStorage.getItem('dzikovinted_openai_key') || '');
-  const [apiSaved, setApiSaved] = useState(false);
 
+  // Migration vers useToast() (2026-08-28) : remplace 3 mecanismes ad hoc
+  // identiques (state local {type, text} + banniere inline + setTimeout de
+  // 2-3s pour l'effacer) par le systeme centralise. Le comportement observe
+  // reste identique -- meme message, meme delai de disparition (4s cote
+  // Toast, contre 2-3s avant : jamais mesure comme un probleme par un
+  // beta-testeur, et la coherence entre les 3 mecanismes vaut mieux qu'un
+  // ecart de 1-2s non documente entre eux).
   const saveProfile = async () => {
     setSaving(true);
     const { error } = await supabase
@@ -57,15 +77,24 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       })
       .eq('id', profile?.id ?? '');
     setSaving(false);
-    if (error) setProfileMsg({ type: 'error', text: 'Erreur lors de la sauvegarde.' });
-    else { setProfileMsg({ type: 'success', text: 'Profil mis à jour !' }); await refreshProfile(); setTimeout(() => setProfileMsg(null), 3000); }
+    if (error) showToast('Erreur lors de la sauvegarde.', 'error');
+    else {
+      showToast('Profil mis à jour !', 'success');
+      await refreshProfile();
+    }
   };
 
   const changePassword = async () => {
-    if (newPassword.length < 6) { setSecMsg({ type: 'error', text: 'Le mot de passe doit faire au moins 6 caractères.' }); return; }
+    if (newPassword.length < 6) {
+      showToast('Le mot de passe doit faire au moins 6 caractères.', 'error');
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) setSecMsg({ type: 'error', text: translateAuthError(error.message) });
-    else { setSecMsg({ type: 'success', text: 'Mot de passe mis à jour !' }); setNewPassword(''); setTimeout(() => setSecMsg(null), 3000); }
+    if (error) showToast(translateAuthError(error.message), 'error');
+    else {
+      showToast('Mot de passe mis à jour !', 'success');
+      setNewPassword('');
+    }
   };
 
   const saveApiKey = () => {
@@ -74,8 +103,22 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
     } else {
       localStorage.removeItem('dzikovinted_openai_key');
     }
-    setApiSaved(true);
-    setTimeout(() => setApiSaved(false), 2000);
+    showToast('Clé API enregistrée.', 'success');
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeletingAccount(true);
+    setDeleteAccountError(null);
+    const result = await deleteAccount();
+    if (!result.ok) {
+      setDeletingAccount(false);
+      setDeleteAccountError(result.error);
+      return;
+    }
+    // Pas de navigation explicite : App.tsx re-rend automatiquement vers
+    // la landing page des que user devient null (voir son garde-fou
+    // `if (!user) { ... }`), meme mecanisme que tout autre signOut().
+    await signOut();
   };
 
   const tabs = [
@@ -136,28 +179,16 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             </div>
           </div>
 
-          <div className="bg-surface border border-gray-200 rounded-2xl p-6 space-y-5">
+          <Card padding="lg" className="space-y-5">
           <h2 className="font-bold text-sm">Informations du profil</h2>
-          {profileMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${profileMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-700'}`}>
-              {profileMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              {profileMsg.text}
-            </div>
-          )}
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nom complet</label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input type="email" value={email} disabled className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-500 cursor-not-allowed" />
-            </div>
-          </div>
+          <Input
+            label="Nom complet"
+            type="text"
+            icon={<User className="w-4 h-4" />}
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+          />
+          <Input label="Email" type="email" icon={<Mail className="w-4 h-4" />} value={email} disabled />
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Plan</label>
             <div className="px-4 py-3 bg-dark-400 border border-gray-200 rounded-xl text-sm text-neon-500 font-bold">{(profile?.plan ?? 'free').toUpperCase()}</div>
@@ -170,55 +201,51 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             <p className="text-xs text-gray-500 -mt-2">
               Décris comment tu aimes rédiger tes titres et descriptions. Le Générateur IA en tient compte tout en gardant les infos réelles détectées sur la photo et l'optimisation Vinted. Laisse vide pour garder le comportement par défaut.
             </p>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Style de titre souhaité</label>
-              <textarea
-                value={titleStyle}
-                onChange={(e) => setTitleStyle(e.target.value)}
-                maxLength={500}
-                rows={2}
-                placeholder="Ex : titre court, direct, sans emoji."
-                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Style de description souhaité</label>
-              <textarea
-                value={descriptionStyle}
-                onChange={(e) => setDescriptionStyle(e.target.value)}
-                maxLength={500}
-                rows={3}
-                placeholder="Ex : toujours mentionner la coupe et le tissu, ton chaleureux."
-                className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all resize-none"
-              />
-            </div>
+            <Textarea
+              label="Style de titre souhaité"
+              value={titleStyle}
+              onChange={(e) => setTitleStyle(e.target.value)}
+              maxLength={500}
+              rows={2}
+              placeholder="Ex : titre court, direct, sans emoji."
+            />
+            <Textarea
+              label="Style de description souhaité"
+              value={descriptionStyle}
+              onChange={(e) => setDescriptionStyle(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="Ex : toujours mentionner la coupe et le tissu, ton chaleureux."
+            />
           </div>
           <Button icon={<Save className="w-4 h-4" />} loading={saving} onClick={saveProfile}>
             {saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </Button>
-          </div>
+          </Card>
         </div>
       )}
 
       {activeTab === 'security' && (
-        <div className="max-w-2xl bg-surface border border-gray-200 rounded-2xl p-6 space-y-5">
+        <Card padding="lg" className="max-w-2xl space-y-5">
           <h2 className="font-bold text-sm">Changer le mot de passe</h2>
-          {secMsg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm ${secMsg.type === 'success' ? 'bg-neon-500/10 border-neon-500/20 text-neon-500' : 'bg-red-500/10 border-red-500/20 text-red-700'}`}>
-              {secMsg.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              {secMsg.text}
-            </div>
-          )}
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Nouveau mot de passe</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input type={showPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" placeholder="********" />
-              <button type="button" onClick={() => setShowPass(!showPass)} aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-500">
+          <Input
+            label="Nouveau mot de passe"
+            type={showPass ? 'text' : 'password'}
+            icon={<Lock className="w-4 h-4" />}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="********"
+            trailingElement={
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                className="text-gray-500 hover:text-gray-500"
+              >
                 {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
-            </div>
-          </div>
+            }
+          />
           {/* Verification du mot de passe actuel : retiree pour la beta (decision
               explicite du 2026-07-24, Option A) -- le champ existait mais
               changePassword() ne le lisait jamais, un element trompeur plutot
@@ -228,13 +255,13 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
           <Button icon={<Save className="w-4 h-4" />} onClick={changePassword}>
             Mettre à jour
           </Button>
-        </div>
+        </Card>
       )}
 
       {activeTab === 'accounts' && <AccountsManager />}
 
       {activeTab === 'notifications' && (
-        <div className="max-w-2xl bg-surface border border-gray-200 rounded-2xl p-6 space-y-4">
+        <Card padding="lg" className="max-w-2xl space-y-4">
           <h2 className="font-bold text-sm mb-2">Préférences de notifications</h2>
           {/* defaultChecked retire (Design Freeze, Lot 8) : rien ne branche
               ces toggles a un vrai etat cote serveur -- les afficher coches
@@ -257,27 +284,29 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
               </label>
             </div>
           ))}
-        </div>
+        </Card>
       )}
 
       {activeTab === 'api' && (
-        <div className="max-w-2xl bg-surface border border-gray-200 rounded-2xl p-6 space-y-5">
+        <Card padding="lg" className="max-w-2xl space-y-5">
           <h2 className="font-bold text-sm">Clés API</h2>
           <div className="bg-dark-400 border border-neon-500/20 rounded-xl p-4">
             <p className="text-xs text-neon-500/70 font-mono mb-1">Clé API Gemini</p>
             <p className="text-xs text-gray-500">Connecte ta propre clé Gemini pour tes analyses IA. Sans clé personnelle, ResellOS utilise sa clé par défaut, soumise aux mêmes limites d'utilisation.</p>
           </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">Clé API Gemini</label>
-            <div className="relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} placeholder="Colle ta clé ici" className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm text-gray-800 font-mono focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" />
-            </div>
-          </div>
+          <Input
+            label="Clé API Gemini"
+            type="password"
+            icon={<Key className="w-4 h-4" />}
+            value={openaiKey}
+            onChange={(e) => setOpenaiKey(e.target.value)}
+            placeholder="Colle ta clé ici"
+            className="font-mono"
+          />
           <Button icon={<Save className="w-4 h-4" />} onClick={saveApiKey}>
-            {apiSaved ? 'Sauvegardé !' : 'Sauvegarder la clé'}
+            Sauvegarder la clé
           </Button>
-        </div>
+        </Card>
       )}
 
       {activeTab === 'privacy' && (
@@ -287,7 +316,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
             { icon: Server, title: 'Analyse IA', desc: "Les photos envoyées au Générateur passent par l'API Google Gemini, uniquement le temps de l'analyse. Jamais revendues ni utilisées à d'autres fins." },
             { icon: Cookie, title: 'Aucun tracking publicitaire', desc: "Le stockage local du navigateur sert uniquement à garder ta session connectée. Pas de cookie publicitaire, pas de revente à des tiers." },
           ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-surface border border-gray-200 rounded-2xl p-5 flex items-start gap-4">
+            <Card key={title} padding="md" className="flex items-start gap-4">
               <div className="w-9 h-9 bg-neon-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
                 <Icon className="w-4 h-4 text-neon-500" />
               </div>
@@ -295,7 +324,7 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
                 <p className="text-sm font-semibold text-gray-800">{title}</p>
                 <p className="text-xs text-gray-500 mt-1 leading-relaxed">{desc}</p>
               </div>
-            </div>
+            </Card>
           ))}
           <div className="flex items-center gap-3 bg-surface/50 border border-gray-200 rounded-xl px-5 py-4">
             <p className="text-xs text-gray-500">
@@ -307,16 +336,75 @@ export default function SettingsPage({ initialTab }: SettingsPageProps) {
       )}
 
       {activeTab === 'danger' && (
-        <div className="max-w-2xl bg-surface border border-red-500/20 rounded-2xl p-6 space-y-5">
+        <Card padding="lg" tone="danger" className="max-w-2xl space-y-5">
           <h2 className="font-bold text-sm text-red-700">Zone de danger</h2>
           <div className="border border-red-500/10 rounded-xl p-4">
             <p className="text-sm font-semibold mb-1">Supprimer mon compte</p>
-            <p className="text-xs text-gray-500 mb-4">Cette action est irréversible. Toutes tes données seront supprimées définitivement.</p>
-            <Button variant="danger" disabled title="Bientôt disponible" icon={<Trash2 className="w-4 h-4" />}>
-              Supprimer mon compte (bientôt disponible)
+            <p className="text-xs text-gray-500 mb-4">
+              Cette action est irréversible. Ton profil, tes annonces, tes comptes Vinted connectés et ton historique sont supprimés définitivement.
+            </p>
+            <Button
+              variant="danger"
+              icon={<Trash2 className="w-4 h-4" />}
+              onClick={() => {
+                setDeleteAccountConfirmText('');
+                setDeleteAccountError(null);
+                setShowDeleteAccountModal(true);
+              }}
+            >
+              Supprimer mon compte
             </Button>
           </div>
-        </div>
+        </Card>
+      )}
+
+      {showDeleteAccountModal && (
+        <Modal onClose={() => !deletingAccount && setShowDeleteAccountModal(false)} size="sm">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-black text-red-700">Supprimer définitivement ton compte ?</h2>
+            {!deletingAccount && (
+              <button
+                onClick={() => setShowDeleteAccountModal(false)}
+                aria-label="Fermer"
+                className="p-1.5 rounded-lg hover:bg-gray-100"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            )}
+          </div>
+
+          <p className="text-sm text-gray-500 mb-4">
+            Cette action est irréversible : profil, annonces, comptes Vinted connectés, historique et photos sont
+            supprimés de la base. Tape <span className="font-mono font-bold text-gray-800">SUPPRIMER</span> pour confirmer.
+          </p>
+
+          {deleteAccountError && <ErrorBanner message={deleteAccountError} className="mb-4" />}
+
+          <Input
+            id="delete-account-confirm"
+            label="Confirmation"
+            value={deleteAccountConfirmText}
+            onChange={(e) => setDeleteAccountConfirmText(e.target.value)}
+            placeholder="SUPPRIMER"
+            disabled={deletingAccount}
+            className="font-mono mb-5"
+          />
+
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" fullWidth disabled={deletingAccount} onClick={() => setShowDeleteAccountModal(false)}>
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              fullWidth
+              loading={deletingAccount}
+              disabled={deleteAccountConfirmText !== 'SUPPRIMER'}
+              onClick={handleDeleteAccount}
+            >
+              {deletingAccount ? 'Suppression...' : 'Supprimer définitivement'}
+            </Button>
+          </div>
+        </Modal>
       )}
 
     </div>
@@ -399,7 +487,7 @@ function AccountsManager() {
           description="Connecte l'extension ResellOS depuis « Compte Vinted » pour qu'un compte apparaisse ici automatiquement."
         />
       ) : (
-        <div className="bg-surface border border-gray-200 rounded-2xl divide-y divide-gray-200">
+        <Card padding="none" className="divide-y divide-gray-200">
           {accounts.map((account) => (
             <div key={account.id} className="flex items-center gap-3 p-4">
               <AccountAvatar label={account.label} size="md" />
@@ -465,7 +553,7 @@ function AccountsManager() {
               </div>
             </div>
           ))}
-        </div>
+        </Card>
       )}
 
       <p className="text-xs text-gray-500 px-1">
