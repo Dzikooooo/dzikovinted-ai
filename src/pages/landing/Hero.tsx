@@ -63,11 +63,13 @@ export function Hero({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
         </div>
 
         {hasVideo && (
-          <div className="mt-20 max-w-4xl mx-auto">
+          <div className="group mt-20 max-w-4xl mx-auto">
             {/* Cadre style navigateur/macOS (BrowserFrame, partage avec
                 Features.tsx) : encadre un VRAI enregistrement d'ecran du
                 produit, jamais une illustration decorative (playbook,
-                Design principles #2). */}
+                Design principles #2). "group" ici : BrowserFrame reagit
+                desormais a group-hover, pas a son propre hover (voir son
+                commentaire) -- ce wrapper est l'ancetre qui porte le survol. */}
             <BrowserFrame>
               <video className="w-full h-auto block" autoPlay muted loop playsInline onError={() => setHasVideo(false)}>
                 <source src="/videos/hero-demo.mp4" type="video/mp4" />
