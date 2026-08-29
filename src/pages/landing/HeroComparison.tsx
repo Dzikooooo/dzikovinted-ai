@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Check, Bell } from 'lucide-react';
-import { Logo } from '../../components/ui/Logo';
-import { DiscordIcon } from '../../components/ui/DiscordIcon';
 import { Badge } from '../../components/ui/Badge';
 import { VINTED_INK } from '../../lib/brandColors';
 
@@ -10,11 +8,11 @@ import { VINTED_INK } from '../../lib/brandColors';
 // coherent avec Features.tsx (module Communication) -- jamais presenter
 // une fonctionnalite non construite comme deja disponible.
 //
-// Pas de logo Vinted (asset qu'on n'a pas, risque de marque deja signale
-// plusieurs fois ce chantier) -- le mot "Vinted" en bleu #007782 fait le
-// meme travail sans reproduire leur marque. Logo ResellOS et icone
-// Discord : les deux nous appartiennent/sont deja utilises ailleurs dans
-// le produit, aucun risque equivalent.
+// En-tetes simplifies (retour 2026-08-29) : "Sans Resell OS" (rouge) /
+// "Avec Resell OS" (vert) seuls -- retire la mention "Vinted" et
+// l'empilement de logos/icones (Vinted + Logo ResellOS + Discord) qui
+// alourdissait l'en-tete sans ajouter d'info que l'accroche au-dessus
+// (qui nomme deja Vinted) ne donne pas.
 //
 // Retour "standard Stripe/Linear, effet waouh" (2026-08-28) -- CADRAGE
 // EXPLICITE avant ce round (2 questions posees, reponses actees) :
@@ -208,8 +206,7 @@ export function HeroComparison() {
             hierarchie EST le message de la section. */}
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-7 sm:p-10">
           <div className="flex items-center gap-2 mb-6">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Sans Resell OS</span>
-            <span className="text-sm font-semibold" style={{ color: VINTED_INK }}>Vinted</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-red-500">Sans Resell OS</span>
           </div>
 
           {/* Ecarts d'angle/decalage/opacite INDIVIDUELS (jamais une seule
@@ -273,15 +270,8 @@ export function HeroComparison() {
           className="rounded-2xl border bg-white p-7 sm:p-10 shadow-xl shadow-gray-900/[0.06]"
           style={{ borderColor: `${VINTED_INK}40` }}
         >
-          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-6">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Avec Resell OS</span>
-            <span className="text-gray-300">+</span>
-            <span className="text-sm font-semibold" style={{ color: VINTED_INK }}>Vinted</span>
-            <span className="text-gray-300">+</span>
-            <Logo variant="transparent" size={18} />
-            <span className="text-sm font-semibold text-gray-900">ResellOS</span>
-            <span className="text-gray-300">+</span>
-            <DiscordIcon className="w-4 h-4 text-gray-400" />
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">Avec Resell OS</span>
           </div>
 
           {/* Miroir exact du cote "chaos" mais avec l'intention inverse :

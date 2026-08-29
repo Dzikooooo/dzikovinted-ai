@@ -26,8 +26,16 @@ interface BlogPageProps {
 // meme endroit plutot que disperse sur plusieurs sections.
 type SectionId = 'qui-je-suis' | 'pourquoi' | 'coulisses' | 'mises-a-jour' | 'blog';
 
+// "qui-je-suis" retire de la navigation (retour 2026-08-29) -- reste dans
+// SectionId et son bloc de contenu plus bas (recit personnel complet,
+// dettes/addictions comprises) est INTACT dans ce fichier, simplement
+// inaccessible depuis l'UI (plus aucun onglet ni lien ne peut plus y mener
+// -- la lecture initiale du composant tombe desormais sur 'pourquoi', voir
+// plus bas). Choix deliberement conservateur : la demande portait sur la
+// navigation ("supprimer l'onglet"), pas explicitement sur le texte lui-
+// meme -- supprimer ce recit sensible aurait ete irreversible sans
+// confirmation explicite. A retirer pour de bon si c'est confirme.
 const SECTIONS: { id: SectionId; icon: LucideIcon; label: string }[] = [
-  { id: 'qui-je-suis', icon: User, label: 'Qui je suis' },
   { id: 'pourquoi', icon: Sparkles, label: "Pourquoi j'ai créé Resell OS" },
   { id: 'coulisses', icon: Code2, label: 'Les coulisses du développement' },
   { id: 'mises-a-jour', icon: Newspaper, label: 'Les mises à jour du produit' },
@@ -122,7 +130,7 @@ export default function BlogPage({ onNavigate }: BlogPageProps) {
   // -- un removeItem() ici casserait la 2e lecture) ; le nettoyage se fait
   // a part, dans l'effet ci-dessous.
   const [active, setActive] = useState<SectionId>(
-    () => (sessionStorage.getItem('resellos:blogSection') as SectionId | null) ?? 'qui-je-suis'
+    () => (sessionStorage.getItem('resellos:blogSection') as SectionId | null) ?? 'pourquoi'
   );
   const [contactOpen, setContactOpen] = useState(false);
 

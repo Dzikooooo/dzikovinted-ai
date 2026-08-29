@@ -23,8 +23,8 @@ export function Founder() {
             </h2>
             <p className="text-lg text-gray-600 leading-relaxed mb-8 max-w-md">
               Moi c'est Dziko : 20 ans, revendeur sur Vinted depuis mes 15 ans, et beatboxer à côté. ResellOS, c'est
-              l'outil que j'aurais aimé avoir quand j'ai commencé — construit après cinq mois passés à comprendre
-              exactement ce qui fait perdre du temps aux revendeurs.
+              l'outil que j'aurais aimé avoir quand j'ai commencé. Je l'ai construit après cinq mois passés à
+              comprendre exactement ce qui fait perdre du temps aux revendeurs.
             </p>
             {/* Lien externe personnel, pas de bouton "signup" : violet en
                 accent tinte (meme traitement que "Rejoindre Discord" dans
@@ -48,7 +48,7 @@ export function Founder() {
               className="w-56 h-56 sm:w-64 sm:h-64 object-cover rounded-3xl border border-gray-200"
             />
             <p className="mt-4 text-sm text-gray-500">
-              <span className="font-semibold text-gray-900">Dziko</span> — Fondateur de ResellOS
+              <span className="font-semibold text-gray-900">Dziko</span> · Fondateur de ResellOS
             </p>
           </div>
         </div>
