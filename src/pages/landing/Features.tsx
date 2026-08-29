@@ -66,7 +66,18 @@ const FEATURES = [
 // jamais de maquette vide) -- 'generator'/'discord'/'accounting' restent des
 // mockups stylises, memes raisons que toujours (voir le tri fait avant
 // integration : generateur vide, comptabilite a 0 €, communaute a 4 membres
-// -- aucune n'aurait servi l'objectif). Hauteur de media fixe (h-56/h-72/
+// -- aucune n'aurait servi l'objectif).
+// Sidebar de l'app recadree DANS LES FICHIERS SOURCE (2026-08-29) : les 3
+// captures reelles incluaient la sidebar laterale de ResellOS (~190px,
+// meme composant partout) -- a l'aspect ratio d'une carte bento, object-fit:
+// cover ne rognait quasi rien en largeur (le crop se faisait en hauteur),
+// donc la sidebar restait entierement visible. Corrige a la source (crop
+// PNG, pas de CSS) : plus robuste qu'un object-position/transform qui
+// aurait du etre recalibre a chaque breakpoint -- desormais SEUL le
+// contenu applicatif peut jamais apparaitre, quel que soit le gabarit de
+// carte. Affectait aussi 'insights' (carte hero), pas seulement les 2
+// signalees -- meme composant, meme defaut.
+// Hauteur de media fixe (h-56/h-72/
 // h-80 selon le gabarit de carte), jamais une hauteur en % : une carte de
 // grille bento etirable (CSS Grid align-items: stretch) rend une chaine de
 // hauteurs en % fragile pour un <img>/<video> (element remplace) -- les
