@@ -66,6 +66,22 @@ describe('createActionEngine().prepare', () => {
     expect(insertHistoryRow).not.toHaveBeenCalled();
   });
 
+  it('Phase 2 (2026-08-28) : insertHistoryRow qui rejette ne fait jamais rejeter prepare() -- retourne ok:false, jamais de token produit', async () => {
+    registerTestDefinition({
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
+      checks: [],
+      buildPreview: () => ({ summary: 'preview', details: {} }),
+    });
+    const { deps, insertHistoryRow } = makeFakeDeps();
+    insertHistoryRow.mockRejectedValueOnce(new Error('réseau indisponible'));
+    const engine = createActionEngine(deps);
+
+    const result = await engine.prepare(request, makeActionContext(), makeCheckDeps());
+
+    expect(result).toEqual({ ok: false, failure: { code: 'prepare_failed', message: 'réseau indisponible' } });
+  });
+
   it('on success, builds the preview, inserts a pending_confirmation history row and returns a token', async () => {
     registerTestDefinition({
       kind: 'pause_listing',
@@ -178,6 +194,94 @@ describe('createActionEngine().confirm', () => {
 
     expect(result.durationMs).toBe(2500);
   });
+
+  it('Phase 2 (2026-08-28) : execute() qui rejette ne fait jamais rejeter confirm() -- outcome error, ET la ligne history recoit quand meme son statut terminal (jamais bloquee en pending_confirmation)', async () => {
+    const execute = vi.fn().mockRejectedValue(new Error('extension deconnectee en cours de route'));
+    registerTestDefinition({
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
+      checks: [],
+      buildPreview: () => ({ summary: 'preview', details: {} }),
+      execute,
+    });
+    const { deps, updateHistoryRow } = makeFakeDeps();
+    const engine = createActionEngine(deps);
+
+    const prepared = await engine.prepare(request, makeActionContext(), makeCheckDeps());
+    if (!prepared.ok) throw new Error('expected prepare to succeed');
+
+    const result = await engine.confirm(prepared.prepared);
+
+    expect(result.outcome).toEqual({ status: 'error', errorMessage: 'extension deconnectee en cours de route' });
+    expect(updateHistoryRow).toHaveBeenCalledWith(
+      prepared.prepared.id,
+      expect.objectContaining({ status: 'error', errorMessage: 'extension deconnectee en cours de route' })
+    );
+  });
+
+  it('Phase 2 (2026-08-28) : runViaExtension() qui rejette (pas de execute() defini) -- meme garantie', async () => {
+    registerTestDefinition({
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
+      checks: [],
+      buildPreview: () => ({ summary: 'preview', details: {} }),
+    });
+    const { deps, runViaExtension } = makeFakeDeps();
+    runViaExtension.mockRejectedValueOnce(new Error('Could not establish connection'));
+    const engine = createActionEngine(deps);
+
+    const prepared = await engine.prepare(request, makeActionContext(), makeCheckDeps());
+    if (!prepared.ok) throw new Error('expected prepare to succeed');
+
+    const result = await engine.confirm(prepared.prepared);
+
+    expect(result.outcome).toEqual({ status: 'error', errorMessage: 'Could not establish connection' });
+  });
+
+  it('Phase 2 (2026-08-28) : updateHistoryRow qui rejette reste non-bloquant -- confirm() renvoie quand meme le vrai outcome a l’UI', async () => {
+    const execute = vi.fn().mockResolvedValue({ status: 'success', resultPayload: { ok: true } });
+    registerTestDefinition({
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
+      checks: [],
+      buildPreview: () => ({ summary: 'preview', details: {} }),
+      execute,
+    });
+    const { deps, updateHistoryRow, resyncAffectedData } = makeFakeDeps();
+    updateHistoryRow.mockRejectedValueOnce(new Error('journal indisponible'));
+    const engine = createActionEngine(deps);
+
+    const prepared = await engine.prepare(request, makeActionContext(), makeCheckDeps());
+    if (!prepared.ok) throw new Error('expected prepare to succeed');
+
+    const result = await engine.confirm(prepared.prepared);
+
+    expect(result.outcome).toEqual({ status: 'success', resultPayload: { ok: true } });
+    // La resynchronisation doit quand meme avoir lieu -- un journal en panne
+    // ne doit pas non plus bloquer la resynchronisation des vraies donnees.
+    expect(resyncAffectedData).toHaveBeenCalledTimes(1);
+  });
+
+  it('Phase 2 (2026-08-28) : resyncAffectedData qui rejette reste non-bloquant -- le succes reste rapporte a l’UI', async () => {
+    const execute = vi.fn().mockResolvedValue({ status: 'success', resultPayload: { ok: true } });
+    registerTestDefinition({
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
+      checks: [],
+      buildPreview: () => ({ summary: 'preview', details: {} }),
+      execute,
+    });
+    const { deps, resyncAffectedData } = makeFakeDeps();
+    resyncAffectedData.mockRejectedValueOnce(new Error('resync indisponible'));
+    const engine = createActionEngine(deps);
+
+    const prepared = await engine.prepare(request, makeActionContext(), makeCheckDeps());
+    if (!prepared.ok) throw new Error('expected prepare to succeed');
+
+    const result = await engine.confirm(prepared.prepared);
+
+    expect(result.outcome).toEqual({ status: 'success', resultPayload: { ok: true } });
+  });
 });
 
 describe('createActionEngine().cancel', () => {
@@ -203,5 +307,24 @@ describe('createActionEngine().cancel', () => {
       prepared.prepared.id,
       expect.objectContaining({ status: 'cancelled' })
     );
+  });
+
+  it('Phase 2 (2026-08-28) : updateHistoryRow qui rejette ne fait jamais rejeter cancel() -- l’UI recoit quand meme cancelled', async () => {
+    registerTestDefinition({
+      kind: 'pause_listing',
+      label: 'Mettre en pause',
+      checks: [],
+      buildPreview: () => ({ summary: 'preview', details: {} }),
+    });
+    const { deps, updateHistoryRow } = makeFakeDeps();
+    updateHistoryRow.mockRejectedValueOnce(new Error('journal indisponible'));
+    const engine = createActionEngine(deps);
+
+    const prepared = await engine.prepare(request, makeActionContext(), makeCheckDeps());
+    if (!prepared.ok) throw new Error('expected prepare to succeed');
+
+    const result = await engine.cancel(prepared.prepared);
+
+    expect(result.outcome).toEqual({ status: 'cancelled' });
   });
 });

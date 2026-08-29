@@ -297,6 +297,59 @@ describe("finalisation du resultat", () => {
   });
 });
 
+describe("Phase 2 (2026-08-28) : exception imprevue apres claim -- filet de securite final", () => {
+  it("runAction() qui rejette -> failed avec le VRAI message, jamais un rejet non attrape ni un job bloque en 'running'", async () => {
+    vi.mocked(runAction).mockRejectedValue(new Error("Could not establish connection"));
+
+    await expect(executeClaimedSchedule("sched-1")).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "REPUBLISH_SCHEDULER_UNEXPECTED_EXCEPTION",
+      expect.objectContaining({ scheduleId: "sched-1", error: "Could not establish connection" })
+    );
+    const call = updateCallsFor("republish_schedules").find((c) => c.method === "update");
+    expect(call!.args[0]).toMatchObject({
+      status: "failed",
+      error_message: "Erreur inattendue : Could not establish connection",
+    });
+  });
+
+  it("le message reel est conserve -- jamais remplace par le message generique de la recuperation orpheline (republishScheduler.ts)", async () => {
+    vi.mocked(runAction).mockRejectedValue(new Error("Panne réseau Supabase"));
+
+    await executeClaimedSchedule("sched-1");
+
+    const call = updateCallsFor("republish_schedules").find((c) => c.method === "update");
+    const errorMessageWritten = (call!.args[0] as Record<string, unknown>).error_message as string;
+    expect(errorMessageWritten).toContain("Panne réseau Supabase");
+    expect(errorMessageWritten).not.toContain("Résultat inconnu");
+  });
+
+  it("une exception cote lecture (buildScheduledRepublishPayload) est aussi rattrapee -- jamais seulement runAction", async () => {
+    // Client fait main pour ce test precis : .from("listings") explose de
+    // maniere synchrone (jamais un simple {error} normal, deja couvert par
+    // "listing introuvable -> failed" plus haut) -- prouve que le catch
+    // couvre tout le bloc, pas seulement l'appel a runAction.
+    const republishSchedulesChain = makeChain(fromResults.republish_schedules);
+    const client = {
+      rpc: rpcMock,
+      from: (table: string) => {
+        if (table === "listings") throw new Error("lecture explosee");
+        if (table === "republish_schedules") return republishSchedulesChain.chain;
+        return makeChain(fromResults[table] ?? { data: null, error: null }).chain;
+      },
+    };
+    vi.mocked(supabaseWithToken).mockReturnValue(client as unknown as ReturnType<typeof supabaseWithToken>);
+
+    await expect(executeClaimedSchedule("sched-1")).resolves.toBeUndefined();
+
+    expect(runAction).not.toHaveBeenCalled();
+    const updateCall = republishSchedulesChain.calls.find((c) => c.method === "update");
+    expect((updateCall!.args[0] as Record<string, unknown>).status).toBe("failed");
+    expect((updateCall!.args[0] as Record<string, unknown>).error_message).toContain("lecture explosee");
+  });
+});
+
 describe("keepalive autonome", () => {
   it("passe a runAction() un onKeepalive base sur un vrai appel chrome.* (jamais activeProgressPort)", async () => {
     vi.mocked(runAction).mockResolvedValue({ status: "success", resultPayload: { vintedItemId: "1", vintedUrl: "u" } });

@@ -299,91 +299,125 @@ async function runScheduledExecution(scheduleId: string): Promise<void> {
     vintedAccountId: claim.vintedAccountId,
   });
 
-  if (!claim.listingId || !claim.vintedAccountId || !claim.packageSize) {
-    // Defense en profondeur -- ces 3 colonnes sont NOT NULL en base et la
-    // RPC les relit directement depuis la ligne qu'elle vient de reclamer ;
-    // ne devrait structurellement jamais arriver, mais un job claim sans ces
-    // valeurs ne peut pas etre execute -- echoue honnetement plutot que de
-    // planter plus loin dans la construction du payload.
-    await writeTerminalStatus(client, scheduleId, "failed", { errorMessage: "Données du job incomplètes après claim" });
-    return;
-  }
-
-  const payloadResult = await buildScheduledRepublishPayload(client, claim.listingId, claim.vintedAccountId, claim.packageSize);
-  if (!payloadResult.ok) {
-    logger.error("REPUBLISH_SCHEDULER_PAYLOAD_BUILD_FAILED", { scheduleId, error: payloadResult.error });
-    await writeTerminalStatus(client, scheduleId, "failed", { errorMessage: payloadResult.error });
-    return;
-  }
-
-  const request: RunActionRequest = {
-    historyId: `schedule:${scheduleId}`,
-    kind: "republish_listing",
-    vintedAccountId: claim.vintedAccountId,
-    listingId: claim.listingId,
-    payload: payloadResult.payload as unknown as Record<string, unknown>,
-  };
-
-  logger.info("REPUBLISH_SCHEDULER_EXECUTION_STARTED", { scheduleId, listingId: claim.listingId, vintedAccountId: claim.vintedAccountId });
-
-  // runAction() -- INCHANGE, voir son en-tete : dispatch par kind vers
-  // handlePublishListing (republish_listing reutilise ce meme handler, voir
-  // runAction.ts::HANDLERS), gere lui-meme son propre minuteur de keepalive
-  // (demarre/coupe en finally) -- seul le CONTENU de onKeepalive change ici.
-  const outcome: RunActionOutcome = await runAction(
-    request,
-    (step: PublishStep) => logger.debug("REPUBLISH_SCHEDULER_PROGRESS", { scheduleId, step }),
-    () => tickScheduledKeepalive(scheduleId),
-    // Mission "DIAGNOSTIC CAPTURE_MISSING" (2026-08-24) : `pending` etait deja
-    // un string[], mais la console Chrome le replie en "Array(7)" -- il fallait
-    // deplier chaque entree pour savoir QUELS champs bloquaient. Les versions
-    // jointes (pendingNames/confirmedNames) sont lisibles directement dans le
-    // flux de logs, sans remplacer les tableaux d'origine.
-    (confirmed: string[], pending: string[]) =>
-      logger.debug("REPUBLISH_SCHEDULER_PREFILL_SUMMARY", {
-        scheduleId,
-        pendingCount: pending.length,
-        pendingNames: pending.join(' | ') || '(aucun)',
-        confirmedCount: confirmed.length,
-        confirmedNames: confirmed.join(' | ') || '(aucun)',
-        confirmed,
-        pending,
-      }),
-    () => logger.debug("REPUBLISH_SCHEDULER_READY_TO_SUBMIT", { scheduleId }),
-    () => logger.debug("REPUBLISH_SCHEDULER_AWAITING_OLD_DELETION", { scheduleId })
-  );
-
-  // Nom historique conserve pour ne pas casser les filtres de log existants,
-  // mais il signifie EXACTEMENT "runAction a retourne" -- jamais "le job a
-  // reussi". La finalisation, juste en dessous, peut encore echouer.
-  logger.info("REPUBLISH_SCHEDULER_EXECUTION_FINISHED", { scheduleId, status: outcome.status });
-
-  // Mission "CORRECTIF JWT EXPIRE A LA FINALISATION" (2026-08-25), cause
-  // confirmee par le test reel du 25/08 a 00:25 : PGRST303 "JWT expired" sur
-  // l'ecriture terminale, alors que le job avait pu claim ET construire son
-  // payload sans probleme.
+  // Phase 2 "Automatisations infaillibles" (2026-08-28) : a partir d'ICI, le
+  // claim RPC a deja fait passer la ligne a 'running' en base (verrou
+  // atomique, voir claimSchedule() ci-dessus) -- toute exception NON
+  // rattrapee a partir de ce point laisserait la ligne bloquee a 'running'.
   //
-  // Mecanisme : `client` (ligne ~276) est construit UNE SEULE FOIS, a partir
-  // d'un token obtenu avant le claim. getValidAccessToken() accepte un token
-  // a qui il reste plus de 30 s (session.ts) -- puis runAction() peut durer
-  // jusqu'a GLOBAL_TIMEOUT_MS (600 s, handlers/publishListing.ts). Un token
-  // encore valide au depart est donc structurellement expirable a l'arrivee.
-  //
-  // C'est la SEULE frontiere du fichier traversee par une operation longue :
-  // claim et construction du payload s'executent a quelques centaines de ms
-  // du controle de token. On revalide donc ICI, et nulle part ailleurs --
-  // aucun rafraichissement periodique, aucun refresh "au cas ou", et la
-  // marge globale de 30 s reste inchangee (elle est correcte pour tous les
-  // autres appelants, qui n'ont pas d'operation longue entre les deux).
-  const freshToken = await getValidAccessToken();
-  if (!freshToken) {
-    // Rafraichissement impossible (extension depairee/session revoquee
-    // pendant l'execution) : on ne peut plus rien ecrire. Le job restera en
-    // 'running' -- meme consequence qu'un echec d'ecriture, tracee ici
-    // explicitement pour que ce cas ne soit jamais confondu avec un simple
-    // probleme reseau.
-    logger.error("REPUBLISH_SCHEDULER_FINALIZE_NO_SESSION", { scheduleId, status: outcome.status });
-    return;
+  // Nuance honnete apres audit complet : ce n'est PAS un blocage permanent --
+  // runSweep() (republishScheduler.ts::recoverOrphanedRunningJobs) recupere
+  // deja toute ligne 'running' depassant ORPHAN_RUNNING_THRESHOLD_MS (20 min)
+  // et la marque 'failed' avec UNKNOWN_OUTCOME_MESSAGE. Le vrai gain de ce
+  // try/catch n'est donc pas "empecher un blocage infini" (deja couvert) mais
+  // (1) faire apparaitre l'echec en quelques secondes au lieu de jusqu'a 20
+  // minutes, et (2) conserver le VRAI message d'erreur plutot que le message
+  // generique "resultat inconnu" -- qui, cote UI (republishOutcome.ts),
+  // desactive volontairement le bouton "Reprogrammer" (canReschedule:false)
+  // faute de savoir si Vinted a reellement ete touche. Une exception
+  // attrapee ICI, elle, correspond a un echec survenu identifiablement AVANT
+  // toute ecriture Vinted reussie (execute()/runAction n'a jamais retourne),
+  // donc structurellement reprogrammable en toute securite -- exactement ce
+  // que le message generique de la recuperation orpheline ne peut jamais
+  // garantir.
+  try {
+    if (!claim.listingId || !claim.vintedAccountId || !claim.packageSize) {
+      // Defense en profondeur -- ces 3 colonnes sont NOT NULL en base et la
+      // RPC les relit directement depuis la ligne qu'elle vient de reclamer ;
+      // ne devrait structurellement jamais arriver, mais un job claim sans ces
+      // valeurs ne peut pas etre execute -- echoue honnetement plutot que de
+      // planter plus loin dans la construction du payload.
+      await writeTerminalStatus(client, scheduleId, "failed", { errorMessage: "Données du job incomplètes après claim" });
+      return;
+    }
+
+    const payloadResult = await buildScheduledRepublishPayload(client, claim.listingId, claim.vintedAccountId, claim.packageSize);
+    if (!payloadResult.ok) {
+      logger.error("REPUBLISH_SCHEDULER_PAYLOAD_BUILD_FAILED", { scheduleId, error: payloadResult.error });
+      await writeTerminalStatus(client, scheduleId, "failed", { errorMessage: payloadResult.error });
+      return;
+    }
+
+    const request: RunActionRequest = {
+      historyId: `schedule:${scheduleId}`,
+      kind: "republish_listing",
+      vintedAccountId: claim.vintedAccountId,
+      listingId: claim.listingId,
+      payload: payloadResult.payload as unknown as Record<string, unknown>,
+    };
+
+    logger.info("REPUBLISH_SCHEDULER_EXECUTION_STARTED", { scheduleId, listingId: claim.listingId, vintedAccountId: claim.vintedAccountId });
+
+    // runAction() -- INCHANGE, voir son en-tete : dispatch par kind vers
+    // handlePublishListing (republish_listing reutilise ce meme handler, voir
+    // runAction.ts::HANDLERS), gere lui-meme son propre minuteur de keepalive
+    // (demarre/coupe en finally) -- seul le CONTENU de onKeepalive change ici.
+    const outcome: RunActionOutcome = await runAction(
+      request,
+      (step: PublishStep) => logger.debug("REPUBLISH_SCHEDULER_PROGRESS", { scheduleId, step }),
+      () => tickScheduledKeepalive(scheduleId),
+      // Mission "DIAGNOSTIC CAPTURE_MISSING" (2026-08-24) : `pending` etait deja
+      // un string[], mais la console Chrome le replie en "Array(7)" -- il fallait
+      // deplier chaque entree pour savoir QUELS champs bloquaient. Les versions
+      // jointes (pendingNames/confirmedNames) sont lisibles directement dans le
+      // flux de logs, sans remplacer les tableaux d'origine.
+      (confirmed: string[], pending: string[]) =>
+        logger.debug("REPUBLISH_SCHEDULER_PREFILL_SUMMARY", {
+          scheduleId,
+          pendingCount: pending.length,
+          pendingNames: pending.join(' | ') || '(aucun)',
+          confirmedCount: confirmed.length,
+          confirmedNames: confirmed.join(' | ') || '(aucun)',
+          confirmed,
+          pending,
+        }),
+      () => logger.debug("REPUBLISH_SCHEDULER_READY_TO_SUBMIT", { scheduleId }),
+      () => logger.debug("REPUBLISH_SCHEDULER_AWAITING_OLD_DELETION", { scheduleId })
+    );
+
+    // Nom historique conserve pour ne pas casser les filtres de log existants,
+    // mais il signifie EXACTEMENT "runAction a retourne" -- jamais "le job a
+    // reussi". La finalisation, juste en dessous, peut encore echouer.
+    logger.info("REPUBLISH_SCHEDULER_EXECUTION_FINISHED", { scheduleId, status: outcome.status });
+
+    // Mission "CORRECTIF JWT EXPIRE A LA FINALISATION" (2026-08-25), cause
+    // confirmee par le test reel du 25/08 a 00:25 : PGRST303 "JWT expired" sur
+    // l'ecriture terminale, alors que le job avait pu claim ET construire son
+    // payload sans probleme.
+    //
+    // Mecanisme : `client` (ligne ~276) est construit UNE SEULE FOIS, a partir
+    // d'un token obtenu avant le claim. getValidAccessToken() accepte un token
+    // a qui il reste plus de 30 s (session.ts) -- puis runAction() peut durer
+    // jusqu'a GLOBAL_TIMEOUT_MS (600 s, handlers/publishListing.ts). Un token
+    // encore valide au depart est donc structurellement expirable a l'arrivee.
+    //
+    // C'est la SEULE frontiere du fichier traversee par une operation longue :
+    // claim et construction du payload s'executent a quelques centaines de ms
+    // du controle de token. On revalide donc ICI, et nulle part ailleurs --
+    // aucun rafraichissement periodique, aucun refresh "au cas ou", et la
+    // marge globale de 30 s reste inchangee (elle est correcte pour tous les
+    // autres appelants, qui n'ont pas d'operation longue entre les deux).
+    const freshToken = await getValidAccessToken();
+    if (!freshToken) {
+      // Rafraichissement impossible (extension depairee/session revoquee
+      // pendant l'execution) : on ne peut plus rien ecrire avec un token
+      // frais. Le job restera 'running' jusqu'a recuperation orpheline (20
+      // min, voir l'en-tete de ce try) -- trace ici explicitement pour que ce
+      // cas ne soit jamais confondu avec un simple probleme reseau.
+      logger.error("REPUBLISH_SCHEDULER_FINALIZE_NO_SESSION", { scheduleId, status: outcome.status });
+      return;
+    }
+    await finalizeScheduleOutcome(supabaseWithToken(freshToken.accessToken), scheduleId, outcome);
+  } catch (err) {
+    // Filet de securite FINAL -- attrape uniquement l'IMPREVU (rejet reseau
+    // Supabase, exception dans runAction elle-meme...), jamais les echecs
+    // "normaux" deja traites explicitement ci-dessus. Ecrit avec le client
+    // ORIGINAL (obtenu avant le claim) : s'il a lui-meme expire entre-temps,
+    // cette derniere ecriture echouera proprement (writeTerminalStatus est
+    // deja best-effort, ne relance jamais) plutot que de faire remonter une
+    // deuxieme exception -- le job resterait alors 'running' jusqu'a la
+    // recuperation orpheline, jamais pire que le comportement documente
+    // ci-dessus pour REPUBLISH_SCHEDULER_FINALIZE_NO_SESSION.
+    logger.error("REPUBLISH_SCHEDULER_UNEXPECTED_EXCEPTION", { scheduleId, error: errorMessage(err) });
+    await writeTerminalStatus(client, scheduleId, "failed", { errorMessage: `Erreur inattendue : ${errorMessage(err)}` });
   }
-  await finalizeScheduleOutcome(supabaseWithToken(freshToken.accessToken), scheduleId, outcome);
 }
