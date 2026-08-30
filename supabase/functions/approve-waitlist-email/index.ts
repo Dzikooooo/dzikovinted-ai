@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { buildApprovalEmailHtml, buildApprovalEmailSubject } from "./emailTemplate.ts";
+import { buildApprovalEmailHtml, buildApprovalEmailSubject, CONTACT_EMAIL } from "./emailTemplate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,6 +119,11 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({
           from: fromAddress,
           to: email,
+          // Une reponse a cet email doit atterrir dans une vraie boite lue
+          // (resellosapp@gmail.com), jamais dans l'adresse d'envoi
+          // no-reply@resellosapp.com -- voir emailTemplate.ts::CONTACT_EMAIL,
+          // deja la meme adresse affichee dans le pied du message.
+          reply_to: CONTACT_EMAIL,
           subject: buildApprovalEmailSubject(),
           html: buildApprovalEmailHtml({
             fullName: (existingProfile?.full_name as string | null) ?? null,
