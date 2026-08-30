@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Mail, XCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { approveWaitlistEmail } from '../../../lib/waitlistAdminService';
 import type { WaitlistSignup } from '../../../lib/types';
 import { SearchInput } from '../../../components/ui/SearchInput';
 import { SectionLabel } from '../../../components/ui/SectionLabel';
@@ -29,6 +30,11 @@ export function AdminWaitlistTab() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [workingEmail, setWorkingEmail] = useState<string | null>(null);
+  // Notice douce (jamais une erreur) apres une approbation reussie dont
+  // l'email n'est pas parti -- Resend pas encore configure, ou envoi
+  // echoue : l'acces est deja ouvert dans les deux cas, seule l'information
+  // manque a l'utilisateur (voir approve-waitlist-email/index.ts).
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
 
   const [allowlistEmail, setAllowlistEmail] = useState('');
   const [allowlistWorking, setAllowlistWorking] = useState(false);
@@ -60,13 +66,23 @@ export function AdminWaitlistTab() {
 
   const approve = async (email: string) => {
     setWorkingEmail(email);
-    const { error: rpcError } = await supabase.rpc('admin_approve_waitlist_email', { p_email: email });
-    setWorkingEmail(null);
-    if (rpcError) {
-      console.error(rpcError);
+    setEmailNotice(null);
+    try {
+      const result = await approveWaitlistEmail(email);
+      if (!result.email_sent) {
+        setEmailNotice(
+          result.reason === 'resend_not_configured'
+            ? `Accès approuvé pour ${email} — email non envoyé (Resend n'est pas encore configuré côté serveur).`
+            : `Accès approuvé pour ${email} — l'email n'a pas pu être envoyé, préviens la personne autrement.`
+        );
+      }
+    } catch (err) {
+      console.error(err);
       setError("Impossible d'approuver cette demande. Réessaie plus tard.");
+      setWorkingEmail(null);
       return;
     }
+    setWorkingEmail(null);
     await load();
   };
 
@@ -88,22 +104,34 @@ export function AdminWaitlistTab() {
     setAllowlistWorking(true);
     setAllowlistError(null);
     setAllowlistDone(false);
-    const { error: rpcError } = await supabase.rpc('admin_approve_waitlist_email', { p_email: trimmed });
-    setAllowlistWorking(false);
-    if (rpcError) {
-      console.error(rpcError);
+    try {
+      const result = await approveWaitlistEmail(trimmed);
+      setAllowlistEmail('');
+      setAllowlistDone(true);
+      setTimeout(() => setAllowlistDone(false), 3000);
+      if (!result.email_sent && result.reason === 'send_failed') {
+        // Email connu (compte deja existant) mais l'envoi a echoue -- reste
+        // une notice douce, distincte de allowlistDone (deja affiche).
+        setEmailNotice(`Accès approuvé pour ${trimmed} — l'email n'a pas pu être envoyé, préviens la personne autrement.`);
+      }
+    } catch (err) {
+      console.error(err);
       setAllowlistError("Impossible d'approuver cet email. Réessaie plus tard.");
+      setAllowlistWorking(false);
       return;
     }
-    setAllowlistEmail('');
-    setAllowlistDone(true);
-    setTimeout(() => setAllowlistDone(false), 3000);
+    setAllowlistWorking(false);
     await load();
   };
 
   return (
     <div>
       {error && <ErrorBanner message={error} className="mb-6" />}
+      {emailNotice && (
+        <div className="flex items-start gap-2 bg-amber-400/10 border border-amber-400/20 rounded-xl p-3 sm:p-4 text-sm text-amber-700 mb-6">
+          <p>{emailNotice}</p>
+        </div>
+      )}
 
       <div className="bg-surface border border-gray-200 rounded-2xl p-6 max-w-2xl mb-8">
         <div className="flex items-center gap-2 mb-2">

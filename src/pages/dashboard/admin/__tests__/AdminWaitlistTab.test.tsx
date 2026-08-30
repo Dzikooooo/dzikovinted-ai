@@ -3,15 +3,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { AdminWaitlistTab } from '../AdminWaitlistTab';
 import type { WaitlistSignup } from '../../../../lib/types';
+import type { ApproveWaitlistEmailResult } from '../../../../lib/waitlistAdminService';
 
 // Meme pattern que AdminMessagesTab.test.tsx -- mock chainable de supabase,
 // isole la presentation (chargement/recherche/actions) du reseau reel.
+// approveWaitlistEmail (edge function approve-waitlist-email, 2026-08-30)
+// est mocke separement de supabase.rpc : "Approuver" ne passe plus par un
+// appel RPC direct depuis ce composant, seul "Rejeter" y reste (voir
+// AdminWaitlistTab.tsx).
 
 let rows: WaitlistSignup[] = [];
-// vi.hoisted (et non un simple const) : le factory de vi.mock ci-dessous est
-// hoiste par Vitest AU-DESSUS de ce fichier -- un const normal referme ici
-// declencherait "Cannot access before initialization" au chargement du mock.
-const { rpc } = vi.hoisted(() => ({ rpc: vi.fn((..._args: unknown[]) => Promise.resolve({ error: null })) }));
+// vi.hoisted (et non un simple const) : les factories de vi.mock ci-dessous
+// sont hoistees par Vitest AU-DESSUS de ce fichier -- un const normal
+// referme ici declencherait "Cannot access before initialization".
+const { rpc, approveWaitlistEmail } = vi.hoisted(() => ({
+  rpc: vi.fn((..._args: unknown[]) => Promise.resolve({ error: null })),
+  approveWaitlistEmail: vi.fn((_email: string): Promise<ApproveWaitlistEmailResult> => Promise.resolve({ email_sent: true })),
+}));
 
 function makeRow(overrides: Partial<WaitlistSignup> = {}): WaitlistSignup {
   return {
@@ -39,10 +47,14 @@ vi.mock('../../../../lib/supabase', () => ({
   },
 }));
 
+vi.mock('../../../../lib/waitlistAdminService', () => ({ approveWaitlistEmail }));
+
 afterEach(() => {
   cleanup();
   rows = [];
   rpc.mockClear();
+  approveWaitlistEmail.mockClear();
+  approveWaitlistEmail.mockResolvedValue({ email_sent: true });
 });
 
 describe('AdminWaitlistTab -- liste des demandes', () => {
@@ -67,16 +79,25 @@ describe('AdminWaitlistTab -- liste des demandes', () => {
 });
 
 describe('AdminWaitlistTab -- actions', () => {
-  it('Approuver appelle admin_approve_waitlist_email avec le bon email', async () => {
+  it('Approuver appelle approveWaitlistEmail (edge function, envoie aussi le mail) avec le bon email', async () => {
     rows = [makeRow({ email: 'jean@example.com', status: 'pending' })];
     render(<AdminWaitlistTab />);
     await waitFor(() => screen.getByText('jean@example.com'));
 
     fireEvent.click(screen.getByRole('button', { name: 'Approuver' }));
 
-    await waitFor(() =>
-      expect(rpc).toHaveBeenCalledWith('admin_approve_waitlist_email', { p_email: 'jean@example.com' })
-    );
+    await waitFor(() => expect(approveWaitlistEmail).toHaveBeenCalledWith('jean@example.com'));
+  });
+
+  it("email non envoye (Resend pas configure) -> notice douce, jamais une erreur (l'acces est deja ouvert)", async () => {
+    approveWaitlistEmail.mockResolvedValueOnce({ email_sent: false, reason: 'resend_not_configured' });
+    rows = [makeRow({ email: 'jean@example.com', status: 'pending' })];
+    render(<AdminWaitlistTab />);
+    await waitFor(() => screen.getByText('jean@example.com'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+
+    await waitFor(() => expect(screen.getByText(/Resend n'est pas encore configuré/)).toBeTruthy());
   });
 
   it('Rejeter appelle admin_reject_waitlist_email avec le bon email', async () => {
@@ -100,7 +121,7 @@ describe('AdminWaitlistTab -- actions', () => {
     expect(screen.getByRole('button', { name: 'Rejeter' })).toBeTruthy();
   });
 
-  it("le champ d'autorisation directe appelle admin_approve_waitlist_email meme pour un email hors liste", async () => {
+  it("le champ d'autorisation directe appelle approveWaitlistEmail meme pour un email hors liste", async () => {
     rows = [];
     render(<AdminWaitlistTab />);
     await waitFor(() => screen.getByText('Aucune demande pour le moment.'));
@@ -108,8 +129,6 @@ describe('AdminWaitlistTab -- actions', () => {
     fireEvent.change(screen.getByPlaceholderText('email@exemple.com'), { target: { value: 'preapprove@example.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Autoriser' }));
 
-    await waitFor(() =>
-      expect(rpc).toHaveBeenCalledWith('admin_approve_waitlist_email', { p_email: 'preapprove@example.com' })
-    );
+    await waitFor(() => expect(approveWaitlistEmail).toHaveBeenCalledWith('preapprove@example.com'));
   });
 });
