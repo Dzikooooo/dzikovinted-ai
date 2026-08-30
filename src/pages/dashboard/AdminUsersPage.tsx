@@ -5,8 +5,9 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { AdminContactsTab } from './admin/AdminContactsTab';
 import { AdminMessagesTab } from './admin/AdminMessagesTab';
+import { AdminWaitlistTab } from './admin/AdminWaitlistTab';
 
-type AdminTab = 'contacts' | 'messages';
+type AdminTab = 'contacts' | 'messages' | 'waitlist';
 
 // Coquille de la page Administration (refonte en 2 onglets, 2026-08-29,
 // "inspiree d'une interface de type application mobile") : ce composant ne
@@ -50,13 +51,14 @@ export default function AdminUsersPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <PageHeader title="Administration" description="Comptes inscrits et messagerie de support." />
+      <PageHeader title="Administration" description="Comptes inscrits, messagerie de support et liste d'attente bêta." />
 
       <SegmentedControl
         className="mb-8"
         options={[
           { value: 'contacts', label: 'Contacts' },
           { value: 'messages', label: 'Messages' },
+          { value: 'waitlist', label: "Liste d'attente" },
         ]}
         value={tab}
         onChange={setTab}
@@ -64,6 +66,7 @@ export default function AdminUsersPage() {
 
       {tab === 'contacts' && <AdminContactsTab />}
       {tab === 'messages' && <AdminMessagesTab />}
+      {tab === 'waitlist' && <AdminWaitlistTab />}
     </div>
   );
 }

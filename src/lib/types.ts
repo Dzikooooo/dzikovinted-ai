@@ -191,6 +191,29 @@ export interface Profile {
   discord_user_id: string | null;
   discord_username: string | null;
   discord_synced_at: string | null;
+  // Liste d'attente / beta privee (2026-08-30, migration 20260830110000) --
+  // gate reel d'acces au dashboard (voir App.tsx). false = compte cree mais
+  // pas encore approuve, reste bloque sur un ecran dedie. Ne concerne QUE
+  // les comptes crees apres cette migration : tous les comptes existants au
+  // moment de sa mise en prod ont ete retroactivement passes a true
+  // (backfill explicite, jamais un blocage retroactif d'un utilisateur deja
+  // actif).
+  beta_approved: boolean;
+}
+
+// Liste d'attente (2026-08-30) -- capture d'email SANS creation de compte
+// (WaitlistForm.tsx sur la landing). 'approved' fait office de liste
+// blanche : consomme par handle_new_user() (cote base) si la personne
+// s'inscrit APRES avoir ete approuvee, ou directement par
+// admin_approve_waitlist_email() si un compte existe deja pour cet email.
+export interface WaitlistSignup {
+  id: string;
+  email: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_at: string | null;
+  approved_by: string | null;
+  notes: string | null;
 }
 
 // 'ticket_reply' et 'stock_alert' ajoutes le 2026-08-29 (centre de
@@ -204,7 +227,13 @@ export type NotificationType =
   // (voir supabase/migrations/20260829150000_...), jamais par du code
   // client -- pas de fonction notifyXxx() cote src/lib comme les autres
   // types (meme discipline que 'ticket_reply', deja purement trigger-only).
-  | 'sync_success' | 'sync_failed';
+  | 'sync_success' | 'sync_failed'
+  // Liste d'attente (2026-08-30) -- ecrite uniquement par le trigger
+  // notify_on_waitlist_signup (voir migration 20260830110000_...), meme
+  // discipline trigger-only. target_page='admin' ; NotificationBell.tsx/
+  // NotificationRecapModal.tsx routent vers l'onglet Administration >
+  // "Liste d'attente" en se basant sur CE type (pas une nouvelle colonne).
+  | 'waitlist_signup';
 
 export interface AppNotification {
   id: string;

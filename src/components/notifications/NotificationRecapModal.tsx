@@ -25,7 +25,9 @@ export function NotificationRecapModal({ onNavigate }: NotificationRecapModalPro
     markRead(n.id);
     if (n.target_page) {
       // Meme deep-link que NotificationBell.tsx -- voir son commentaire.
-      if (n.target_page === 'admin') sessionStorage.setItem('resellos:adminTab', 'messages');
+      if (n.target_page === 'admin') {
+        sessionStorage.setItem('resellos:adminTab', n.type === 'waitlist_signup' ? 'waitlist' : 'messages');
+      }
       onNavigate(n.target_page);
     }
     setDismissed(true);

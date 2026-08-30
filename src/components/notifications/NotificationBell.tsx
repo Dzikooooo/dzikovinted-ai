@@ -41,12 +41,14 @@ export function NotificationBell({ onNavigate }: { onNavigate: (page: DashboardP
   const handleOpenNotification = (n: AppNotification) => {
     void markRead(n.id);
     if (n.target_page) {
-      // Deep-link vers l'onglet Messages (meme technique que
-      // resellos:blogSection/resellos:dashboardPage) : une notification
-      // "nouveau message" cible deja target_page='admin' (voir
-      // notify_on_user_ticket_message) -- ouvre directement le bon onglet
-      // plutot que de laisser l'admin chercher dans Administration.
-      if (n.target_page === 'admin') sessionStorage.setItem('resellos:adminTab', 'messages');
+      // Deep-link vers le bon onglet Administration (meme technique que
+      // resellos:blogSection/resellos:dashboardPage) : target_page='admin'
+      // est partage par plusieurs types de notification (voir
+      // notify_on_user_ticket_message, notify_on_waitlist_signup) -- c'est
+      // le TYPE, pas target_page seul, qui decide quel onglet ouvrir.
+      if (n.target_page === 'admin') {
+        sessionStorage.setItem('resellos:adminTab', n.type === 'waitlist_signup' ? 'waitlist' : 'messages');
+      }
       onNavigate(n.target_page);
       setOpen(false);
     }

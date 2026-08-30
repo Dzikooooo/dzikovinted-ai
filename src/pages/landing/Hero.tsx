@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ArrowRight } from 'lucide-react';
 import type { AppPage } from '../../lib/types';
 import { PaintedWord } from './PaintedWord';
 import { BrowserFrame } from './BrowserFrame';
+import { WaitlistForm } from './WaitlistForm';
 
 // Round M -- retouches Hero (retour utilisateur 2026-08-23, comparaison
 // directe avec VintyResell) :
@@ -43,23 +43,25 @@ export function Hero({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
         <p className="mt-8 max-w-2xl mx-auto text-lg leading-8 text-gray-600 mb-14">
           Il est maintenant temps de piloter ton activité et d'automatiser les tâches les plus importantes, mais également de structurer tes déclarations URSSAF en micro-entreprise. Et tout ça, seulement depuis Resell OS !
         </p>
-        <div className="flex flex-col items-center justify-center gap-5">
+        {/* Bêta privée (2026-08-30) : le CTA principal devient la liste
+            d'attente plutot qu'une inscription ouverte -- securise la
+            landing pour filtrer les acces (demande produit). L'inscription
+            classique reste possible (necessaire pour qu'une personne deja
+            approuvee par email puisse creer son compte, voir
+            handle_new_user() migration 20260830110000), juste en lien
+            secondaire discret plutot qu'en CTA principal. */}
+        <div className="flex flex-col items-center justify-center gap-4">
+          <WaitlistForm />
+          <p className="text-sm text-gray-600">Bêta privée · accès sur validation</p>
           <button
             onClick={() => {
               sessionStorage.setItem('resellos:authMode', 'register');
               onNavigate('auth');
             }}
-            className="w-full sm:w-auto text-white font-bold text-lg px-10 py-5 rounded-2xl transition-colors duration-300"
-            style={{ backgroundColor: '#007782' }}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#005f68'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#007782'; }}
+            className="text-sm text-gray-500 hover:text-neon-600 underline underline-offset-2 transition-colors"
           >
-            <span className="flex items-center gap-3 justify-center">
-              Commencer gratuitement
-              <ArrowRight className="w-5 h-5" aria-hidden="true" />
-            </span>
+            Déjà approuvé(e) ? Crée ton compte
           </button>
-          <p className="text-sm text-gray-600">Sans carte bancaire · 10 annonces offertes</p>
         </div>
 
         {hasVideo && (

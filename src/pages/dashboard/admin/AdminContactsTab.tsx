@@ -42,7 +42,7 @@ export function AdminContactsTab() {
   const [banConfirmTarget, setBanConfirmTarget] = useState<Profile | null>(null);
 
   const [detailTarget, setDetailTarget] = useState<Profile | null>(null);
-  const [detailWorking, setDetailWorking] = useState<'name' | 'program' | 'credits' | 'offer' | null>(null);
+  const [detailWorking, setDetailWorking] = useState<'name' | 'program' | 'credits' | 'offer' | 'beta_approved' | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [offer, setOffer] = useState<BetaCommercialOffer | null>(null);
@@ -157,6 +157,27 @@ export function AdminContactsTab() {
       return;
     }
     setDetailTarget({ ...p, full_name: renameValue.trim() });
+    await load();
+  };
+
+  // Gate reel d'acces au dashboard (voir App.tsx) -- distinct de banned
+  // (qui deconnecte immediatement) : desactiver l'acces ici laisse le compte
+  // connecte, juste bloque sur l'ecran d'attente, jusqu'a une reapprobation.
+  // Voir migration 20260830110000_add_waitlist_beta_gating.sql.
+  const setBetaApproved = async (p: Profile, approved: boolean) => {
+    setDetailWorking('beta_approved');
+    setDetailError(null);
+    const { error: rpcError } = await supabase.rpc('admin_set_user_beta_approved', {
+      p_user_id: p.id,
+      p_approved: approved,
+    });
+    setDetailWorking(null);
+    if (rpcError) {
+      console.error(rpcError);
+      setDetailError("Impossible de modifier l'accès de ce compte. Réessaie plus tard.");
+      return;
+    }
+    setDetailTarget({ ...p, beta_approved: approved });
     await load();
   };
 
@@ -304,6 +325,7 @@ export function AdminContactsTab() {
                     <Badge label={p.plan.toUpperCase()} tone={p.plan === 'free' ? 'neutral' : p.plan === 'pro' ? 'brand' : 'positive'} />
                     {p.role === 'admin' && <Badge label="Admin" tone="attention" />}
                     {p.banned && <Badge label="Bloqué" tone="negative" />}
+                    {!p.beta_approved && <Badge label="Accès en attente" tone="warning" />}
                     {p.program_status === 'beta_tester' && <Badge label="Bêta-testeur" tone="brand" />}
                     {p.credits_mode === 'unlimited' && <Badge label="Crédits illimités" tone="positive" />}
                   </div>
@@ -572,6 +594,26 @@ export function AdminContactsTab() {
                 onClick={() => saveFullName(detailTarget)}
               >
                 Renommer
+              </Button>
+            </div>
+          </div>
+
+          <div className="mb-5">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-2">Accès bêta</p>
+            <div className="flex items-center justify-between bg-dark-400 border border-gray-200 rounded-xl p-3">
+              <div>
+                <p className="text-sm text-gray-700">
+                  Statut : <span className="font-semibold text-gray-900">{detailTarget.beta_approved ? 'Accès ouvert' : "En attente d'approbation"}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">Tant que l'accès n'est pas ouvert, ce compte reste bloqué sur l'écran de liste d'attente.</p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={detailWorking === 'beta_approved'}
+                onClick={() => setBetaApproved(detailTarget, !detailTarget.beta_approved)}
+              >
+                {detailTarget.beta_approved ? "Repasser en attente" : "Ouvrir l'accès"}
               </Button>
             </div>
           </div>

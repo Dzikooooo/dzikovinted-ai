@@ -77,7 +77,7 @@ function PageFallback() {
 }
 
 function AppContent() {
-  const { user, loading, passwordRecovery, bannedNotice, clearBannedNotice } = useAuth();
+  const { user, profile, loading, passwordRecovery, bannedNotice, clearBannedNotice, signOut } = useAuth();
   // Valeur elle-meme inutilisee -- useState(initializer) garantit une seule
   // execution synchrone avant le premier rendu (meme idiome que
   // readInitialAuthMode() dans AuthPage.tsx), avant que DashboardLayout ne
@@ -152,6 +152,38 @@ function AppContent() {
 
   if (loading || !splashMinDone) {
     return <SplashScreen />;
+  }
+
+  // Bêta privée (2026-08-30) : un compte connecte mais pas encore approuve
+  // ne voit AUCUNE page de l'app (dashboard, auth, landing...) -- ce garde
+  // intercepte avant tout branchement sur `page`. Different de bannedNotice
+  // ci-dessus : la session reste active (jamais de signOut force), l'ecran
+  // se debloque en direct des l'approbation grace au canal Realtime deja
+  // cable sur profiles (AuthContext.tsx, profile_sync_${user.id}) -- pas
+  // besoin de reconnexion. role==='admin' passe toujours, meme garde-fou
+  // defensif que partout ailleurs dans l'admin.
+  if (user && profile && profile.role !== 'admin' && !profile.beta_approved) {
+    return (
+      <div className="min-h-screen bg-dark-400 text-gray-900 flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center">
+          <Logo variant="square" size={44} className="mx-auto mb-6" />
+          <h1 className="text-xl font-black mb-3">Tu es sur la liste d'attente</h1>
+          <p className="text-sm text-gray-500 leading-relaxed mb-2">
+            Ton compte <span className="text-gray-800 font-semibold">{profile.email}</span> est bien créé, mais
+            l'accès au tableau de bord n'est pas encore ouvert — ResellOS est en bêta privée.
+          </p>
+          <p className="text-sm text-gray-500 leading-relaxed mb-6">
+            Cette page se débloquera automatiquement dès que ton accès sera validé, sans rien faire de plus.
+          </p>
+          <button
+            onClick={() => void signOut()}
+            className="bg-neon-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-neon-700 transition-all"
+          >
+            Se déconnecter
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (page === 'reset-password') {
