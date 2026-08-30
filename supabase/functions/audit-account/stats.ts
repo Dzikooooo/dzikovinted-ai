@@ -42,13 +42,43 @@ export type ListingIssueKind =
   | "missing_category_or_condition"
   | "sync_failed";
 
-const ISSUE_MESSAGES: Record<ListingIssueKind, string> = {
-  no_photo: "Ajoute au moins une photo — une annonce sans photo n'attire aucun acheteur.",
-  single_photo: "Ajoute plus de photos (une seule aujourd'hui) pour rassurer les acheteurs.",
-  missing_description: "Complète la description : état, matière et mesures donnent confiance aux acheteurs.",
-  missing_category_or_condition: "Catégorie ou état manquant sur cette annonce.",
-  sync_failed: "Une modification précédente a échoué — vérifie l'annonce sur Vinted.",
-};
+// Meme fonction que src/lib/listingQuality.ts::photoArchetypesForCategory,
+// dupliquee ici (voir en-tete du fichier) -- conseil photo granulaire
+// (2026-08-30) : des angles concrets par type d'article plutot qu'un "ajoute
+// plus de photos" vague, sans jamais pretendre avoir analyse le contenu reel
+// des photos deja presentes (on ne sait que leur NOMBRE).
+function photoArchetypesForCategory(category: string | null): string[] {
+  const c = (category ?? "").toLowerCase();
+  if (/chauss|basket|sneaker|botte|sandale|talon/.test(c)) {
+    return ["la paire vue de dessus", "la semelle", "les côtés (usure éventuelle)", "l'étiquette de pointure"];
+  }
+  if (/sac|pochette|sacoche|cabas/.test(c)) {
+    return ["l'extérieur du sac", "l'intérieur (doublure, poches)", "le fermoir et les finitions", "l'étiquette de marque"];
+  }
+  if (/bijou|montre|bague|collier|bracelet/.test(c)) {
+    return ["une vue générale", "un gros plan sur les détails/gravures", "l'étiquette ou le fermoir", "un défaut éventuel"];
+  }
+  return ["le devant", "le dos", "l'étiquette de taille et composition", "le logo ou un détail caractéristique"];
+}
+
+function issueMessage(kind: ListingIssueKind, category: string | null): string {
+  switch (kind) {
+    case "no_photo": {
+      const archetypes = photoArchetypesForCategory(category);
+      return `Ajoute au moins ${archetypes.length} photos — une annonce sans photo n'attire aucun acheteur : ${archetypes.join(", ")}.`;
+    }
+    case "single_photo": {
+      const archetypes = photoArchetypesForCategory(category);
+      return `Une seule photo ne suffit pas — complète par exemple avec ${archetypes.join(", ")}.`;
+    }
+    case "missing_description":
+      return "Complète la description : état, matière et mesures donnent confiance aux acheteurs.";
+    case "missing_category_or_condition":
+      return "Catégorie ou état manquant sur cette annonce.";
+    case "sync_failed":
+      return "Une modification précédente a échoué — vérifie l'annonce sur Vinted.";
+  }
+}
 
 // Meme fonction que src/lib/listingQuality.ts::computeListingIssues,
 // dupliquee ici (voir en-tete du fichier). `listing.status` est deja
@@ -65,7 +95,17 @@ export function computeIssueKinds(listing: AccountAuditListingRow): ListingIssue
   const descLength = listing.description?.trim().length ?? 0;
   if (descLength < MIN_DESCRIPTION_LENGTH) kinds.push("missing_description");
 
-  if (!listing.category || !listing.condition) kinds.push("missing_category_or_condition");
+  // Faux positif corrige (2026-08-30, confirme en base de prod : 88% des
+  // annonces publiees en etaient depourvues) : la synchro en masse ne
+  // scrape jamais categorie/etat (seule la fiche produit individuelle les
+  // montre, hors de portee de la grille scrapee) -- pour une annonce DEJA
+  // PUBLIEE (vinted_item_id present), ce n'est pas un defaut corrigible par
+  // l'utilisateur, jamais signale. Uniquement verifie pour une annonce
+  // jamais publiee, ou completer le champ avant publication est une vraie
+  // action possible.
+  if (!listing.vinted_item_id && (!listing.category || !listing.condition)) {
+    kinds.push("missing_category_or_condition");
+  }
 
   if (listing.status === "en_stock" && listing.vinted_sync_status === "sync_failed") {
     kinds.push("sync_failed");
@@ -163,7 +203,7 @@ export function computeAccountStats(listings: AccountAuditListingRow[], now: Dat
         id: item.id,
         title: item.title,
         issueCount: kinds.length,
-        topMessage: ISSUE_MESSAGES[kinds[0]],
+        topMessage: issueMessage(kinds[0], item.category),
       });
     }
     if (kinds.includes("no_photo")) noPhotoCount++;

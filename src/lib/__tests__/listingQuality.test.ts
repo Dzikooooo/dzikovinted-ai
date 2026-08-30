@@ -38,9 +38,24 @@ describe('computeListingIssues', () => {
     expect(computeListingIssues(perfectListing({ description: 'trop court' })).map((i) => i.kind)).toContain('missing_description');
   });
 
-  it('categorie ou etat absent -> defaut missing_category_or_condition', () => {
-    expect(computeListingIssues(perfectListing({ category: null })).map((i) => i.kind)).toContain('missing_category_or_condition');
-    expect(computeListingIssues(perfectListing({ condition: '' })).map((i) => i.kind)).toContain('missing_category_or_condition');
+  it('categorie ou etat absent sur une annonce JAMAIS publiee -> defaut missing_category_or_condition', () => {
+    expect(
+      computeListingIssues(perfectListing({ category: null, vinted_item_id: null })).map((i) => i.kind)
+    ).toContain('missing_category_or_condition');
+    expect(
+      computeListingIssues(perfectListing({ condition: '', vinted_item_id: null })).map((i) => i.kind)
+    ).toContain('missing_category_or_condition');
+  });
+
+  it('categorie/etat absents sur une annonce DEJA PUBLIEE -> jamais signale (faux positif corrige, 2026-08-30)', () => {
+    // Confirme en base de prod : la synchro en masse ne scrape jamais
+    // categorie/etat (seulement visibles sur la fiche produit individuelle,
+    // hors de portee de la grille de resultats scrapee) -- une annonce deja
+    // publiee sans ces champs en base ResellOS n'est PAS un defaut corrigible
+    // par l'utilisateur (aucune action possible sur une annonce deja en ligne).
+    expect(
+      computeListingIssues(perfectListing({ category: null, condition: null, vinted_item_id: '123' })).map((i) => i.kind)
+    ).not.toContain('missing_category_or_condition');
   });
 
   it('sync_failed uniquement pour une annonce en_stock, jamais pour un brouillon/en attente', () => {
@@ -55,6 +70,40 @@ describe('computeListingIssues', () => {
   it('cumule plusieurs defauts reels simultanement', () => {
     const issues = computeListingIssues(perfectListing({ image_urls: [], description: null }));
     expect(issues.map((i) => i.kind).sort()).toEqual(['missing_description', 'no_photo'].sort());
+  });
+});
+
+describe('computeListingIssues -- conseil photo granulaire (2026-08-30)', () => {
+  it("aucune photo -> liste des angles concrets attendus, jamais un texte vague", () => {
+    const [issue] = computeListingIssues(perfectListing({ image_urls: [] }));
+    expect(issue.message).toContain('devant');
+    expect(issue.message).toContain('dos');
+    expect(issue.message).toContain('étiquette');
+    expect(issue.message).not.toBe("Ajoute plus de photos");
+  });
+
+  it('une seule photo -> suggere des angles complementaires, sans pretendre savoir ce que montre la photo existante', () => {
+    const [issue] = computeListingIssues(perfectListing({ image_urls: ['a.jpg'] }));
+    expect(issue.message).toContain('Une seule photo ne suffit pas');
+    expect(issue.message).toContain('étiquette');
+  });
+
+  it('categorie chaussures -> angles adaptes (semelle), pas le conseil generique vetements', () => {
+    const [issue] = computeListingIssues(perfectListing({ image_urls: [], category: 'Chaussures baskets' }));
+    expect(issue.message).toContain('semelle');
+    expect(issue.message).not.toContain('étiquette de taille et composition');
+  });
+
+  it('categorie sacs -> angles adaptes (interieur/fermoir)', () => {
+    const [issue] = computeListingIssues(perfectListing({ image_urls: [], category: 'Sacs à main' }));
+    expect(issue.message).toContain('intérieur');
+    expect(issue.message).toContain('fermoir');
+  });
+
+  it('categorie vetement generique (ou absente) -> conseil par defaut (devant/dos/etiquette/logo)', () => {
+    const [issue] = computeListingIssues(perfectListing({ image_urls: [], category: null }));
+    expect(issue.message).toContain('devant');
+    expect(issue.message).toContain('logo');
   });
 });
 

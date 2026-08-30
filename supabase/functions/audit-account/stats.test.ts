@@ -37,12 +37,23 @@ Deno.test("computeIssueKinds : detecte chaque defaut independamment", () => {
   assertEquals(computeIssueKinds(makeListing({ image_urls: [] })), ["no_photo"]);
   assertEquals(computeIssueKinds(makeListing({ image_urls: ["a.jpg"] })), ["single_photo"]);
   assertEquals(computeIssueKinds(makeListing({ description: null })), ["missing_description"]);
-  assertEquals(computeIssueKinds(makeListing({ category: null })), ["missing_category_or_condition"]);
+  assertEquals(computeIssueKinds(makeListing({ category: null, vinted_item_id: null })), ["missing_category_or_condition"]);
   assertEquals(computeIssueKinds(makeListing({ vinted_sync_status: "sync_failed" })), ["sync_failed"]);
 });
 
 Deno.test("computeIssueKinds : sync_failed ignore hors en_stock", () => {
   assertEquals(computeIssueKinds(makeListing({ status: "draft", vinted_sync_status: "sync_failed" })), []);
+});
+
+Deno.test("computeIssueKinds : categorie/etat absents sur une annonce DEJA PUBLIEE -> jamais signale (faux positif corrige, 2026-08-30)", () => {
+  // Confirme en base de prod (88% des annonces publiees concernees) : la
+  // synchro en masse ne scrape jamais categorie/etat -- pour une annonce
+  // deja publiee (vinted_item_id present), ce n'est pas corrigible par
+  // l'utilisateur, jamais signale.
+  assertEquals(
+    computeIssueKinds(makeListing({ category: null, condition: null, vinted_item_id: "123" })),
+    []
+  );
 });
 
 Deno.test("perfectCount compte les annonces sans aucun defaut, flaggedListings ne liste que les autres", () => {
@@ -59,7 +70,7 @@ Deno.test("flaggedListings est trie par nombre de defauts decroissant", () => {
   const stats = computeAccountStats(
     [
       makeListing({ title: "Un defaut", image_urls: [] }),
-      makeListing({ title: "Trois defauts", image_urls: [], description: null, category: null }),
+      makeListing({ title: "Trois defauts", image_urls: [], description: null, category: null, vinted_item_id: null }),
       makeListing({ title: "Deux defauts", image_urls: [], description: null }),
     ],
     NOW

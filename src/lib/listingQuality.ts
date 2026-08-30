@@ -35,6 +35,40 @@ export interface ListingIssue {
 
 const MIN_DESCRIPTION_LENGTH = 20;
 
+// Conseil photo granulaire (2026-08-30, retour utilisateur : "ajoute plus de
+// photos" ne dit rien de concret). Suggere des ANGLES-TYPES adaptes a la
+// categorie plutot qu'un texte generique -- volontairement jamais une
+// pretention d'avoir analyse le contenu reel des photos deja presentes (on
+// ne sait pas ce qu'elles montrent, seulement combien il y en a) : ce sont
+// des suggestions de ce qui manque probablement, pas un diagnostic visuel
+// invente (Human feel #7 du playbook design -- jamais un jugement de qualite
+// invente sur un contenu jamais reellement analyse, meme discipline que
+// l'ancien audit-listing/Pricer Pro).
+function photoArchetypesForCategory(category: string | null): string[] {
+  const c = (category ?? '').toLowerCase();
+  if (/chauss|basket|sneaker|botte|sandale|talon/.test(c)) {
+    return ['la paire vue de dessus', 'la semelle', 'les côtés (usure éventuelle)', "l'étiquette de pointure"];
+  }
+  if (/sac|pochette|sacoche|cabas/.test(c)) {
+    return ["l'extérieur du sac", "l'intérieur (doublure, poches)", 'le fermoir et les finitions', "l'étiquette de marque"];
+  }
+  if (/bijou|montre|bague|collier|bracelet/.test(c)) {
+    return ['une vue générale', 'un gros plan sur les détails/gravures', "l'étiquette ou le fermoir", 'un défaut éventuel'];
+  }
+  // Vetements : cas par defaut, le plus frequent du catalogue.
+  return ['le devant', 'le dos', "l'étiquette de taille et composition", 'le logo ou un détail caractéristique'];
+}
+
+function noPhotoMessage(category: string | null): string {
+  const archetypes = photoArchetypesForCategory(category);
+  return `Ajoute au moins ${archetypes.length} photos — une annonce sans photo n'attire aucun acheteur : ${archetypes.join(', ')}.`;
+}
+
+function singlePhotoMessage(category: string | null): string {
+  const archetypes = photoArchetypesForCategory(category);
+  return `Une seule photo ne suffit pas — complète par exemple avec ${archetypes.join(', ')}.`;
+}
+
 // 'vendu' est hors perimetre (rien a corriger sur une vente deja conclue) --
 // toutes les autres statuts (draft/en_attente/en_stock) sont evalues : la
 // qualite d'une annonce compte des sa preparation, pas seulement une fois en
@@ -46,15 +80,9 @@ export function computeListingIssues(listing: Listing): ListingIssue[] {
 
   const photoCount = listing.image_urls?.length ?? 0;
   if (photoCount === 0) {
-    issues.push({
-      kind: 'no_photo',
-      message: "Ajoute au moins une photo — une annonce sans photo n'attire aucun acheteur.",
-    });
+    issues.push({ kind: 'no_photo', message: noPhotoMessage(listing.category) });
   } else if (photoCount === 1) {
-    issues.push({
-      kind: 'single_photo',
-      message: 'Ajoute plus de photos (une seule aujourd\'hui) pour rassurer les acheteurs.',
-    });
+    issues.push({ kind: 'single_photo', message: singlePhotoMessage(listing.category) });
   }
 
   const descriptionLength = listing.description?.trim().length ?? 0;
@@ -65,7 +93,19 @@ export function computeListingIssues(listing: Listing): ListingIssue[] {
     });
   }
 
-  if (!listing.category || !listing.condition) {
+  // Corrige un faux positif reel confirme en base (2026-08-30) : la synchro
+  // en masse ("Synchroniser maintenant", extension/src/background/sync.ts)
+  // ne scrape QUE la grille de resultats Vinted, qui n'expose jamais la
+  // categorie/l'etat -- seule la fiche produit individuelle les montre. Pour
+  // toute annonce DEJA PUBLIEE (vinted_item_id present), ces deux champs sont
+  // donc structurellement absents de la base ResellOS meme quand l'annonce a
+  // bel et bien une categorie/un etat sur Vinted -- ce n'est pas un defaut
+  // corrigible par l'utilisateur (aucune action "ajouter la categorie" sur
+  // une annonce deja en ligne), donc jamais signale ici. Uniquement verifie
+  // pour une annonce JAMAIS publiee (brouillon/en attente sans
+  // vinted_item_id), ou l'utilisateur peut reellement completer le champ
+  // avant de publier.
+  if (!listing.vinted_item_id && (!listing.category || !listing.condition)) {
     issues.push({
       kind: 'missing_category_or_condition',
       message: 'Catégorie ou état manquant sur cette annonce.',
