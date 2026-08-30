@@ -11,6 +11,7 @@ import { AGING_STOCK_DAYS } from '../../../lib/insights/constants';
 import { formatEUR } from '../../../lib/currency';
 import type { ListingRecommendationResult } from '../../../lib/insights/types';
 import { needsRepublish } from '../../../lib/listingStatus';
+import { computeListingIssues, describeListingIssues, qualityToneForIssues } from '../../../lib/listingQuality';
 import { formatScheduleLabel, isoToLocalDateTime, type RepublishSchedule } from '../../../lib/republishSchedule';
 import { explainRepublishFailure } from '../../../lib/republishOutcome';
 import type { RepublishOutcomeRow } from '../../../services/republishSchedules';
@@ -66,12 +67,27 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
     : Number(item.price || 0) - Number(item.purchase_price || 0);
   const roi = hasCost && Number(item.purchase_price) > 0 ? Math.round((margin / Number(item.purchase_price)) * 100) : 0;
 
+  // Casier visuel "Mes annonces" (2026-08-30) : contour de suivi qualite,
+  // toujours calcule en direct depuis les donnees actuelles de l'annonce --
+  // jamais une valeur stockee/perimee (voir listingQuality.ts). Une annonce
+  // vendue ne porte aucun contour qualite (issues toujours vide, tone reste
+  // 'default').
+  const qualityIssues = computeListingIssues(item);
+  const qualityTone = isSold ? 'default' : qualityToneForIssues(qualityIssues);
+  // Priorite : un defaut structurel/SEO reel (qualityIssues) passe TOUJOURS
+  // avant une suggestion de performance commerciale (Decision Engine,
+  // recommendationState) -- corriger ce qui manque avant d'optimiser ce qui
+  // existe deja. Remplace le texte generique auparavant affiche ("Annonce à
+  // vérifier" notamment) par un conseil precis dans tous les cas.
+  const copilotMessage = describeListingIssues(qualityIssues) ?? (recommendationState?.status === 'action' ? recommendationState.reason : null);
+
   return (
     <Card
       padding="none"
       background="alt"
       interactive
       selected={selected}
+      tone={qualityTone}
       role="button"
       tabIndex={0}
       onClick={onOpenDetail}
@@ -150,19 +166,25 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
           )}
         </div>
 
-        {/* 'attendre' reste volontairement silencieux (aucun badge) -- les 3
-            autres etats du Decision Engine (action/donnees_insuffisantes/
-            recommandation_differee) restent visuellement distincts, jamais
-            confondus (voir LOT1_SPEC.md). */}
-        {recommendationState?.status === 'action' && (
-          <span
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md mt-2"
-            title={recommendationState.reason}
-          >
-            <Lightbulb className="w-3 h-3" /> {recommendationState.message}
-            {recommendationState.confidence === 'standard' && (
-              <span className="font-normal text-neon-500/70">· à confirmer</span>
-            )}
+        {/* Copilote (2026-08-30) : affiche desormais le conseil PRECIS
+            directement (plus jamais un libelle generique type "Annonce à
+            vérifier") -- priorite aux defauts structurels/SEO reels
+            (qualityIssues), sinon la raison precise du Decision Engine
+            (recommendationState.reason, deja un texte concret -- seul le
+            libelle .message generique etait affiche auparavant). 'attendre'
+            reste volontairement silencieux (aucun badge) -- les 2 autres
+            etats du Decision Engine (donnees_insuffisantes/
+            recommandation_differee) restent visuellement distincts,
+            inchanges (voir LOT1_SPEC.md). */}
+        {copilotMessage && (
+          <span className="inline-flex items-start gap-1 text-[11px] font-bold text-neon-500 bg-neon-500/10 px-1.5 py-0.5 rounded-md mt-2">
+            <Lightbulb className="w-3 h-3 flex-shrink-0 mt-px" />
+            <span>
+              {copilotMessage}
+              {qualityIssues.length === 0 && recommendationState?.status === 'action' && recommendationState.confidence === 'standard' && (
+                <span className="font-normal text-neon-500/70"> · à confirmer</span>
+              )}
+            </span>
           </span>
         )}
         {recommendationState?.status === 'donnees_insuffisantes' && (

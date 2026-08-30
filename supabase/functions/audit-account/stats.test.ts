@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert";
-import { computeAccountStats, type AccountAuditListingRow } from "./stats.ts";
+import { computeAccountStats, computeIssueKinds, type AccountAuditListingRow } from "./stats.ts";
 
 const NOW = new Date("2026-08-30T12:00:00Z");
 
@@ -16,6 +16,7 @@ function makeListing(overrides: Partial<AccountAuditListingRow> = {}): AccountAu
     vinted_item_id: "123",
     vinted_status: "online",
     status: "en_stock",
+    vinted_sync_status: null,
     created_at: NOW.toISOString(),
     ...overrides,
   };
@@ -25,79 +26,63 @@ Deno.test("aucune annonce -> stats a zero, score 0, jamais une division par zero
   const stats = computeAccountStats([], NOW);
   assertEquals(stats.totalListings, 0);
   assertEquals(stats.score, 0);
-  assertEquals(stats.topCategory, null);
-  assertEquals(stats.topBrand, null);
+  assertEquals(stats.flaggedListings, []);
 });
 
-Deno.test("compte chaque statut ResellOS separement", () => {
+Deno.test("computeIssueKinds : une annonce vendue ne remonte jamais aucun defaut", () => {
+  assertEquals(computeIssueKinds(makeListing({ status: "vendu", image_urls: [] })), []);
+});
+
+Deno.test("computeIssueKinds : detecte chaque defaut independamment", () => {
+  assertEquals(computeIssueKinds(makeListing({ image_urls: [] })), ["no_photo"]);
+  assertEquals(computeIssueKinds(makeListing({ image_urls: ["a.jpg"] })), ["single_photo"]);
+  assertEquals(computeIssueKinds(makeListing({ description: null })), ["missing_description"]);
+  assertEquals(computeIssueKinds(makeListing({ category: null })), ["missing_category_or_condition"]);
+  assertEquals(computeIssueKinds(makeListing({ vinted_sync_status: "sync_failed" })), ["sync_failed"]);
+});
+
+Deno.test("computeIssueKinds : sync_failed ignore hors en_stock", () => {
+  assertEquals(computeIssueKinds(makeListing({ status: "draft", vinted_sync_status: "sync_failed" })), []);
+});
+
+Deno.test("perfectCount compte les annonces sans aucun defaut, flaggedListings ne liste que les autres", () => {
+  const stats = computeAccountStats(
+    [makeListing(), makeListing({ image_urls: [] }), makeListing()],
+    NOW
+  );
+  assertEquals(stats.perfectCount, 2);
+  assertEquals(stats.flaggedListings.length, 1);
+  assertEquals(stats.flaggedListings[0].issueCount, 1);
+});
+
+Deno.test("flaggedListings est trie par nombre de defauts decroissant", () => {
   const stats = computeAccountStats(
     [
-      makeListing({ status: "en_stock" }),
-      makeListing({ status: "draft" }),
-      makeListing({ status: "en_attente" }),
-      makeListing({ status: "vendu" }),
+      makeListing({ title: "Un defaut", image_urls: [] }),
+      makeListing({ title: "Trois defauts", image_urls: [], description: null, category: null }),
+      makeListing({ title: "Deux defauts", image_urls: [], description: null }),
     ],
     NOW
   );
-  assertEquals(stats.activeCount, 1);
-  assertEquals(stats.draftCount, 1);
-  assertEquals(stats.pendingCount, 1);
-  assertEquals(stats.soldCount, 1);
-  assertEquals(stats.totalListings, 4);
+  assertEquals(stats.flaggedListings.map((f) => f.title), ["Trois defauts", "Deux defauts", "Un defaut"]);
 });
 
-Deno.test("detecte une description trop courte ou absente", () => {
-  const stats = computeAccountStats(
-    [
-      makeListing({ description: "ok" }),
-      makeListing({ description: null }),
-      makeListing({ description: "Une description bien assez longue pour compter." }),
-    ],
-    NOW
-  );
-  assertEquals(stats.missingDescriptionCount, 2);
-});
-
-Deno.test("distingue 0 photo (bloquant) et exactement 1 photo (a ameliorer)", () => {
-  const stats = computeAccountStats(
-    [
-      makeListing({ image_urls: [] }),
-      makeListing({ image_urls: null }),
-      makeListing({ image_urls: ["a.jpg"] }),
-      makeListing({ image_urls: ["a.jpg", "b.jpg", "c.jpg"] }),
-    ],
-    NOW
-  );
-  assertEquals(stats.noPhotoCount, 2);
-  assertEquals(stats.singlePhotoCount, 1);
-  assertEquals(stats.avgPhotoCount, 1); // (0+0+1+3)/4 = 1
-});
-
-Deno.test("agingActiveCount ne compte que le stock actif (en_stock) au-dela du seuil, jamais draft/en_attente/vendu", () => {
+Deno.test("agingCount/needsRepublishCount restent des signaux de compte distincts des defauts qualite", () => {
   const oldDate = new Date(NOW.getTime() - 40 * 24 * 60 * 60 * 1000).toISOString();
   const stats = computeAccountStats(
     [
-      makeListing({ status: "en_stock", created_at: oldDate }),
-      makeListing({ status: "draft", created_at: oldDate }),
-      makeListing({ status: "en_attente", created_at: oldDate }),
-      makeListing({ status: "en_stock", created_at: NOW.toISOString() }),
+      makeListing({ created_at: oldDate }),
+      makeListing({ vinted_item_id: null, vinted_status: null }),
+      makeListing(),
     ],
     NOW
   );
-  assertEquals(stats.agingActiveCount, 1);
-});
-
-Deno.test("needsRepublishCount : en_stock sans vinted_item_id, ou vinted_status hidden/deleted/draft/unknown", () => {
-  const stats = computeAccountStats(
-    [
-      makeListing({ status: "en_stock", vinted_item_id: null, vinted_status: null }),
-      makeListing({ status: "en_stock", vinted_item_id: "1", vinted_status: "hidden" }),
-      makeListing({ status: "en_stock", vinted_item_id: "2", vinted_status: "online" }),
-      makeListing({ status: "draft", vinted_item_id: null, vinted_status: null }),
-    ],
-    NOW
-  );
-  assertEquals(stats.needsRepublishCount, 2);
+  assertEquals(stats.agingCount, 1);
+  assertEquals(stats.needsRepublishCount, 1);
+  // Ces deux annonces restent "parfaites" au sens qualite/SEO -- aging et
+  // republication sont un axe distinct (performance), jamais mele aux
+  // defauts structurels comptes dans flaggedListings/perfectCount.
+  assertEquals(stats.perfectCount, 3);
 });
 
 Deno.test("topCategory/topBrand renvoient la valeur la plus frequente, jamais une valeur vide", () => {
@@ -114,10 +99,7 @@ Deno.test("topCategory/topBrand renvoient la valeur la plus frequente, jamais un
 });
 
 Deno.test("un compte impeccable obtient un score proche de 100", () => {
-  const stats = computeAccountStats(
-    [makeListing(), makeListing(), makeListing()],
-    NOW
-  );
+  const stats = computeAccountStats([makeListing(), makeListing(), makeListing()], NOW);
   assertEquals(stats.score >= 95, true);
 });
 

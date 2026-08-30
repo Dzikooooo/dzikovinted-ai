@@ -310,3 +310,84 @@ describe('ListingCard -- action Republier', () => {
     expect(screen.getByRole('button', { name: /Marquer vendu/ })).toBeTruthy();
   });
 });
+
+// Casier visuel "Mes annonces" (2026-08-30) : contour colore + Copilote
+// precis, tous deux calcules en direct depuis les donnees de l'annonce.
+describe('ListingCard -- casier visuel (contour qualite + Copilote)', () => {
+  const complete = {
+    image_urls: ['a.jpg', 'b.jpg'],
+    description: 'Une description bien assez longue et détaillée pour compter comme complète.',
+    category: 'Polo',
+    condition: 'Très bon état',
+  };
+
+  it("annonce complete -> aucun message Copilote generique, aucun defaut affiche", () => {
+    render(<ListingCard {...buildProps({ item: buildListing(complete) })} />);
+
+    expect(screen.queryByText('Annonce à vérifier')).toBeNull();
+    expect(screen.queryByText(/Ajoute au moins une photo/)).toBeNull();
+  });
+
+  it('un seul defaut (ex. une seule photo) -> son conseil precis affiche tel quel, sans compteur', () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ ...complete, image_urls: ['a.jpg'] }) })} />);
+
+    expect(screen.getByText(/Ajoute plus de photos/)).toBeInTheDocument();
+    expect(screen.queryByText(/autre point/)).toBeNull();
+  });
+
+  it('plusieurs defauts -> le premier conseil precis + un compteur honnete du reste', () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ ...complete, image_urls: [], description: null }) })} />);
+
+    expect(screen.getByText(/Ajoute au moins une photo.*\(\+1 autre point\)/)).toBeInTheDocument();
+  });
+
+  it("une annonce vendue n'affiche jamais de conseil Copilote base sur la qualite (hors perimetre)", () => {
+    render(<ListingCard {...buildProps({ item: buildListing({ status: 'vendu', sold_price: 30, image_urls: [], description: null }) })} />);
+
+    expect(screen.queryByText(/Ajoute au moins une photo/)).toBeNull();
+  });
+
+  it("un defaut reel remplace un texte generique du Decision Engine, jamais les deux a la fois", () => {
+    render(
+      <ListingCard
+        {...buildProps({
+          item: buildListing({ ...complete, image_urls: [] }),
+          recommendationState: {
+            status: 'action',
+            kind: 'baisser_prix',
+            confidence: 'haute',
+            message: 'Baisse de prix conseillée',
+            reason: 'Un texte de performance commerciale, sans rapport avec les photos.',
+            cta: { type: 'edit_listing', field: 'price' },
+            listingId: 'l1',
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText(/Ajoute au moins une photo/)).toBeInTheDocument();
+    expect(screen.queryByText('Un texte de performance commerciale, sans rapport avec les photos.')).toBeNull();
+  });
+
+  it("aucun defaut structurel -> retombe sur la raison precise du Decision Engine (jamais son libelle generique)", () => {
+    render(
+      <ListingCard
+        {...buildProps({
+          item: buildListing(complete),
+          recommendationState: {
+            status: 'action',
+            kind: 'baisser_prix',
+            confidence: 'haute',
+            message: 'Baisse de prix conseillée',
+            reason: 'Peu de vues après 30 jours en ligne, une baisse de prix pourrait relancer l\'intérêt.',
+            cta: { type: 'edit_listing', field: 'price' },
+            listingId: 'l1',
+          },
+        })}
+      />
+    );
+
+    expect(screen.getByText(/Peu de vues après 30 jours en ligne/)).toBeInTheDocument();
+    expect(screen.queryByText('Baisse de prix conseillée')).toBeNull();
+  });
+});

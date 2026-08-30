@@ -1539,7 +1539,20 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
         />
       )}
 
-      {auditingAccount && <AccountAuditModal onClose={() => setAuditingAccount(false)} />}
+      {auditingAccount && (
+        <AccountAuditModal
+          onClose={() => setAuditingAccount(false)}
+          vintedAccountId={selectedAccountId}
+          accountLabel={selectedAccountId === 'all' ? 'tous mes comptes' : accountLabel(selectedAccountId)}
+          onOpenListing={(id) => {
+            const listing = items.find((i) => i.id === id);
+            if (listing) {
+              setAuditingAccount(false);
+              setDetailItem(listing);
+            }
+          }}
+        />
+      )}
 
       {pendingUpdate && (
         <Modal onClose={() => setPendingUpdate(null)} size="sm">

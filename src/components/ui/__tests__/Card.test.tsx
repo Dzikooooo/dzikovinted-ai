@@ -67,6 +67,26 @@ describe('Card', () => {
     expect(screen.getByTestId('card').className).not.toContain('shadow-');
   });
 
+  it.each([
+    ['quality-ok', 'border-green-500/60'],
+    ['quality-warning', 'border-neon-500/60'],
+    ['quality-critical', 'border-red-500/60'],
+  ] as const)("tone=%s reprend la bordure epaisse (2px) et l'ombre assorties -- casier visuel", (tone, expectedBorder) => {
+    render(<Card data-testid="card" tone={tone}>x</Card>);
+    const el = screen.getByTestId('card');
+    expect(el.className).toContain(expectedBorder);
+    expect(el.className).toContain('border-2');
+    expect(el.className).toContain('shadow-');
+  });
+
+  it('selected reste prioritaire sur un ton qualite -- jamais les deux contours en meme temps', () => {
+    render(<Card data-testid="card" tone="quality-critical" selected>x</Card>);
+    const el = screen.getByTestId('card');
+    expect(el.className).toContain('border-neon-500/60');
+    expect(el.className).not.toContain('border-red-500/60');
+    expect(el.className).not.toContain('border-2');
+  });
+
   it('className et props HTML supplementaires (onClick, aria-label...) passent tels quels', () => {
     render(
       <Card data-testid="card" className="mt-6" aria-label="ma carte">

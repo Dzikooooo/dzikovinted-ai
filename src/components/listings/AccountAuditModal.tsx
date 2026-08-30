@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, AlertTriangle, ImageIcon, FileText, Clock3, RefreshCw } from 'lucide-react';
+import { Sparkles, AlertTriangle, ImageIcon, FileText, Clock3, RefreshCw, ArrowRight } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { ErrorBanner } from '../ui/ErrorBanner';
@@ -9,6 +9,17 @@ import type { AccountAudit, AccountAuditRecommendation } from '../../lib/types';
 
 interface AccountAuditModalProps {
   onClose: () => void;
+  // Compte Vinted SELECTIONNE dans le filtre du haut (VintedAccountFilterContext)
+  // -- l'audit reste scope a ce compte precis, jamais tout le catalogue par
+  // defaut (demande explicite 2026-08-30). `undefined`/'all' = tous les
+  // comptes, comportement precedent conserve pour ce cas.
+  vintedAccountId?: string;
+  accountLabel: string;
+  // "Injection" dans les cartes (demande explicite) : ouvre directement la
+  // fiche de l'annonce concernee depuis une ligne du rapport -- l'appelant
+  // (ListingsManagementSection.tsx) sait deja retrouver la Listing complete
+  // par id et ouvrir ListingDetailModal, cette modale ne connait que l'id/titre.
+  onOpenListing: (id: string) => void;
 }
 
 const SEVERITY_STYLE: Record<AccountAuditRecommendation['severity'], { label: string; className: string }> = {
@@ -27,7 +38,11 @@ function scoreTone(score: number): 'positive' | 'attention' | 'negative' {
 // que l'ancienne ListingAuditModal (retiree) : jamais de declenchement
 // automatique a l'ouverture, un clic explicite reste necessaire (consomme 1
 // credit, meme discipline "1 credit = 1 action IA" que le reste du produit).
-export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
+// Perimetre "stock actuel du compte selectionne" (voir accountAuditService.ts) --
+// les compteurs et le rapport ci-dessous decrivent EXACTEMENT les memes
+// regles que les contours colores des cartes (src/lib/listingQuality.ts),
+// jamais un chiffre different affiche a deux endroits du produit.
+export function AccountAuditModal({ onClose, vintedAccountId, accountLabel, onOpenListing }: AccountAuditModalProps) {
   const [audit, setAudit] = useState<AccountAudit | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +51,7 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
     setLoading(true);
     setError(null);
     try {
-      const result = await auditAccount();
+      const result = await auditAccount(vintedAccountId);
       setAudit(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "L'audit a échoué. Réessaie plus tard.");
@@ -59,7 +74,9 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
             <Sparkles className="w-4 h-4 text-neon-500" />
             Audit du compte <span className="text-gray-500 font-normal text-sm">Vinted</span>
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">Basé sur l'intégralité de tes annonces enregistrées dans ResellOS.</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Stock actuellement en ligne — <span className="font-semibold text-gray-700">{accountLabel}</span>.
+          </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onClose}>Fermer</Button>
       </div>
@@ -69,8 +86,8 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
       {!audit && !loading && (
         <div className="bg-dark-400 border border-gray-200 rounded-xl p-5 text-center">
           <p className="text-sm text-gray-600 mb-2">
-            Analyse toutes tes annonces (photos, descriptions, statuts, fraîcheur) et génère un rapport de recommandations
-            concret pour améliorer ton catalogue.
+            Analyse le stock actuellement en ligne de <span className="font-semibold">{accountLabel}</span> (photos,
+            descriptions, catégorisation, fraîcheur) et génère un rapport de recommandations concret.
           </p>
           <p className="text-xs text-gray-500 mb-4">
             Ce premier audit ne couvre que tes annonces — la photo de profil et la bio Vinted ne sont pas encore analysées.
@@ -84,7 +101,7 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
       {loading && (
         <div className="flex items-center justify-center py-10">
           <Sparkles className="w-6 h-6 text-neon-500 animate-pulse" />
-          <span className="ml-3 text-sm text-gray-500">Analyse de ton compte en cours...</span>
+          <span className="ml-3 text-sm text-gray-500">Analyse de ton stock en cours...</span>
         </div>
       )}
 
@@ -101,8 +118,12 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard label="Annonces" value={audit.stats.totalListings} />
-            <StatCard label="En stock" value={audit.stats.activeCount} />
+            <StatCard label="Annonces en stock" value={audit.stats.totalListings} />
+            <StatCard
+              label="Sans défaut"
+              value={audit.stats.perfectCount}
+              tone={audit.stats.perfectCount === audit.stats.totalListings ? 'positive' : 'neutral'}
+            />
             <StatCard
               label="Sans photo"
               value={audit.stats.noPhotoCount}
@@ -117,8 +138,8 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
             />
             <StatCard
               label="En stock +21j"
-              value={audit.stats.agingActiveCount}
-              tone={audit.stats.agingActiveCount > 0 ? 'attention' : 'positive'}
+              value={audit.stats.agingCount}
+              tone={audit.stats.agingCount > 0 ? 'attention' : 'positive'}
               icon={Clock3}
             />
             <StatCard
@@ -148,6 +169,33 @@ export function AccountAuditModal({ onClose }: AccountAuditModalProps) {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {audit.stats.flaggedListings.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-500">
+                Annonces concernées ({audit.stats.flaggedListings.length})
+              </p>
+              <div className="divide-y divide-gray-200 border border-gray-200 rounded-xl overflow-hidden">
+                {audit.stats.flaggedListings.map((listing) => (
+                  <button
+                    key={listing.id}
+                    type="button"
+                    onClick={() => onOpenListing(listing.id)}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left bg-dark-400 hover:bg-neon-500/5 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{listing.title}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {listing.topMessage}
+                        {listing.issueCount > 1 && ` (+${listing.issueCount - 1} autre${listing.issueCount > 2 ? 's' : ''})`}
+                      </p>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

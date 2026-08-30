@@ -15,7 +15,14 @@ import type { HTMLAttributes } from 'react';
 // deja unifie), rounded-lg pour les petits controles icone-seule. Ce
 // composant formalise le premier palier, il ne remplace pas les deux autres.
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
-export type CardTone = 'default' | 'danger';
+// 'quality-*' (2026-08-30, casier visuel "Mes annonces") : contour de suivi
+// qualite par annonce (ListingCard) -- vert = aucun defaut detecte, violet =
+// un seul point a corriger (reutilise neon-500, deja la couleur de marque ET
+// d'action du produit, jamais une 4e teinte inventee), rouge = plusieurs
+// points a corriger. `selected` reste toujours prioritaire sur ces 3 tons
+// (voir plus bas) : une carte selectionnee affiche l'etat de selection, pas
+// son etat qualite, exactement comme pour 'default'/'danger' deja.
+export type CardTone = 'default' | 'danger' | 'quality-ok' | 'quality-warning' | 'quality-critical';
 
 const PADDING_CLASSES: Record<CardPadding, string> = {
   none: '',
@@ -30,6 +37,18 @@ const PADDING_CLASSES: Record<CardPadding, string> = {
 const TONE_BORDER_CLASSES: Record<CardTone, string> = {
   default: 'border-gray-200',
   danger: 'border-red-500/20',
+  'quality-ok': 'border-green-500/60',
+  'quality-warning': 'border-neon-500/60',
+  'quality-critical': 'border-red-500/60',
+};
+
+// Ombre douce assortie, UNIQUEMENT pour les 3 tons qualite -- 'default'/
+// 'danger' restent sans ombre hors selection (test "Card ne decore jamais
+// sans etat reel derriere" deja en place, jamais casse par cet ajout).
+const TONE_SHADOW_CLASSES: Partial<Record<CardTone, string>> = {
+  'quality-ok': 'shadow-[0_0_16px_rgba(34,197,94,0.15)]',
+  'quality-warning': 'shadow-[0_0_16px_rgba(124,92,255,0.15)]',
+  'quality-critical': 'shadow-[0_0_16px_rgba(239,68,68,0.15)]',
 };
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
@@ -64,16 +83,25 @@ export function Card({
   children,
   ...rest
 }: CardProps) {
+  const isQualityTone = tone === 'quality-ok' || tone === 'quality-warning' || tone === 'quality-critical';
   const borderClass = selected ? 'border-neon-500/60' : TONE_BORDER_CLASSES[tone];
+  // Contour plus epais (2px) UNIQUEMENT pour les 3 tons qualite, et
+  // seulement hors selection -- "suivi visuel rapide" demande explicitement
+  // (casier "Mes annonces", 2026-08-30) : un liseret de 1px quasi-transparent
+  // ne se voit pas d'un coup d'oeil sur une grille de plusieurs dizaines de
+  // cartes. `selected` retombe sur l'epaisseur 1px deja existante, inchangee.
+  const widthClass = isQualityTone && !selected ? 'border-2' : 'border';
   const bgClass = background === 'alt' ? 'bg-surface-alt' : 'bg-surface';
-  const shadowClass = selected ? 'shadow-[0_0_0_1px_rgba(124,92,255,0.3),0_20px_50px_rgba(0,0,0,0.35)]' : '';
+  const shadowClass = selected
+    ? 'shadow-[0_0_0_1px_rgba(124,92,255,0.3),0_20px_50px_rgba(0,0,0,0.35)]'
+    : (TONE_SHADOW_CLASSES[tone] ?? '');
   const interactiveClass = interactive
     ? `transition-all duration-300 cursor-pointer ${!selected ? 'hover:border-neon-500/30' : ''}`
     : '';
 
   return (
     <div
-      className={`rounded-2xl border ${borderClass} ${bgClass} ${PADDING_CLASSES[padding]} ${shadowClass} ${interactiveClass} ${className}`}
+      className={`rounded-2xl ${widthClass} ${borderClass} ${bgClass} ${PADDING_CLASSES[padding]} ${shadowClass} ${interactiveClass} ${className}`}
       {...rest}
     >
       {children}

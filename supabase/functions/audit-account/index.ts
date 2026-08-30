@@ -66,6 +66,14 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json().catch(() => ({}));
     const geminiKeyOverride = typeof body?.gemini_key === "string" ? body.gemini_key : undefined;
+    // Audit cible (2026-08-30) : le compte SELECTIONNE cote client
+    // (VintedAccountFilterContext) -- absent/"all" = tous les comptes Vinted
+    // de l'utilisateur (comportement precedent, toujours utile pour un
+    // utilisateur mono-compte). Jamais verifie via une seconde requete :
+    // l'usage direct de cette valeur dans le filtre .eq() ci-dessous suffit,
+    // la policy select_own_listings empeche deja d'atteindre le compte d'un
+    // autre utilisateur meme avec un id invente.
+    const vintedAccountId = typeof body?.vinted_account_id === "string" ? body.vinted_account_id : undefined;
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -106,14 +114,25 @@ Deno.serve(async (req: Request) => {
     // Client anon+JWT (PAS supabaseAdmin) : la policy select_own_listings
     // s'assure deja qu'on ne peut jamais lire les annonces de quelqu'un
     // d'autre -- aucune verification manuelle de propriete necessaire.
+    // status='en_stock' uniquement (2026-08-30) : "se baser strictement sur
+    // le stock present actuellement" -- brouillons/en attente/ventes sortent
+    // du perimetre de cet audit (voir stats.ts/prompt.ts, mis a jour en
+    // consequence).
     const listings: AccountAuditListingRow[] = [];
     for (let offset = 0; ; offset += PAGE_SIZE) {
-      const { data, error: listingsError } = await supabase
+      let query = supabase
         .from("listings")
-        .select("id, title, description, category, brand, condition, price, image_urls, vinted_item_id, vinted_status, status, created_at")
+        .select(
+          "id, title, description, category, brand, condition, price, image_urls, vinted_item_id, vinted_status, status, vinted_sync_status, created_at"
+        )
         .eq("user_id", user.id)
+        .eq("status", "en_stock")
         .or("vinted_status.neq.deleted,vinted_status.is.null")
         .range(offset, offset + PAGE_SIZE - 1);
+      if (vintedAccountId) {
+        query = query.eq("vinted_account_id", vintedAccountId);
+      }
+      const { data, error: listingsError } = await query;
 
       if (listingsError) {
         if (reservationId) await supabaseAdmin.rpc("refund_credit_reservation", { p_reservation_id: reservationId, p_user_id: user.id });
@@ -127,7 +146,7 @@ Deno.serve(async (req: Request) => {
 
     if (listings.length === 0) {
       if (reservationId) await supabaseAdmin.rpc("refund_credit_reservation", { p_reservation_id: reservationId, p_user_id: user.id });
-      return jsonResponse(422, { error: "Aucune annonce à auditer pour le moment. Ajoute au moins un article." });
+      return jsonResponse(422, { error: "Aucune annonce en stock à auditer pour ce compte pour le moment." });
     }
 
     const stats = computeAccountStats(listings);

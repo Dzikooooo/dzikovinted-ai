@@ -352,22 +352,30 @@ export type BackgroundStyle = 'original' | 'blanc_studio' | 'lifestyle_neutre' |
 // supabase/functions/audit-account/{stats,prompt,index}.ts. `stats` est
 // deterministe (calcule en code cote serveur, jamais devine par Gemini) ;
 // `summary`/`recommendations` sont le texte genere par Gemini a partir de
-// `stats` uniquement.
+// `stats` uniquement. Perimetre "stock actuel" (2026-08-30) : ne porte plus
+// que sur les annonces status='en_stock' du compte Vinted selectionne.
+export interface AccountAuditFlaggedListing {
+  id: string;
+  title: string;
+  issueCount: number;
+  topMessage: string;
+}
+
 export interface AccountAuditStats {
   totalListings: number;
-  activeCount: number;
-  draftCount: number;
-  pendingCount: number;
-  soldCount: number;
-  missingDescriptionCount: number;
   noPhotoCount: number;
   singlePhotoCount: number;
-  agingActiveCount: number;
+  missingDescriptionCount: number;
+  missingCategoryOrConditionCount: number;
+  syncFailedCount: number;
+  perfectCount: number;
+  agingCount: number;
   needsRepublishCount: number;
   avgPhotoCount: number;
   topCategory: string | null;
   topBrand: string | null;
   score: number;
+  flaggedListings: AccountAuditFlaggedListing[];
 }
 
 export interface AccountAuditRecommendation {

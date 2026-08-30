@@ -6,7 +6,11 @@ import { supabase } from './supabase';
 // jamais supabase.functions.invoke() (convention deja etablie pour les
 // fonctions Gemini+credits de ce repo). Propage toujours le message d'erreur
 // reel, jamais un fallback generique qui le masquerait.
-export async function auditAccount(geminiKey?: string): Promise<AccountAudit> {
+// vintedAccountId : id du compte Vinted SELECTIONNE cote UI (undefined/'all'
+// = tous les comptes) -- l'audit doit rester scope au compte affiche a
+// l'ecran (demande explicite 2026-08-30), jamais tout le catalogue par
+// defaut des qu'un compte precis est choisi.
+export async function auditAccount(vintedAccountId?: string, geminiKey?: string): Promise<AccountAudit> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
     throw new Error('Audit indisponible : aucune session utilisateur active.');
@@ -20,7 +24,10 @@ export async function auditAccount(geminiKey?: string): Promise<AccountAudit> {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ gemini_key: geminiKey || undefined }),
+      body: JSON.stringify({
+        vinted_account_id: vintedAccountId && vintedAccountId !== 'all' ? vintedAccountId : undefined,
+        gemini_key: geminiKey || undefined,
+      }),
     });
 
     if (!response.ok) {

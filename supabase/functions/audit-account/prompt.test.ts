@@ -5,19 +5,19 @@ import type { AccountStats } from "./stats.ts";
 function makeStats(overrides: Partial<AccountStats> = {}): AccountStats {
   return {
     totalListings: 42,
-    activeCount: 30,
-    draftCount: 5,
-    pendingCount: 2,
-    soldCount: 5,
-    missingDescriptionCount: 3,
     noPhotoCount: 1,
     singlePhotoCount: 4,
-    agingActiveCount: 6,
+    missingDescriptionCount: 3,
+    missingCategoryOrConditionCount: 2,
+    syncFailedCount: 1,
+    perfectCount: 30,
+    agingCount: 6,
     needsRepublishCount: 2,
     avgPhotoCount: 3.2,
     topCategory: "Pulls",
     topBrand: "Carhartt",
     score: 78,
+    flaggedListings: [],
     ...overrides,
   };
 }
@@ -36,7 +36,8 @@ Deno.test("categorie/marque absentes -> mention honnete, jamais une valeur vide 
   assertStringIncludes(prompt, "aucune");
 });
 
-Deno.test("interdit explicitement de mentionner photo de profil/bio (hors perimetre de ce lot)", () => {
+Deno.test("interdit explicitement de mentionner brouillons/ventes ou photo de profil/bio -- hors perimetre stock actuel", () => {
   const prompt = buildAccountAuditPrompt(makeStats());
+  assertStringIncludes(prompt, "STOCK ACTUELLEMENT EN LIGNE");
   assertStringIncludes(prompt, "Ne mentionne jamais la photo de profil ni la bio Vinted");
 });
