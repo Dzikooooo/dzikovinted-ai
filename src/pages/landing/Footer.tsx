@@ -46,8 +46,10 @@ export function Footer({ onNavigate }: { onNavigate: (page: AppPage) => void }) 
           <div>
             <h4 className="text-base font-bold mb-4">Légal</h4>
             <ul className="space-y-2.5 text-[15px] text-gray-500">
+              <li><button onClick={() => onNavigate('mentions-legales')} className="hover:text-[#007782] transition-colors">Mentions légales</button></li>
               <li><button onClick={() => onNavigate('cgu')} className="hover:text-[#007782] transition-colors">CGU</button></li>
               <li><button onClick={() => onNavigate('confidentialite')} className="hover:text-[#007782] transition-colors">Confidentialité</button></li>
+              <li><button onClick={() => onNavigate('cookies')} className="hover:text-[#007782] transition-colors">Cookies</button></li>
             </ul>
           </div>
           <div>

@@ -234,7 +234,7 @@ function AppContent() {
     );
   }
 
-  if (page === 'cgu' || page === 'confidentialite') {
+  if (page === 'cgu' || page === 'confidentialite' || page === 'mentions-legales' || page === 'cookies') {
     return (
       <Suspense fallback={<PageFallback />}>
         <LegalPage kind={page} onNavigate={navigate} />

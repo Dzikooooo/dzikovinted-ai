@@ -11,7 +11,7 @@ export type DashboardPage =
   | 'settings'
   | 'community'
   | 'admin';
-  export type AppPage = "landing" | "auth" | "dashboard" | "reset-password" | "blog" | "newsletter" | "cgu" | "confidentialite";
+  export type AppPage = "landing" | "auth" | "dashboard" | "reset-password" | "blog" | "newsletter" | "cgu" | "confidentialite" | "mentions-legales" | "cookies";
 export type SettingsTab = 'profile' | 'security' | 'accounts' | 'notifications' | 'api' | 'privacy' | 'danger';
 // Meme mecanisme que SettingsTab (deep-link via initialTab porte par
 // DashboardLayout) -- voir CommunityPage.tsx. 'discord' est une tuile
