@@ -33,7 +33,12 @@ export function LoadingStep({ loadingStep }: LoadingStepProps) {
           <div className="absolute inset-0 rounded-full border-2 border-neon-500/20 animate-spin" style={{ animationDuration: '3s' }} />
           <div className="absolute inset-3 rounded-full border-2 border-dashed border-neon-500/40 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '2s' }} />
           <div className="absolute inset-0 flex items-center justify-center">
-            <Logo size={40} className="animate-pulse" />
+            {/* variant="transparent" (2026-08-31, demande produit) : meme
+                glyphe que la navbar/Wordmark.tsx, fond noir carre retire
+                (seuil de luminosite, voir Logo.tsx) -- le "square" par
+                defaut portait un fond noir qui tranchait sur le fond de
+                page ici. */}
+            <Logo variant="transparent" size={40} className="animate-pulse" />
           </div>
         </div>
         <h2 className="text-xl font-black mb-2">L'IA analyse ton vêtement</h2>
