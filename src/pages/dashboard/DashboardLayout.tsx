@@ -15,9 +15,12 @@ import {
   Eye,
   Users,
   ShieldAlert,
-  MessageSquare
+  MessageSquare,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useGenerator } from '../../contexts/GeneratorContext';
 import { useIsAdmin } from '../../hooks/useIsAdmin';
 import { VintedAccountFilterProvider } from '../../contexts/VintedAccountFilterContext';
 import AccountAvatar from '../../components/ui/AccountAvatar';
@@ -111,22 +114,19 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   useEffect(() => {
     sessionStorage.removeItem('resellos:dashboardPage');
   }, []);
-  // Vrai uniquement pendant une analyse Generateur en cours ou un resultat
-  // genere pas encore sauvegarde (voir GeneratorPage.tsx) -- un credit est
-  // deja reserve cote serveur des le lancement de l'analyse ; quitter cet
-  // ecran sans avertissement le perdrait silencieusement, sans annonce
-  // creee ni trace nulle part (bug confirme le 2026-07-24, audit du
-  // parcours Generateur). navigateToPage() confirme avant de partir.
-  const [generatorBusy, setGeneratorBusy] = useState(false);
-  // Remplace l'ancien window.confirm() natif (audit RC, 2026-08-05). Meme
-  // regle de declenchement que l'ancien confirmLeaveGenerator() (quitter le
-  // Generateur pendant generatorBusy), mais differe desormais l'action elle-
-  // meme (changer de page, se deconnecter, ouvrir Parametres...) plutot que
-  // de bloquer sur un confirm() synchrone -- une seule action en attente a
-  // la fois, guardLeaveGenerator() ecrase toujours la precedente plutot que
-  // de les empiler, donc aucune confirmation en attente ne peut rester
-  // bloquee sur une action perimee si l'utilisateur clique plusieurs
-  // commandes avant de repondre a la modale.
+  // Generation en arriere-plan (2026-08-31) : l'etat du Generateur vit
+  // desormais dans GeneratorContext (monte au-dessus de DashboardLayout,
+  // voir App.tsx), il ne demonte plus en changeant de page -- naviguer
+  // ailleurs dans le dashboard pendant une generation ne perd donc plus
+  // rien, `navigateToPage` n'a plus besoin de garde. Seule la deconnexion
+  // reste protegee ci-dessous (guardLeaveGenerator) : elle detruit la
+  // session React entiere, ce qui demonte reellement GeneratorProvider.
+  const navigateToPage = (page: DashboardPage) => setActivePage(page);
+  // Remplace l'ancien window.confirm() natif. Differe l'action elle-meme
+  // (uniquement la deconnexion desormais) plutot que de bloquer sur un
+  // confirm() synchrone -- une seule action en attente a la fois,
+  // guardLeaveGenerator() ecrase toujours la precedente plutot que de les
+  // empiler.
   const [pendingLeaveGeneratorAction, setPendingLeaveGeneratorAction] = useState<(() => void) | null>(null);
   const guardLeaveGenerator = (action: () => void) => {
     if (!generatorBusy) {
@@ -134,13 +134,6 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       return;
     }
     setPendingLeaveGeneratorAction(() => action);
-  };
-  const navigateToPage = (page: DashboardPage) => {
-    if (page === 'generator') {
-      setActivePage(page);
-      return;
-    }
-    guardLeaveGenerator(() => setActivePage(page));
   };
   const confirmLeaveGenerator = () => {
     const action = pendingLeaveGeneratorAction;
@@ -154,6 +147,10 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   const { profile, session, signOut } = useAuth();
   const isAdmin = useIsAdmin();
   const visibleNavItems = isAdmin ? [...navItems, ADMIN_NAV_ITEM] : navItems;
+  // busy/status pilotent respectivement la garde de deconnexion ci-dessus et
+  // le badge de statut sur l'item de nav "Generateur IA" plus bas -- meme
+  // source que GeneratorPage.tsx, jamais un second etat a synchroniser.
+  const { busy: generatorBusy, status: generatorStatus } = useGenerator();
 
   // Ré-appairage silencieux et automatique (bug réel du 2026-07-13 :
   // l'appairage n'était jusqu'ici jamais rafraîchi que par l'extension
@@ -267,11 +264,9 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
   };
 
   const handleManageAccounts = () => {
-    guardLeaveGenerator(() => {
-      setSettingsInitialTab('accounts');
-      setActivePage('settings');
-      setSidebarOpen(false);
-    });
+    setSettingsInitialTab('accounts');
+    setActivePage('settings');
+    setSidebarOpen(false);
   };
 
   const planColors: Record<string, string> = {
@@ -298,6 +293,14 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {visibleNavItems.map(({ page, icon: Icon, label, description }) => {
           const isActive = activePage === page;
+          // Badge de statut (2026-08-31, generation en arriere-plan) : seul
+          // l'item "Generateur IA" le porte -- visible depuis N'IMPORTE
+          // QUELLE page du dashboard puisque generatorStatus vient de
+          // GeneratorContext (monte au-dessus de DashboardLayout), pas de
+          // GeneratorPage lui-meme. Remplace le chevron d'item actif tant
+          // qu'il y a quelque chose a signaler, jamais les deux en meme
+          // temps (bruit visuel inutile).
+          const showGeneratorBadge = page === 'generator' && generatorStatus !== 'idle';
 
           return (
             <button
@@ -325,8 +328,18 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
                 </span>
               </span>
 
-              {isActive && (
-                <ChevronRight className="w-3.5 h-3.5 ml-auto text-neon-500 flex-shrink-0" />
+              {showGeneratorBadge ? (
+                generatorStatus === 'generating' ? (
+                  <span className="ml-auto flex-shrink-0" title="Génération en cours">
+                    <Loader2 className="w-4 h-4 text-neon-500 animate-spin" />
+                  </span>
+                ) : (
+                  <span className="ml-auto flex-shrink-0" title="Annonce prête">
+                    <CheckCircle2 className="w-4 h-4 text-neon-500" />
+                  </span>
+                )
+              ) : (
+                isActive && <ChevronRight className="w-3.5 h-3.5 ml-auto text-neon-500 flex-shrink-0" />
               )}
             </button>
           );
@@ -441,9 +454,7 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
             <div key={activePage} className="page-enter">
               <Suspense fallback={<PageFallback />}>
                 {activePage === 'home' && <DashboardHome onNavigate={navigateToPage} />}
-                {activePage === 'generator' && (
-                  <GeneratorPage onNavigate={navigateToPage} onBusyChange={setGeneratorBusy} />
-                )}
+                {activePage === 'generator' && <GeneratorPage onNavigate={navigateToPage} />}
                 {activePage === 'watchlist' && <WatchlistPage onNavigate={navigateToPage} onViewAction={handleViewAction} />}
                 {activePage === 'communication' && <CommunicationPage />}
                 {activePage === 'vinted-account' && <VintedAccountPage />}
@@ -462,20 +473,24 @@ export default function DashboardLayout({ onNavigate }: DashboardLayoutProps) {
       <NotificationRecapModal onNavigate={navigateToPage} />
       {DZIKO_AI_ENABLED && <DzikoAiBubble />}
 
+      {/* Ne se declenche plus que sur une action qui DEMONTE reellement
+          GeneratorProvider (deconnexion, retour a la landing) -- naviguer
+          entre les pages du dashboard n'en a plus besoin, l'etat survit
+          desormais dans GeneratorContext (voir guardLeaveGenerator
+          ci-dessus). */}
       {pendingLeaveGeneratorAction && (
         <Modal onClose={cancelLeaveGenerator} size="sm">
-          <h2 className="text-lg font-black mb-2">Quitter le Générateur ?</h2>
+          <h2 className="text-lg font-black mb-2">Quitter ResellOS ?</h2>
           <p className="text-sm text-gray-500 mb-6">
             Une génération est en cours ou son résultat n'est pas encore enregistré. Le crédit est déjà utilisé et sera
-            perdu si tu continues — le résultat ne sera pas conservé, il faudra tout recommencer si tu reviens sur cet
-            écran.
+            perdu si tu te déconnectes maintenant — le résultat ne sera pas conservé.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <Button fullWidth onClick={cancelLeaveGenerator}>
-              Continuer la génération
+              Rester connecté
             </Button>
             <Button variant="secondary" fullWidth onClick={confirmLeaveGenerator}>
-              Quitter quand même
+              Se déconnecter quand même
             </Button>
           </div>
         </Modal>

@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Sparkles, Star, Tag, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Copy, DollarSign, Filter, Layers, Package, Palette, Pencil, Ruler, Save, Sparkles, Star, Tag, TrendingUp, X } from 'lucide-react';
 import type { GeneratedListing } from '../../../lib/types';
 import { CopyBtn } from '../../../components/ui/CopyBtn';
 import { FieldCard } from '../../../components/ui/FieldCard';
@@ -83,6 +83,21 @@ export function ResultStep({ result, images, error, onReset, onEdit, onSave, sav
           >
             {saved ? 'Sauvegarde !' : saving ? 'Sauvegarde...' : 'Sauvegarder'}
           </Button>
+          {/* Fermeture explicite (2026-08-31, generation en arriere-plan) :
+              distincte de la sauvegarde -- vide l'etat courant (resultat,
+              photos, formulaire) et repart sur l'ecran d'upload, que
+              l'annonce soit deja sauvegardee ou non. Ghost + icone seule,
+              meme registre visuel que le bouton de fermeture de la sidebar
+              mobile (DashboardLayout.tsx) : une action de sortie ne doit
+              jamais rivaliser visuellement avec les actions principales. */}
+          <button
+            onClick={onReset}
+            aria-label="Fermer et réinitialiser le générateur"
+            title="Fermer et réinitialiser"
+            className="flex items-center justify-center w-9 h-9 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors flex-shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

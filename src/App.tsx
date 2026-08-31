@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from './contexts/AuthContext';
+import { GeneratorProvider } from './contexts/GeneratorContext';
 import LandingPage from './pages/LandingPage';
 import { SplashScreen } from './components/ui/SplashScreen';
 import { Logo } from './components/ui/Logo';
@@ -201,7 +202,18 @@ function AppContent() {
     }
     return (
       <Suspense fallback={<PageFallback />}>
-        <DashboardLayout onNavigate={navigate} />
+        {/* GeneratorProvider ici et non dans DashboardLayout.tsx (2026-08-31,
+            generation en arriere-plan) : monte une seule fois pour toute la
+            duree de la session dashboard, au-dessus de la div
+            `key={activePage}` qui remonte a chaque changement de page --
+            l'etat du Generateur (image en cours d'analyse, resultat pas
+            encore sauvegarde) survit donc a une navigation interne. Se
+            demonte volontairement en quittant 'dashboard' (deconnexion,
+            retour a la landing) : DashboardLayout.tsx garde une confirmation
+            explicite pour CES deux actions precises. */}
+        <GeneratorProvider>
+          <DashboardLayout onNavigate={navigate} />
+        </GeneratorProvider>
       </Suspense>
     );
   }
