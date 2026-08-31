@@ -79,8 +79,14 @@ function CurrentRecommendationSection({
   }
 
   if (recommendationState.status === 'recommandation_differee') {
+    // text-amber-700, pas -400/80 (2026-08-31, contraste "Mes annonces") :
+    // -400 seul mesurait deja 1.67:1 sur fond clair, une couche /80
+    // l'aggrave encore -- voir [[project_dark_theme_color_leftovers]]. Meme
+    // palier que ce MEME statut sur la carte (ListingCard.tsx, badge
+    // "Action déjà tentée récemment"), incoherent auparavant entre les deux
+    // ecrans.
     return (
-      <div className="flex items-start gap-2 text-amber-400/80">
+      <div className="flex items-start gap-2 text-amber-700">
         <HistoryIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
         <p className="text-xs">{recommendationState.reason}</p>
       </div>

@@ -410,8 +410,13 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
 
         {listing.vinted_sync_status === 'sync_failed' && (
           <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
-            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-300">
+            {/* text-amber-700 (2026-08-31, contraste "Mes annonces") : icone
+                -400 et texte -300 mesuraient tous deux sous le seuil WCAG AA
+                applicable -- meme palier que le bandeau rouge juste en
+                dessous (deja text-red-700), voir
+                [[project_dark_theme_color_leftovers]]. */}
+            <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
               La dernière tentative de mise à jour sur Vinted a échoué -- Vinted n'a pas été mis à jour, et aucune
               donnée locale n'a été modifiée (les valeurs ci-dessous sont toujours celles confirmées sur Vinted).
               Réessaie "Enregistrer et mettre à jour sur Vinted".
@@ -442,8 +447,13 @@ export function EditListingModal({ listing, onClose, onSaved, canPublish, canUpd
 
         {isLinkedToVinted ? (
           <div className="flex items-start gap-3 bg-amber-400/10 border border-amber-400/20 rounded-xl px-4 py-3">
-            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-300">
+            {/* text-amber-700 (2026-08-31, contraste "Mes annonces") : icone
+                -400 et texte -300 mesuraient tous deux sous le seuil WCAG AA
+                applicable -- meme palier que le bandeau rouge juste en
+                dessous (deja text-red-700), voir
+                [[project_dark_theme_color_leftovers]]. */}
+            <AlertCircle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
               Cette annonce est déjà liée à un compte Vinted. "Enregistrer et mettre à jour sur Vinted" pousse le
               titre, le prix, la description, la marque, la taille, l'état, la couleur et la matière vers la fiche
               Vinted -- tu valides toi-même l'enregistrement sur place. Les photos ne sont pas encore synchronisées

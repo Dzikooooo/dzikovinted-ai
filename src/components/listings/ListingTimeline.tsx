@@ -55,7 +55,10 @@ function EngagementPeriodRow({ event }: { event: Extract<TimelineEvent, { type: 
             <Heart className="w-3 h-3" /> {event.favourites.from ?? '—'} → {event.favourites.to ?? '—'}
           </span>
           {event.price.changed && (
-            <span className="flex items-center gap-1 text-amber-400/80">
+            // text-amber-700 (2026-08-31, contraste "Mes annonces") : -400/80
+            // mesurait tres sous le seuil WCAG AA -- voir
+            // [[project_dark_theme_color_leftovers]].
+            <span className="flex items-center gap-1 text-amber-700">
               <Tag className="w-3 h-3" /> {event.price.from !== null ? formatEUR(event.price.from) : '—'} → {event.price.to !== null ? formatEUR(event.price.to) : '—'}
             </span>
           )}
@@ -142,7 +145,7 @@ function OutcomeSection({ outcome }: { outcome: NonNullable<Extract<TimelineEven
         ))
       )}
       {outcome.soldAfterDays !== null && (
-        <p className="text-xs text-green-400/80">Vendue {outcome.soldAfterDays}j après cette action.</p>
+        <p className="text-xs text-green-700">Vendue {outcome.soldAfterDays}j après cette action.</p>
       )}
     </div>
   );
@@ -165,13 +168,17 @@ function RecommendationResolvedRow({ event }: { event: Extract<TimelineEvent, { 
 }
 
 function SaleRow({ event }: { event: Extract<TimelineEvent, { type: 'sale' }> }) {
+  // text-green-700 (2026-08-31, contraste "Mes annonces") : l'icone
+  // (green-400, 1.74:1) et le texte (green-300, encore plus pale)
+  // mesuraient tous deux sous le seuil applicable -- 3:1 pour une icone,
+  // 4.5:1 pour du texte normal, voir [[project_dark_theme_color_leftovers]].
   return (
     <div className="flex items-start gap-3">
       <div className="w-7 h-7 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <ShoppingBag className="w-3.5 h-3.5 text-green-400" />
+        <ShoppingBag className="w-3.5 h-3.5 text-green-700" />
       </div>
       <div>
-        <p className="text-sm text-green-300">Vendue{event.soldPrice !== null ? ` — ${formatEUR(event.soldPrice)}` : ''}</p>
+        <p className="text-sm text-green-700">Vendue{event.soldPrice !== null ? ` — ${formatEUR(event.soldPrice)}` : ''}</p>
         <p className="text-xs text-gray-500">{formatDay(event.at)}</p>
       </div>
     </div>
