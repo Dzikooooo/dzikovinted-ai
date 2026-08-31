@@ -63,10 +63,13 @@ interface DashboardLayoutProps {
 // sidebar -- pas seulement une fois la page ouverte (le PageHeader de
 // chaque page porte deja sa propre description, celle-ci sert a decider
 // AVANT de cliquer).
+// Ordre revu (demande produit 2026-08-31) : le Dashboard (vue d'ensemble)
+// prime desormais sur la simple liaison de compte -- Compte Vinted descend
+// d'un cran plutot que de rester la toute premiere entree.
 const navItems: { page: DashboardPage; icon: React.ElementType; label: string; description: string }[] = [
+  { page: 'home', icon: LayoutDashboard, label: 'Dashboard', description: 'Vue d\'ensemble de ton activité' },
   { page: 'vinted-account', icon: Puzzle, label: 'Compte Vinted', description: 'Connexion de l\'extension' },
   { page: 'community', icon: Users, label: 'Communauté', description: 'Nouveautés, roadmap, échanges' },
-  { page: 'home', icon: LayoutDashboard, label: 'Dashboard', description: 'Vue d\'ensemble de ton activité' },
   { page: 'generator', icon: Sparkles, label: 'Générateur IA', description: 'Photo -> annonce en quelques secondes' },
   { page: 'watchlist', icon: Eye, label: 'Mes annonces', description: 'Modifier, supprimer, surveiller le marché' },
   // Reactivee dans la nav (reprise du chantier Communication, 2026-08-08) :

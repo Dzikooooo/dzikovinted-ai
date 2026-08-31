@@ -112,14 +112,24 @@ export function ListingCard({ item, selected, onToggleSelect, showAccount, accou
             <Sparkles className="w-8 h-8" />
           </div>
         )}
+        {/* Affordance de selection renforcee (2026-08-31) : un anneau blanc
+            TOUJOURS visible (plus seulement un fond noir semi-transparent qui
+            pouvait se fondre dans une photo claire) fait lire ce bouton comme
+            une vraie case a cocher au premier coup d'oeil, meme non
+            selectionne. Leger agrandissement au survol de la CARTE entiere
+            (group-hover, pas seulement au survol du bouton lui-meme) : la
+            zone cliquable la plus evidente (la photo) invite explicitement a
+            regarder ce controle. */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onToggleSelect();
           }}
           aria-label={selected ? 'Désélectionner' : 'Sélectionner'}
-          className={`absolute top-2 left-2 w-7 h-7 rounded-full flex items-center justify-center backdrop-blur-sm transition-colors ${
-            selected ? 'bg-neon-600 text-white' : 'bg-black/60 text-white hover:bg-black/80'
+          className={`absolute top-2 left-2 w-8 h-8 rounded-full flex items-center justify-center backdrop-blur-sm ring-2 shadow-md transition-all duration-150 group-hover:scale-110 ${
+            selected
+              ? 'bg-neon-600 text-white ring-neon-300'
+              : 'bg-black/70 text-white ring-white/70 hover:bg-black/85'
           }`}
         >
           {selected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}

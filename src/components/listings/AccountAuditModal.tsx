@@ -72,7 +72,7 @@ export function AccountAuditModal({ onClose, vintedAccountId, accountLabel, onOp
         <div>
           <h2 className="text-lg font-black flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-neon-500" />
-            Audit du compte <span className="text-gray-500 font-normal text-sm">Vinted</span>
+            Analyse du compte <span className="text-gray-500 font-normal text-sm">Vinted</span>
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
             Stock actuellement en ligne — <span className="font-semibold text-gray-700">{accountLabel}</span>.
@@ -93,7 +93,7 @@ export function AccountAuditModal({ onClose, vintedAccountId, accountLabel, onOp
             Ce premier audit ne couvre que tes annonces — la photo de profil et la bio Vinted ne sont pas encore analysées.
           </p>
           <Button icon={<Sparkles className="w-4 h-4" />} onClick={runAudit}>
-            Lancer l'audit (1 crédit)
+            Lancer l'analyse (1 crédit)
           </Button>
         </div>
       )}
@@ -200,7 +200,7 @@ export function AccountAuditModal({ onClose, vintedAccountId, accountLabel, onOp
           )}
 
           <div className="flex justify-end pt-2">
-            <Button variant="secondary" size="sm" onClick={runAudit}>Relancer l'audit (1 crédit)</Button>
+            <Button variant="secondary" size="sm" onClick={runAudit}>Relancer l'analyse (1 crédit)</Button>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
-import { ArrowLeft, Save, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Check, ChevronDown, Loader2, Save, X } from 'lucide-react';
 import type { GeneratedListing, VintedFilter } from '../../../lib/types';
 import { Button } from '../../../components/ui/Button';
 
@@ -9,6 +10,12 @@ interface EditStepProps {
   onReset: () => void;
   onSaveAndReturn: () => void;
   saving: boolean;
+  // Watche la transition false -> true pour faire clignoter brievement un
+  // check sur la fleche de Categorie (demande produit 2026-08-31) -- reflete
+  // le meme `saved` que ResultStep.tsx, jamais un etat invente ici. Repasse
+  // a false des que l'utilisateur retouche un champ (handleEditFormChange,
+  // GeneratorPage.tsx), donc la fleche revient naturellement au repos.
+  saved: boolean;
 }
 
 const TEXT_FIELDS: { k: keyof GeneratedListing; label: string }[] = [
@@ -25,7 +32,23 @@ const PRICE_FIELDS: { k: keyof GeneratedListing; label: string }[] = [
   { k: 'premium_price', label: 'Prix premium' },
 ];
 
-export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn, saving }: EditStepProps) {
+export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn, saving, saved }: EditStepProps) {
+  // Flash de validation (~1.4s) sur la fleche Categorie a la sauvegarde --
+  // GeneratorPage.tsx retarde volontairement la sortie de cet ecran apres
+  // un succes pour laisser ce check se voir (voir son commentaire sur
+  // onSaveAndReturn).
+  const [showSavedCheck, setShowSavedCheck] = useState(false);
+  const wasSaved = useRef(saved);
+  useEffect(() => {
+    if (!wasSaved.current && saved) {
+      setShowSavedCheck(true);
+      const t = setTimeout(() => setShowSavedCheck(false), 1400);
+      wasSaved.current = saved;
+      return () => clearTimeout(t);
+    }
+    wasSaved.current = saved;
+  }, [saved]);
+
   const updateField = (key: keyof GeneratedListing, value: string | number | string[] | VintedFilter[]) => {
     // Un prix tape manuellement n'est plus une donnee de marche reelle --
     // l'etiquette "Base sur N annonces comparables" deviendrait mensongere
@@ -83,12 +106,39 @@ export function EditStep({ editForm, onChange, onBack, onReset, onSaveAndReturn,
           ))}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {TEXT_FIELDS.map(({ k, label }) => (
-            <div key={k}>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
-              <input type="text" className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={(editForm as unknown as Record<string, string>)[k]} onChange={(e) => updateField(k, e.target.value)} />
-            </div>
-          ))}
+          {TEXT_FIELDS.map(({ k, label }) =>
+            k === 'category' ? (
+              // Champ toujours en texte libre (aucune taxonomie Vinted fixe
+              // cote web, voir categoryMatch.ts cote extension) -- seule la
+              // fleche a droite change d'etat : chevron au repos, spinner
+              // pendant la sauvegarde, check au succes.
+              <div key={k}>
+                <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="w-full bg-dark-400 border border-gray-200 rounded-xl pl-4 pr-10 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all"
+                    value={editForm.category}
+                    onChange={(e) => updateField('category', e.target.value)}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none" aria-hidden="true">
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 text-neon-500 animate-spin" />
+                    ) : showSavedCheck ? (
+                      <Check className="w-4 h-4 text-neon-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    )}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div key={k}>
+                <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">{label}</label>
+                <input type="text" className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={(editForm as unknown as Record<string, string>)[k]} onChange={(e) => updateField(k, e.target.value)} />
+              </div>
+            )
+          )}
           <div>
             <label className="text-[10px] font-mono uppercase tracking-wider text-gray-500 block mb-2">État</label>
             <select className="w-full bg-dark-400 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:border-neon-500/40 focus:ring-2 focus:ring-neon-500/20 transition-all" value={editForm.condition} onChange={(e) => updateField('condition', e.target.value)}>

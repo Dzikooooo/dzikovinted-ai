@@ -4,11 +4,20 @@
 // src/lib/insights/scoring.ts pour le calcul reel : additif, transparent,
 // base neutre 50, jamais un score "IA" opaque). Un seul nom, "One Score",
 // un seul composant.
+import { InfoTooltip } from './InfoTooltip';
+
 interface OneScoreBarProps {
   score: number;
   size?: 'sm' | 'md';
   className?: string;
 }
+
+// Texte du picto info (2026-08-31) : reprend LITTERALEMENT les signaux reels
+// de computeScores() (scoring.ts) -- vues/favoris vs mediane, anciennete en
+// ligne, ROI, performance marque/categorie sur CE compte -- jamais une
+// description vague type "notre IA analyse ton annonce".
+const SCORE_EXPLANATION =
+  'Score sur 100 (base neutre 50) : vues et favoris vs la moyenne, ancienneté en ligne, ROI, performance de la marque et de la catégorie sur ton compte.';
 
 export function OneScoreBar({ score, size = 'sm', className = '' }: OneScoreBarProps) {
   const clamped = Math.max(0, Math.min(100, Math.round(score)));
@@ -19,7 +28,10 @@ export function OneScoreBar({ score, size = 'sm', className = '' }: OneScoreBarP
   return (
     <div className={className}>
       <div className={`flex items-center justify-between ${labelSize} text-gray-500 ${labelGap}`}>
-        <span>One Score</span>
+        <span className="flex items-center gap-1">
+          One Score
+          <InfoTooltip text={SCORE_EXPLANATION} />
+        </span>
         <span>{clamped}/100</span>
       </div>
       <div className={`${barHeight} bg-gray-100 rounded-full overflow-hidden`}>

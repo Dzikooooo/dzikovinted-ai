@@ -159,8 +159,13 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
   // jamais retomber en 'en_attente' par ce chemin. asPending force malgre
   // tout la cle sur l'UPDATE aussi : re-cliquer "Enregistrer en attente"
   // apres un premier passage doit rester coherent avec ce qu'il affiche.
-  const handleSave = async (asPending = false) => {
-    if (!editForm || !user) return;
+  // Retourne desormais le succes (true/false) -- necessaire pour
+  // onSaveAndReturn ci-dessous, qui doit savoir si le flash de validation
+  // sur la fleche Categorie (EditStep.tsx) a un sens avant de naviguer.
+  // ResultStep.tsx continue d'appeler cette fonction sans lire son retour,
+  // comportement inchange pour lui.
+  const handleSave = async (asPending = false): Promise<boolean> => {
+    if (!editForm || !user) return false;
     if (asPending) setSavingPending(true);
     else setSaving(true);
     setError(null);
@@ -198,7 +203,7 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         if (updateError) {
           console.error('Listing update error:', updateError);
           setError(translateGeneratorError(updateError.message));
-          return;
+          return false;
         }
       } else {
         const { data, error: insertError } = await supabase
@@ -209,16 +214,18 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
         if (insertError) {
           console.error('Listing save error:', insertError);
           setError(translateGeneratorError(insertError.message));
-          return;
+          return false;
         }
         setSavedListingId(data.id);
       }
       setSaved(true);
       setSavedAsPending(asPending);
+      return true;
     } catch (err) {
       const raw = err instanceof Error ? err.message : 'Erreur lors de l\'envoi des photos';
       console.error('Photo upload error:', raw);
       setError(translateGeneratorError(raw));
+      return false;
     } finally {
       setSaving(false);
       setSavingPending(false);
@@ -325,10 +332,18 @@ export default function GeneratorPage({ onNavigate, onBusyChange }: GeneratorPag
           onSaveAndReturn={async () => {
             if (saving) return;
             if (result) setResult({ ...editForm });
-            await handleSave();
+            const ok = await handleSave();
+            // Laisse le temps au check de la fleche Categorie de se voir
+            // (EditStep.tsx affiche son flash pendant 1400ms) avant de
+            // demonter cet ecran -- sans ce delai, le check et la navigation
+            // vers 'result' arriveraient dans le meme rendu et ne
+            // s'afficherait jamais. Aucun delai sur un echec : rien a
+            // montrer, autant revenir immediatement (comportement inchange).
+            if (ok) await new Promise((resolve) => setTimeout(resolve, 700));
             setStep('result');
           }}
           saving={saving}
+          saved={saved}
         />
       </>
     );

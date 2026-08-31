@@ -1197,7 +1197,7 @@ export function ListingsManagementSection({ onViewAction }: ListingsManagementSe
           icon={<Sparkles className="w-3.5 h-3.5" />}
           onClick={() => setAuditingAccount(true)}
         >
-          Auditer mon compte
+          Analyser mon compte
         </Button>
       </div>
 
