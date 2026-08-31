@@ -27,32 +27,33 @@ import { VINTED_INK } from '../../lib/brandColors';
 //    L'animation reste une entree au scroll UNE FOIS (IntersectionObserver,
 //    inchangee dans son principe depuis le round precedent), simplement
 //    plus marquee.
-// Copie sharpened : memes revendications FACTUELLES qu'avant (rien
-// invente), phrasing plus direct sur la charge mentale/le temps perdu
-// (playbook F : le benefice s'ajoute au fait, ne le remplace jamais).
+// Copie resserree (retour produit 2026-08-31 : "beaucoup plus visuel et
+// percutant", plus de phrases a rallonge type liste de courses) -- 4 points
+// max par colonne, une ligne chacun, mirroir 1-pour-1 (meme index = meme
+// pain point / meme solution) pour que l'oeil comprenne la difference sans
+// lire les deux colonnes separement. Memes revendications FACTUELLES
+// qu'avant (rien invente, rien retire au sens) -- juste compressees a
+// l'essentiel. "Relance de tes favoris" reprend la fonctionnalite REELLEMENT
+// livree de Communication (Features.tsx : "Relance favoris en un clic"),
+// jamais la partie "reponses automatiques" qui reste marquee bientot
+// ailleurs -- pas de raison de la remonter ici.
 const PAIN_POINTS = [
-  "Republier chaque annonce à la main — encore et encore, à chaque fois qu'elle expire",
-  'Répondre seul à des dizaines de messages, un par un, sans jamais rattraper le retard',
-  "Deviner ton bénéfice réel, sans visibilité sur le chiffre d'affaires ni l'investissement",
-  "Gérer l'URSSAF dans un tableur, sans outil dédié",
+  'Republication manuelle infinie',
+  'Zéro vision sur tes bénéfices',
+  "Gestion URSSAF à l'aveugle",
+  'Messages et favoris jamais relancés',
 ];
 
-// Repositionnement "bouclier anti-bannissement" (2026-08-29, suite a
-// l'analyse concurrentielle) : l'ancienne premiere ligne disait
-// "automatique, au choix" -- FAUX, et en contradiction directe avec le
-// vrai fonctionnement (clic humain toujours requis sur Vinted, voir
-// PublishConfirmationModal.tsx/PublishProgressModal.tsx). Reformule en
-// benefice reel plutot que corrige en silence : le clic manuel n'est pas
-// une limite qu'on cache, c'est ce qui protege le compte -- justement ce
-// que la republication "100% automatique" vendue par plusieurs concurrents
-// ne peut pas garantir face aux verifications anti-bot de Vinted.
+// "confirmée en 1 clic" prolonge le correctif "bouclier anti-bannissement"
+// (2026-08-29) meme compresse a une ligne : jamais un robot qui clique a la
+// place de l'utilisateur sur son compte Vinted (PublishConfirmationModal.tsx
+// / PublishProgressModal.tsx) -- cette nuance reste la meme information,
+// juste plus courte, pas une regression de precision.
 const BENEFITS = [
-  "Republication programmée, confirmée d'un clic — jamais un robot qui clique à ta place sur ton compte",
-  'Message automatique aux favoris (bientôt)',
-  'SKU généré automatiquement, sur chaque annonce',
-  "Vraie vue sur ta comptabilité : dépenses, bénéfice, chiffre d'affaires",
-  "Cotisation URSSAF et prix du matériel (emballage, imprimante...) suivis",
-  'Communauté Discord',
+  'Republication automatisée, confirmée en 1 clic',
+  'Comptabilité & marges en temps réel',
+  'URSSAF suivie automatiquement',
+  'Relance de tes favoris en 1 clic',
 ];
 
 interface MiniListingCardProps {
@@ -246,10 +247,10 @@ export function HeroComparison() {
             ))}
           </div>
 
-          <ul className="space-y-4">
+          <ul className="space-y-5">
             {PAIN_POINTS.map((p) => (
-              <li key={p} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-600">
-                <X className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />
+              <li key={p} className="flex items-center gap-3 text-base font-semibold leading-snug text-gray-700">
+                <X className="w-5 h-5 text-red-400 flex-shrink-0" />
                 {p}
               </li>
             ))}
@@ -310,10 +311,10 @@ export function HeroComparison() {
             ))}
           </div>
 
-          <ul className="space-y-4">
+          <ul className="space-y-5">
             {BENEFITS.map((b) => (
-              <li key={b} className="flex items-start gap-3 text-[0.9375rem] leading-6 text-gray-700">
-                <Check className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: VINTED_INK }} />
+              <li key={b} className="flex items-center gap-3 text-base font-semibold leading-snug text-gray-900">
+                <Check className="w-5 h-5 flex-shrink-0" style={{ color: VINTED_INK }} />
                 {b}
               </li>
             ))}
