@@ -233,7 +233,13 @@ export type NotificationType =
   // discipline trigger-only. target_page='admin' ; NotificationBell.tsx/
   // NotificationRecapModal.tsx routent vers l'onglet Administration >
   // "Liste d'attente" en se basant sur CE type (pas une nouvelle colonne).
-  | 'waitlist_signup';
+  | 'waitlist_signup'
+  // Sync automatique en arriere-plan (2026-08-31) -- ecrite uniquement par
+  // scripts/vinted-wardrobe-sync.ts (cron GitHub Actions), jamais par un
+  // trigger : un seul appelant, voir la migration 20260831120000_...
+  // target_page='watchlist' (aucun routage special requis, contrairement a
+  // 'admin' ci-dessus).
+  | 'auto_sync_new_listing';
 
 export interface AppNotification {
   id: string;

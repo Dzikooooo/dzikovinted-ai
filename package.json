@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:functions": "npx -y deno@2 test --allow-all --config supabase/functions/deno.json supabase/functions",
     "scan": "tsx scripts/vinted-scan.ts",
+    "sync:wardrobe": "tsx scripts/vinted-wardrobe-sync.ts",
     "seed:demo": "tsx scripts/seed-demo-data.ts",
     "audit:schema": "node scripts/audit-project.mjs",
     "audit:deadcode": "ts-prune -p tsconfig.audit.json",
